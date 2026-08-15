@@ -24,7 +24,7 @@ description: >-
 |------|------|
 | 读取分镜面板 | `get_flowData("storyboard")` |
 | 生成图片 | `generate_storyboard_images({ ids: [分镜ID列表] })` |
-| 修改已有分镜提示词 | `update_storyboard_prompt({ storyboardIndex, expectedStoryboardId, prompt })` |
+| 修改已有分镜提示词 | `update_storyboard_prompt({ storyboardId, prompt })` |
 
 ### 执行流程
 

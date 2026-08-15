@@ -239,6 +239,9 @@ export async function buildVideoTaskData(projectId: number, scriptId: number) {
         .leftJoin("o_assets", "o_assets2Storyboard.assetId", "o_assets.id")
         .leftJoin("o_image", "o_assets.imageId", "o_image.id")
         .whereIn("o_assets2Storyboard.storyboardId", storyboardIds)
+        .orderBy("o_assets2Storyboard.storyboardId", "asc")
+        .orderBy("o_assets2Storyboard.sort", "asc")
+        .orderBy("o_assets2Storyboard.assetId", "asc")
         .select(
           "o_assets2Storyboard.storyboardId",
           "o_assets.id",

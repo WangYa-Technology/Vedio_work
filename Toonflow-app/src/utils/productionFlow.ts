@@ -95,10 +95,15 @@ async function loadStoryboard(projectId: number, scriptId: number) {
     .db("o_storyboard")
     .where({ projectId, scriptId })
     .orderByRaw('COALESCE("index", 2147483647), id');
-  const relations = await u.db("o_assets2Storyboard").whereIn(
-    "storyboardId",
-    formalRows.map((row) => row.id),
-  );
+  const relations = await u
+    .db("o_assets2Storyboard")
+    .whereIn(
+      "storyboardId",
+      formalRows.map((row) => row.id),
+    )
+    .orderBy("storyboardId", "asc")
+    .orderBy("sort", "asc")
+    .orderBy("assetId", "asc");
   const relationMap = new Map<number, number[]>();
   for (const relation of relations) {
     const storyboardId = Number(relation.storyboardId);
@@ -147,24 +152,76 @@ export async function buildProductionFlowData(projectId: number, scriptId: numbe
 }
 
 export async function saveProductionFlowData(projectId: number, scriptId: number, data: AnyObject) {
-  const existing = await u.db("o_agentWorkData").where({ projectId, episodesId: scriptId, key: "productionFlowData" }).first();
-  const payload = JSON.stringify(data ?? {});
-  if (existing) {
-    await u.db("o_agentWorkData")
-      .where({ id: existing.id })
-      .update({ data: payload, updateTime: Date.now() });
-    return existing.id;
+  if (!Number.isSafeInteger(projectId) || projectId <= 0 || !Number.isSafeInteger(scriptId) || scriptId <= 0) {
+    throw new Error("生产工作区缺少有效的项目或剧本上下文");
   }
-  const maxRow = await u.db("o_agentWorkData").max("id as id").first();
-  const nextId = Number((maxRow as any)?.id || 0) + 1;
-  await u.db("o_agentWorkData").insert({
-    id: nextId,
-    projectId,
-    episodesId: scriptId,
-    key: "productionFlowData",
-    data: payload,
-    createTime: Date.now(),
-    updateTime: Date.now(),
+  const payload = JSON.stringify(data ?? {});
+  let rowId = 0;
+  await u.db.transaction(async (trx) => {
+    const existing = await trx("o_agentWorkData").where({ projectId, episodesId: scriptId, key: "productionFlowData" }).first();
+    const now = Date.now();
+    if (existing) {
+      rowId = Number(existing.id);
+      await trx("o_agentWorkData").where({ id: existing.id, projectId, episodesId: scriptId }).update({ data: payload, updateTime: now });
+      return;
+    }
+    const maxRow = await trx("o_agentWorkData").max("id as id").first();
+    rowId = Number((maxRow as any)?.id || 0) + 1;
+    await trx("o_agentWorkData").insert({
+      id: rowId,
+      projectId,
+      episodesId: scriptId,
+      key: "productionFlowData",
+      data: payload,
+      createTime: now,
+      updateTime: now,
+    });
   });
-  return nextId;
+  const saved = await u.db("o_agentWorkData").where({ id: rowId, projectId, episodesId: scriptId, key: "productionFlowData" }).select("data").first();
+  if (saved?.data !== payload) throw new Error("生产工作区写入后回读校验失败");
+  return rowId;
+}
+
+export async function saveProductionFlowArtifact(
+  projectId: number,
+  scriptId: number,
+  key: "scriptPlan" | "storyboardTable",
+  content: string,
+) {
+  if (!Number.isSafeInteger(projectId) || projectId <= 0 || !Number.isSafeInteger(scriptId) || scriptId <= 0) {
+    throw new Error("生产工作区缺少有效的项目或剧本上下文");
+  }
+  if (!content.trim()) throw new Error("生产工作区产出物不能为空");
+
+  await u.db.transaction(async (trx) => {
+    const existing = await trx("o_agentWorkData").where({ projectId, episodesId: scriptId, key: "productionFlowData" }).first();
+    let current: AnyObject = {};
+    try {
+      current = existing?.data ? JSON.parse(existing.data) : {};
+    } catch {
+      throw new Error("现有生产工作区数据格式无效，已阻止覆盖");
+    }
+    const payload = JSON.stringify({ ...current, [key]: content });
+    const now = Date.now();
+
+    if (existing) {
+      await trx("o_agentWorkData").where({ id: existing.id, projectId, episodesId: scriptId }).update({ data: payload, updateTime: now });
+      return;
+    }
+
+    const maxRow = await trx("o_agentWorkData").max("id as id").first();
+    await trx("o_agentWorkData").insert({
+      id: Number((maxRow as any)?.id || 0) + 1,
+      projectId,
+      episodesId: scriptId,
+      key: "productionFlowData",
+      data: payload,
+      createTime: now,
+      updateTime: now,
+    });
+  });
+
+  const saved = await u.db("o_agentWorkData").where({ projectId, episodesId: scriptId, key: "productionFlowData" }).select("data").first();
+  const savedData = safeJsonParse<AnyObject>(saved?.data, {});
+  if (savedData[key] !== content) throw new Error(`${key === "scriptPlan" ? "导演规划" : "分镜表"}写入后回读校验失败`);
 }

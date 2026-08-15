@@ -151,6 +151,8 @@ async function storyboardReferenceBase64(storyboardId: number) {
     .leftJoin("o_image", "o_assets.imageId", "o_image.id")
     .where("o_assets2Storyboard.storyboardId", storyboardId)
     .whereNotNull("o_image.filePath")
+    .orderBy("o_assets2Storyboard.sort", "asc")
+    .orderBy("o_assets2Storyboard.assetId", "asc")
     .select("o_image.filePath");
   return Promise.all(rows.map((row) => u.oss.getImageBase64(row.filePath)));
 }

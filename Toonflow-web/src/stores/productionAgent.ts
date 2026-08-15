@@ -4,7 +4,6 @@ import settingStore from "@/stores/setting";
 import { useChat } from "@/utils/useChat";
 import type { FlowData } from "@/views/production/types";
 import type { ChatMessagesData } from "@tdesign-vue-next/chat";
-import { useThrottleFn } from "@vueuse/core";
 
 export default defineStore(
   "productionAgent",
@@ -57,7 +56,7 @@ export default defineStore(
         { tag: "storyboardTable", keepInMessage: false },
       ],
       onXmlTag: async (data) => {
-        const { tag, value, status } = data;
+        const { tag, value } = data;
         if (tag === "script") {
           flowData.value.script = value ?? "";
         } else if (tag === "scriptPlan") {
@@ -65,24 +64,12 @@ export default defineStore(
         } else if (tag === "storyboardTable") {
           flowData.value.storyboardTable = value ?? "";
         }
-        if (status == "complete") {
-          throttledFn();
-        }
       },
       onError: (error) => {
         window.$message.error(error.message || "生产 Agent 请求失败");
       },
     });
 
-    // 实际的节流方法
-    const throttledFn = useThrottleFn(
-      () => {
-        setFlowData(episodesId.value);
-      },
-      500,
-      true,
-      true,
-    );
     // 注册 getPlanData 事件（无需依赖组件生命周期）
     watch(
       socket,

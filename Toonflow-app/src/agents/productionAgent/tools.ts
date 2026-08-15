@@ -24,6 +24,10 @@ function normalizeIds(ids: number[] | null | undefined) {
   return [...new Set((ids || []).map(Number).filter(Number.isFinite))];
 }
 
+function sameIds(left: number[], right: number[]) {
+  return left.length === right.length && left.every((id, index) => id === right[index]);
+}
+
 export default ({ resTool, msg, toolsNames }: ToolConfig) => {
   const { socket } = resTool;
   const projectId = Number(resTool.data.projectId);
@@ -114,25 +118,30 @@ export default ({ resTool, msg, toolsNames }: ToolConfig) => {
       execute: async ({ assetsId, id, name, desc }) => {
         ensureContext();
         const thinking = msg.thinking("正在写入衍生资产...");
-        const parent = await u.db("o_assets").where({ id: assetsId, projectId }).first();
-        if (!parent) throw new Error(`父资产不存在：${assetsId}`);
-        const data = {
-          assetsId,
-          projectId,
-          name,
-          type: parent.type,
-          describe: desc,
-          startTime: Date.now(),
-        };
         let assetId = id;
-        if (assetId != null) {
-          const updated = await u.db("o_assets").where({ id: assetId, projectId }).update(data);
-          if (!updated) throw new Error(`衍生资产不存在：${assetId}`);
-        } else {
-          const inserted = await u.db("o_assets").insert(data);
-          assetId = Number(inserted[0]);
-          await u.db("o_scriptAssets").insert({ scriptId, assetId }).onConflict(["scriptId", "assetId"]).ignore();
-        }
+        await u.db.transaction(async (trx) => {
+          const parent = await trx("o_assets").where({ id: assetsId, projectId }).first();
+          if (!parent || parent.assetsId != null) throw new Error(`父资产不存在：${assetsId}`);
+          const data = {
+            assetsId,
+            projectId,
+            name,
+            type: parent.type,
+            describe: desc,
+            startTime: Date.now(),
+          };
+          if (assetId != null) {
+            const updated = await trx("o_assets").where({ id: assetId, projectId, assetsId }).update(data);
+            if (!updated) throw new Error(`衍生资产不存在或不属于父资产 ${assetsId}：${assetId}`);
+          } else {
+            const inserted = await trx("o_assets").insert(data);
+            assetId = Number(inserted[0]);
+          }
+          await trx("o_scriptAssets").insert({ scriptId, assetId }).onConflict(["scriptId", "assetId"]).ignore();
+        });
+        const saved = await u.db("o_assets").where({ id: assetId, projectId, assetsId }).first();
+        const linked = await u.db("o_scriptAssets").where({ scriptId, assetId }).first();
+        if (!saved || !linked || saved.name !== name || saved.describe !== desc) throw new Error("衍生资产写入后回读校验失败");
         socket.emit("flowDataUpdated", { reason: "deriveAsset", assetId });
         thinking.updateTitle("衍生资产写入完成");
         thinking.complete();
@@ -143,12 +152,16 @@ export default ({ resTool, msg, toolsNames }: ToolConfig) => {
     del_deriveAsset: tool({
       description: "删除指定衍生资产",
       inputSchema: z.object({ assetsId: z.number(), id: z.number() }),
-      execute: async ({ id }) => {
+      execute: async ({ assetsId, id }) => {
         ensureContext();
         const thinking = msg.thinking("正在删除衍生资产...");
-        await u.db("o_scriptAssets").where({ scriptId, assetId: id }).del();
-        const deleted = await u.db("o_assets").where({ id, projectId }).del();
-        if (!deleted) throw new Error(`衍生资产不存在：${id}`);
+        await u.db.transaction(async (trx) => {
+          const target = await trx("o_assets").where({ id, projectId, assetsId }).first();
+          if (!target) throw new Error(`衍生资产不存在或不属于父资产 ${assetsId}：${id}`);
+          await trx("o_scriptAssets").where({ scriptId, assetId: id }).del();
+          await trx("o_assets").where({ id, projectId, assetsId }).del();
+        });
+        if (await u.db("o_assets").where({ id, projectId }).first()) throw new Error("衍生资产删除后回读校验失败");
         socket.emit("flowDataUpdated", { reason: "deriveAssetDeleted", assetId: id });
         thinking.updateTitle("衍生资产删除完成");
         thinking.complete();
@@ -175,35 +188,45 @@ export default ({ resTool, msg, toolsNames }: ToolConfig) => {
         ensureContext();
         const thinking = msg.thinking("正在写入正式分镜面板...");
         const assets = normalizeIds(raw.associateAssetsIds);
-        const existingAssets = assets.length
-          ? await u.db("o_assets").where({ projectId }).whereIn("id", assets).pluck("id")
-          : [];
-        if (existingAssets.length !== assets.length) {
-          const existing = new Set(existingAssets.map(Number));
-          throw new Error(`关联资产不存在：${assets.filter((id) => !existing.has(id)).join(", ")}`);
-        }
-        const maxIndex = await u.db("o_storyboard").where({ projectId, scriptId }).max("index as value").first();
-        const index = Number((maxIndex as any)?.value ?? -1) + 1;
         const shouldGenerateImage = raw.shouldGenerateImage === true || raw.shouldGenerateImage === "true" ? 1 : 0;
-        const inserted = await u.db("o_storyboard").insert({
-          projectId,
-          scriptId,
-          prompt: raw.prompt || "",
-          filePath: null,
-          duration: String(raw.duration),
-          state: "未生成",
-          trackId: Date.now() * 100 + index,
-          reason: "",
-          track: raw.track,
-          videoDesc: raw.videoDesc,
-          shouldGenerateImage,
-          flowId: null,
-          index,
-          createTime: Date.now(),
+        let storyboardId = 0;
+        let index = 0;
+        await u.db.transaction(async (trx) => {
+          const existingAssets = assets.length ? await trx("o_assets").where({ projectId }).whereIn("id", assets).pluck("id") : [];
+          if (existingAssets.length !== assets.length) {
+            const existing = new Set(existingAssets.map(Number));
+            throw new Error(`关联资产不存在：${assets.filter((id) => !existing.has(id)).join(", ")}`);
+          }
+          const maxIndex = await trx("o_storyboard").where({ projectId, scriptId }).max("index as value").first();
+          index = Number((maxIndex as any)?.value ?? -1) + 1;
+          const now = Date.now();
+          const inserted = await trx("o_storyboard").insert({
+            projectId,
+            scriptId,
+            prompt: raw.prompt || "",
+            filePath: null,
+            duration: String(raw.duration),
+            state: "未生成",
+            trackId: now * 100 + index,
+            reason: "",
+            track: raw.track,
+            videoDesc: raw.videoDesc,
+            shouldGenerateImage,
+            flowId: null,
+            index,
+            createTime: now,
+          });
+          storyboardId = Number(inserted[0]);
+          if (assets.length) {
+            await trx("o_assets2Storyboard").insert(assets.map((assetId, sort) => ({ storyboardId, assetId, sort })));
+          }
         });
-        const storyboardId = Number(inserted[0]);
-        if (assets.length) {
-          await u.db("o_assets2Storyboard").insert(assets.map((assetId) => ({ storyboardId, assetId })));
+        const saved = await u.db("o_storyboard").where({ id: storyboardId, projectId, scriptId }).first();
+        const verifiedAssets = (
+          await u.db("o_assets2Storyboard").where({ storyboardId }).orderBy("sort", "asc").orderBy("assetId", "asc").pluck("assetId")
+        ).map(Number);
+        if (!saved || saved.videoDesc !== raw.videoDesc || saved.prompt !== (raw.prompt || "") || !sameIds(verifiedAssets, assets)) {
+          throw new Error("正式分镜写入后回读校验失败");
         }
         socket.emit("flowDataUpdated", { reason: "storyboardAdded", storyboardId });
         thinking.appendText(`真实分镜 ID：${storyboardId}`);
@@ -221,7 +244,9 @@ export default ({ resTool, msg, toolsNames }: ToolConfig) => {
         const rows = await u.db("o_storyboard").where({ projectId, scriptId }).orderByRaw('COALESCE("index", 2147483647), id');
         const row = rows[storyboardIndex];
         if (!row) throw new Error(`分镜面板不存在第 ${storyboardIndex + 1} 项`);
-        const associateAssetsIds = (await u.db("o_assets2Storyboard").where({ storyboardId: row.id }).pluck("assetId")).map(Number);
+        const associateAssetsIds = (
+          await u.db("o_assets2Storyboard").where({ storyboardId: row.id }).orderBy("sort", "asc").orderBy("assetId", "asc").pluck("assetId")
+        ).map(Number);
         return {
           storyboardId: Number(row.id),
           index: row.index == null ? null : Number(row.index),
@@ -253,12 +278,22 @@ export default ({ resTool, msg, toolsNames }: ToolConfig) => {
         if (assetRows.length !== assets.length) throw new Error("目标资产列表包含不存在的资产 ID");
         await u.db.transaction(async (trx) => {
           await trx("o_assets2Storyboard").where({ storyboardId: expectedStoryboardId }).del();
-          if (assets.length) await trx("o_assets2Storyboard").insert(assets.map((assetId) => ({ storyboardId: expectedStoryboardId, assetId })));
+          if (assets.length) {
+            await trx("o_assets2Storyboard").insert(assets.map((assetId, sort) => ({ storyboardId: expectedStoryboardId, assetId, sort })));
+          }
         });
-        const verified = (await u.db("o_assets2Storyboard").where({ storyboardId: expectedStoryboardId }).pluck("assetId")).map(Number);
+        const verified = (
+          await u
+            .db("o_assets2Storyboard")
+            .where({ storyboardId: expectedStoryboardId })
+            .orderBy("sort", "asc")
+            .orderBy("assetId", "asc")
+            .pluck("assetId")
+        ).map(Number);
+        if (!sameIds(verified, assets)) throw new Error("分镜资产绑定写入后回读校验失败");
         socket.emit("updateStoryboardAssetBinding", { storyboardId: expectedStoryboardId, associateAssetsIds: verified });
         socket.emit("flowDataUpdated", { reason: "storyboardBinding", storyboardId: expectedStoryboardId });
-        return { success: true, verified: JSON.stringify(verified) === JSON.stringify(assets), storyboardId: expectedStoryboardId, associateAssetsIds: verified };
+        return { success: true, verified: true, storyboardId: expectedStoryboardId, associateAssetsIds: verified };
       },
     }),
 
@@ -266,7 +301,7 @@ export default ({ resTool, msg, toolsNames }: ToolConfig) => {
       description: "使用真实分镜 ID 定点更新已有分镜提示词，不新增分镜、不触发生成",
       inputSchema: z.object({
         storyboardId: z.number().int().positive(),
-        prompt: z.string().min(1),
+        prompt: z.string().trim().min(1),
         videoDesc: z.string().optional(),
       }),
       execute: async ({ storyboardId, prompt, videoDesc }) => {
@@ -275,6 +310,8 @@ export default ({ resTool, msg, toolsNames }: ToolConfig) => {
         if (videoDesc !== undefined) patch.videoDesc = videoDesc;
         const updated = await u.db("o_storyboard").where({ id: storyboardId, projectId, scriptId }).update(patch);
         if (!updated) throw new Error(`真实分镜不存在：${storyboardId}`);
+        const saved = await u.db("o_storyboard").where({ id: storyboardId, projectId, scriptId }).select("prompt", "videoDesc").first();
+        if (saved?.prompt !== prompt || (videoDesc !== undefined && saved.videoDesc !== videoDesc)) throw new Error("分镜提示词写入后回读校验失败");
         socket.emit("updateStoryboardPrompt", { storyboardId, prompt, videoDesc });
         socket.emit("flowDataUpdated", { reason: "storyboardPrompt", storyboardId });
         return { success: true, storyboardId, prompt };

@@ -11,7 +11,7 @@ export const ScriptSchema = z.object({
 export const planData = z.object({
   storySkeleton: z.string().describe("故事骨架"),
   adaptationStrategy: z.string().describe("改编策略"),
-  script: z.string().describe("剧本内容"),
+  script: z.array(ScriptSchema).describe("剧本内容"),
 });
 
 export type planData = z.infer<typeof planData>;
@@ -29,22 +29,21 @@ interface ToolConfig {
 
 export default (toolCpnfig: ToolConfig) => {
   const { resTool, toolsNames, msg } = toolCpnfig;
-  const { socket } = resTool;
   const tools: Record<string, Tool> = {
     get_novel_events: tool({
       description: "获取章节事件",
       inputSchema: z.object({
-        chapterIndexs: z.array(z.number()).describe("章节的编号"),
+        ids: z.array(z.number()).describe("章节编号列表"),
       }),
-      execute: async ({ chapterIndexs }) => {
-        console.log("[tools] get_novel_events", chapterIndexs);
+      execute: async ({ ids }) => {
+        console.log("[tools] get_novel_events", ids);
         const thinking = msg.thinking("正在查询章节事件...");
         const data = await u
           .db("o_novel")
           .where("projectId", resTool.data.projectId)
           .select("id", "chapterIndex as index", "reel", "chapter", "chapterData", "event", "eventState")
-          .whereIn("chapterIndex", chapterIndexs);
-        thinking.appendText("正在查询章节编号: " + chapterIndexs.join(","));
+          .whereIn("chapterIndex", ids);
+        thinking.appendText("正在查询章节编号: " + ids.join(","));
         const eventString = data.map((i: any) => [`第${i.index}章，标题：${i.chapter}，事件：${i.event}`].join("\n")).join("\n");
         thinking.appendText("查询结果:\n" + eventString);
         thinking.updateTitle("查询章节事件完成");
@@ -60,11 +59,25 @@ export default (toolCpnfig: ToolConfig) => {
       execute: async ({ key }) => {
         console.log("[tools] get_planData", key);
         const thinking = msg.thinking(`正在获取${planDataKeyLabels[key]}工作区数据...`);
-        const planData: planData = await new Promise((resolve) => socket.emit("getPlanData", { key }, (res: any) => resolve(res)));
-        thinking.appendText(`获取到${planDataKeyLabels[key]}:\n` + planData[key]);
+        const projectId = Number(resTool.data.projectId);
+        const row = await u.db("o_agentWorkData").where({ projectId, key: "scriptAgent" }).first();
+        let workData: Record<string, unknown> = {};
+        try {
+          workData = JSON.parse(row?.data ?? "{}");
+        } catch {
+          workData = {};
+        }
+        const scripts = await u.db("o_script").where({ projectId }).select("name", "content");
+        const persistedPlanData: planData = {
+          storySkeleton: typeof workData.storySkeleton === "string" ? workData.storySkeleton : "",
+          adaptationStrategy: typeof workData.adaptationStrategy === "string" ? workData.adaptationStrategy : "",
+          script: scripts.map((item) => ({ name: item.name || "", content: item.content || "" })),
+        };
+        const value = persistedPlanData[key];
+        thinking.appendText(`获取到${planDataKeyLabels[key]}:\n` + (typeof value === "string" ? value : JSON.stringify(value)));
         thinking.updateTitle(`获取${planDataKeyLabels[key]}完成`);
         thinking.complete();
-        return planData[key] ?? "无数据";
+        return value ?? "无数据";
       },
     }),
     get_novel_text: tool({

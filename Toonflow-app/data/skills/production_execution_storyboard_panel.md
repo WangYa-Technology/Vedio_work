@@ -68,7 +68,7 @@ description: >-
 
 1. 先调用 `get_flowData("storyboard")` 按当前 UI 顺序找到 Sxx 对应条目的真实 `id` 和数据库 `index`；项目可能存在 `index=null`，禁止把 Sxx 机械换算为 `xx-1`。再调用查询工具确认真实 `storyboardId`、`videoDesc` 和现有资产绑定。
 2. 根据该条 `videoDesc` 和当前已绑定资产生成一条非空的首帧图片提示词；不得凭空更换分镜内容，不得新增或删除资产。
-3. 使用 `update_storyboard_prompt({ storyboardIndex: 数据库index, expectedStoryboardId: 真实id, prompt })` 定点更新已有分镜。禁止用 `add_flowData_storyboard`，禁止 XML，禁止直接写数据库，禁止在本步骤触发图片生成。
+3. 使用 `update_storyboard_prompt({ storyboardId: 真实id, prompt })` 定点更新已有分镜。禁止用 `add_flowData_storyboard`，禁止 XML，禁止直接写数据库，禁止在本步骤触发图片生成。
 4. 回读验证后必须报告：真实 ID、修复前后 prompt 是否为空、绑定资产是否未变、`imageGenerationStarted: false`。
 
 ### 已有分镜的图片编辑器参考图映射修复

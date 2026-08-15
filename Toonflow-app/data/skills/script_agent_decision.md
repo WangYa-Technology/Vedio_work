@@ -82,8 +82,8 @@
 ### 阶段通用执行流程（阶段1、阶段2适用）
 
 1. 决策层分析用户请求，判断当前阶段
-2. 决策层派发任务给执行层，执行层写入 planData
-3. **检查执行层返回结果**：若执行层未正常完成任务（返回错误、异常中断、未输出预期产出物），**立即告知用户该任务未完成并结束当前阶段，不得触发监督层审核**
+2. 决策层派发任务给执行层；执行层输出完整 XML 产出物，宿主运行时自动校验、事务写入工作区并回读确认
+3. **检查工具的验证结果**：仅以子 Agent 工具返回的“已保存到工作区”结果为完成依据。若工具返回错误、异常中断或回读校验失败，**立即告知用户该任务未完成并结束当前阶段，不得触发监督层审核**。不得依据执行层正文中关于工具能力或保存状态的自述作判断
 4. 执行层正常完成后，决策层派发审核任务给监督层，监督层生成审核报告
 5. 决策层将审核报告 + 产出摘要展示给用户
 6. 用户决策：通过 → 进入下一阶段 | 修复 → 再次审核 | 重做 → 重新派发
@@ -96,7 +96,7 @@
 输入：事件表（通过 get_novel_events(ids:number[]) 获取）
 处理：三幕分割、按项目配置分集、删减决策、钩子设计
 输出：planData.storySkeleton
-工具：get_planData → set_planData_storySkeleton
+协议：执行层读取 get_planData，输出完整 `<storySkeleton>...</storySkeleton>`；宿主自动保存并回读校验，无需写入工具
 质量门：集数×单集时长符合配置、章节全覆盖、情绪曲线合理
 前置条件：事件提取已完成
 ```
@@ -107,7 +107,7 @@
 输入：事件表（get_novel_events） + planData.storySkeleton
 处理：提炼改编原则、确定删减依据、世界观呈现策略
 输出：planData.adaptationStrategy
-工具：get_planData → set_planData_adaptationStrategy
+协议：执行层读取 get_planData，输出完整 `<adaptationStrategy>...</adaptationStrategy>`；宿主自动保存并回读校验，无需写入工具
 质量门：原则与骨架一致、服务于故事核
 前置条件：阶段1（故事骨架）通过审核
 ```
@@ -118,7 +118,7 @@
 输入：事件表（get_novel_events） + planData.storySkeleton + planData.adaptationStrategy
 处理：逐集编写，每次调用执行层处理一集
 输出：SQLite 中的剧本记录
-工具：get_novel_events + get_planData + get_novel_text → insert_script_to_sqlite
+协议：执行层读取所需数据，输出一个完整 `<scriptItem name="...">...</scriptItem>`；宿主自动保存并回读校验，无需写入工具
 前置条件：阶段2（改编策略）通过审核
 ```
 
@@ -162,7 +162,7 @@ run_sub_agent_script(prompt: "<按模板构建的具体指令>")
 
 每个阶段执行完毕后，决策层按以下流程操作：
 
-1. 收到执行层返回的确认消息（如"故事骨架已保存，请在右侧工作台查看。"）
+1. 收到子 Agent 工具经过宿主写入和回读校验后返回的确认消息（如"故事骨架已保存到工作区（4939字）"）
 2. 将该确认消息展示给用户
 3. **紧接着自动调用监督层审核**（无需等待用户指示）：
 ```

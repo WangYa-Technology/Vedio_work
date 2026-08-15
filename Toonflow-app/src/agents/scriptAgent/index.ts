@@ -90,57 +90,76 @@ function withContentSafetyConstraint(systemPrompt: string, constraint: string): 
   return `${systemPrompt}\n\n## 内容安全约束（用户设置）\n${constraint}`;
 }
 
-function getLastXmlValue(text: string, tag: string): string | undefined {
-  const pattern = new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tag}>`, "g");
-  let value: string | undefined;
+function getLastXmlElement(text: string, tag: string) {
+  const openPattern = new RegExp(`<${tag}(?:\\s([^>]*))?>`, "g");
+  let lastOpen: RegExpExecArray | null = null;
   let match: RegExpExecArray | null;
-  while ((match = pattern.exec(text)) !== null) value = match[1].trim();
-  return value;
+  while ((match = openPattern.exec(text)) !== null) lastOpen = match;
+  if (!lastOpen) return undefined;
+
+  const contentStart = lastOpen.index + lastOpen[0].length;
+  const closeIndex = text.indexOf(`</${tag}>`, contentStart);
+  if (closeIndex === -1) return undefined;
+  return { attrs: lastOpen[1] ?? "", content: text.slice(contentStart, closeIndex).trim() };
 }
 
-function getScriptItems(text: string) {
-  const items: Array<{ name: string; content: string }> = [];
-  const pattern = /<scriptItem\b([^>]*)>([\s\S]*?)<\/scriptItem>/g;
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(text)) !== null) {
-    const nameMatch = match[1].match(/\bname\s*=\s*(?:"([^"]*)"|'([^']*)')/);
-    const name = (nameMatch?.[1] ?? nameMatch?.[2] ?? "").trim();
-    if (name) items.push({ name, content: match[2].trim() });
+type RequiredArtifact = "storySkeleton" | "adaptationStrategy" | "scriptItem";
+
+type ArtifactPayload =
+  | { type: "storySkeleton"; content: string }
+  | { type: "adaptationStrategy"; content: string }
+  | { type: "scriptItem"; name: string; content: string };
+
+function getRequiredArtifact(text: string, requiredArtifact: RequiredArtifact): ArtifactPayload {
+  if (requiredArtifact === "storySkeleton" || requiredArtifact === "adaptationStrategy") {
+    const element = getLastXmlElement(text, requiredArtifact);
+    if (!element?.content) {
+      const label = requiredArtifact === "storySkeleton" ? "故事骨架" : "改编策略";
+      throw new Error(`${label}任务未输出完整的 <${requiredArtifact}> 产出物`);
+    }
+    return { type: requiredArtifact, content: element.content };
   }
-  return items;
+
+  const element = getLastXmlElement(text, "scriptItem");
+  const nameMatch = element?.attrs.match(/\bname\s*=\s*(?:"([^"]*)"|'([^']*)')/);
+  const name = (nameMatch?.[1] ?? nameMatch?.[2] ?? "").trim();
+  if (!element?.content || !name) throw new Error("剧本任务必须输出一个带名称的完整 <scriptItem> 产出物");
+  return { type: "scriptItem", name, content: element.content };
 }
 
-async function persistPlanXml(projectIdValue: unknown, text: string) {
-  const projectId = Number(projectIdValue);
-  if (!Number.isSafeInteger(projectId) || projectId <= 0 || !text.trim()) return;
+function getArtifactSuccessMessage(artifact: ArtifactPayload) {
+  if (artifact.type === "storySkeleton") return `故事骨架已保存到工作区（${artifact.content.length}字）`;
+  if (artifact.type === "adaptationStrategy") return `改编策略已保存到工作区（${artifact.content.length}字）`;
+  return `剧本《${artifact.name}》已保存到工作区（${artifact.content.length}字）`;
+}
 
-  const storySkeleton = getLastXmlValue(text, "storySkeleton");
-  const adaptationStrategy = getLastXmlValue(text, "adaptationStrategy");
-  const scripts = getScriptItems(text);
-  if (storySkeleton === undefined && adaptationStrategy === undefined && scripts.length === 0) return;
+async function persistPlanXml(projectIdValue: unknown, artifact: ArtifactPayload) {
+  const projectId = Number(projectIdValue);
+  if (!Number.isSafeInteger(projectId) || projectId <= 0) throw new Error("无效的项目 ID，无法保存产出物");
 
   const now = Date.now();
   await u.db.transaction(async (trx) => {
+    if (artifact.type === "scriptItem") {
+      const existing = await trx("o_script").where({ projectId, name: artifact.name }).first();
+      if (existing) {
+        await trx("o_script").where({ id: existing.id, projectId }).update({ content: artifact.content });
+      } else {
+        await trx("o_script").insert({ projectId, name: artifact.name, content: artifact.content, createTime: now });
+      }
+      return;
+    }
+
     const workData = await trx("o_agentWorkData").where({ projectId, key: "scriptAgent" }).first();
     let currentData: Record<string, unknown> = {};
     try {
       currentData = JSON.parse(workData?.data ?? "{}");
     } catch {
-      currentData = {};
+      throw new Error("现有剧本工作区数据格式无效，已阻止覆盖");
     }
     const persistedData = {
-      storySkeleton:
-        storySkeleton !== undefined
-          ? storySkeleton
-          : typeof currentData.storySkeleton === "string"
-            ? currentData.storySkeleton
-            : "",
-      adaptationStrategy:
-        adaptationStrategy !== undefined
-          ? adaptationStrategy
-          : typeof currentData.adaptationStrategy === "string"
-            ? currentData.adaptationStrategy
-            : "",
+      storySkeleton: typeof currentData.storySkeleton === "string" ? currentData.storySkeleton : "",
+      adaptationStrategy: typeof currentData.adaptationStrategy === "string" ? currentData.adaptationStrategy : "",
+      [artifact.type]: artifact.content,
     };
 
     if (workData) {
@@ -157,16 +176,22 @@ async function persistPlanXml(projectIdValue: unknown, text: string) {
         updateTime: now,
       });
     }
-
-    for (const script of scripts) {
-      const existing = await trx("o_script").where({ projectId, name: script.name }).first();
-      if (existing) {
-        await trx("o_script").where({ id: existing.id, projectId }).update({ content: script.content });
-      } else {
-        await trx("o_script").insert({ projectId, name: script.name, content: script.content, createTime: now });
-      }
-    }
   });
+
+  if (artifact.type === "scriptItem") {
+    const saved = await u.db("o_script").where({ projectId, name: artifact.name }).select("content").first();
+    if (saved?.content !== artifact.content) throw new Error("剧本写入后回读校验失败");
+    return;
+  }
+
+  const saved = await u.db("o_agentWorkData").where({ projectId, key: "scriptAgent" }).select("data").first();
+  let savedData: Record<string, unknown> = {};
+  try {
+    savedData = JSON.parse(saved?.data ?? "{}");
+  } catch {
+    throw new Error("工作区写入后回读数据格式无效");
+  }
+  if (savedData[artifact.type] !== artifact.content) throw new Error("工作区写入后回读校验失败");
 }
 
 export async function decisionAI(ctx: AgentContext) {
@@ -218,6 +243,8 @@ export async function decisionAI(ctx: AgentContext) {
 function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string) {
   const { resTool, abortSignal } = parentCtx;
   const memory = new Memory("scriptAgent", parentCtx.isolationKey);
+  let supervisionStarted = false;
+  let supervisionCompleted = false;
 
   async function runAgent({
     modelKey,
@@ -225,6 +252,8 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
     system,
     name,
     memoryKey,
+    requiredArtifact,
+    isSupervision,
     tools: extraTools,
     messages,
   }: {
@@ -233,9 +262,15 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
     system: string;
     name: string;
     memoryKey: string;
+    requiredArtifact?: RequiredArtifact;
+    isSupervision?: boolean;
     tools?: Record<string, any>;
     messages?: { role: "user" | "assistant" | "system"; content: string }[];
   }) {
+    if (supervisionStarted || supervisionCompleted) {
+      return "审核已开始或完成。本轮必须立即停止并等待用户下一条消息，不能继续执行或再次审核。";
+    }
+    if (isSupervision) supervisionStarted = true;
     parentCtx.msg.complete();
     const subMsg = resTool.newMessage("assistant", name);
     const text = subMsg.text();
@@ -277,19 +312,33 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
       }
     }
 
-    text.complete();
-    subMsg.complete();
+    let result = fullResponse;
+    try {
+      if (requiredArtifact) {
+        const artifact = getRequiredArtifact(fullResponse, requiredArtifact);
+        await persistPlanXml(resTool.data.projectId, artifact);
+        result = getArtifactSuccessMessage(artifact);
+      }
+      text.complete();
+      subMsg.complete();
+    } catch (err) {
+      text.complete();
+      subMsg.error(u.error(err).message);
+      throw err;
+    }
 
-    if (fullResponse.trim()) {
-      await persistPlanXml(resTool.data.projectId, fullResponse);
-      await memory.add(memoryKey, removeAllXmlTags(fullResponse), {
+    try {
+      await memory.add(memoryKey, requiredArtifact ? result : removeAllXmlTags(fullResponse), {
         name,
         createTime: new Date(subMsg.datetime).getTime(),
       });
+    } catch (err) {
+      console.warn(`[scriptAgent] ${memoryKey} 记忆写入失败，正式产出不受影响:`, u.error(err).message);
     }
 
     parentCtx.msg = resTool.newMessage("assistant", "视频策划");
-    return fullResponse;
+    if (isSupervision) supervisionCompleted = true;
+    return result;
   }
 
   const promptInput = z.object({
@@ -303,7 +352,8 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
       const skill = path.join(u.getPath("skills"), "script_execution_skeleton.md");
       const systemPrompt = await fs.promises.readFile(skill, "utf-8");
 
-      const formatPrompt = "\n你必须使用如下XML格式写入工作区：\n<storySkeleton>故事骨架内容</storySkeleton>";
+      const formatPrompt =
+        "\n你必须输出一个完整的 <storySkeleton>故事骨架内容</storySkeleton>。该 XML 是唯一的写入协议，宿主会自动完成事务保存和回读校验；无需、也不得寻找额外写入工具。闭合 XML 后立即结束输出。";
 
       return runAgent({
         modelKey: "scriptAgent:storySkeletonAgent",
@@ -311,6 +361,7 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
         system: systemPrompt + formatPrompt,
         name: "编剧",
         memoryKey: "assistant:execution:storySkeleton",
+        requiredArtifact: "storySkeleton",
         messages: [{ role: "user", content: prompt + formatPrompt }],
       });
     },
@@ -323,7 +374,8 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
       const skill = path.join(u.getPath("skills"), "script_execution_adaptation.md");
       const systemPrompt = await fs.promises.readFile(skill, "utf-8");
 
-      const formatPrompt = "\n你必须使用如下XML格式写入工作区：\n<adaptationStrategy>改编策略内容</adaptationStrategy>";
+      const formatPrompt =
+        "\n你必须输出一个完整的 <adaptationStrategy>改编策略内容</adaptationStrategy>。该 XML 是唯一的写入协议，宿主会自动完成事务保存和回读校验；无需、也不得寻找额外写入工具。闭合 XML 后立即结束输出。";
 
       return runAgent({
         modelKey: "scriptAgent:adaptationStrategyAgent",
@@ -331,6 +383,7 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
         system: systemPrompt + formatPrompt,
         name: "编剧",
         memoryKey: "assistant:execution:adaptationStrategy",
+        requiredArtifact: "adaptationStrategy",
         messages: [{ role: "user", content: prompt + formatPrompt }],
       });
     },
@@ -350,7 +403,8 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
 
       const novelData = await u.db("o_novel").where("projectId", resTool.data.projectId).select("chapterIndex");
 
-      const formatPrompt = `\n你必须使用如下XML格式写入工作区：\nXML不得添加任何额外标签<scriptItem name="剧本名称">剧本内容</scriptItem><scriptItem name="剧本名称">剧本内容</scriptItem><scriptItem name="剧本名称">剧本内容</scriptItem>`;
+      const formatPrompt =
+        '\n你必须只输出一个完整的 <scriptItem name="剧本名称">剧本内容</scriptItem>。该 XML 是唯一的写入协议，宿主会自动完成事务保存和回读校验；无需、也不得寻找额外写入工具。闭合 XML 后立即结束输出。';
 
       return runAgent({
         modelKey: "scriptAgent:scriptAgent",
@@ -362,6 +416,7 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
         ],
         name: "编剧",
         memoryKey: "assistant:execution:script",
+        requiredArtifact: "scriptItem",
       });
     },
   });
@@ -379,6 +434,7 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
         system: systemPrompt,
         name: "编辑",
         memoryKey: "assistant:supervision",
+        isSupervision: true,
       });
     },
   });

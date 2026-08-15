@@ -644,6 +644,7 @@ export default async (knex: Knex, forceInit: boolean = false): Promise<void> => 
       builder: (table) => {
         table.integer("storyboardId").notNullable();
         table.integer("assetId").notNullable();
+        table.integer("sort").notNullable().defaultTo(0);
         table.primary(["storyboardId", "assetId"]);
         table.unique(["storyboardId", "assetId"]);
       },
@@ -1054,6 +1055,22 @@ export default async (knex: Knex, forceInit: boolean = false): Promise<void> => 
         console.log("[初始化数据库] 表数据初始化:", t.name);
       }
     }
+  }
+
+  if ((await knex.schema.hasTable("o_assets2Storyboard")) && !(await knex.schema.hasColumn("o_assets2Storyboard", "sort"))) {
+    await knex.schema.alterTable("o_assets2Storyboard", (table) => {
+      table.integer("sort").notNullable().defaultTo(0);
+    });
+    await knex.raw(`
+      UPDATE o_assets2Storyboard
+      SET sort = (
+        SELECT COUNT(*) - 1
+        FROM o_assets2Storyboard AS ordered
+        WHERE ordered.storyboardId = o_assets2Storyboard.storyboardId
+          AND ordered.rowid <= o_assets2Storyboard.rowid
+      )
+    `);
+    console.log("[初始化数据库] 已补充分镜资产关联顺序字段: sort");
   }
 
   const vendorTableExists = await knex.schema.hasTable("o_vendorConfig");

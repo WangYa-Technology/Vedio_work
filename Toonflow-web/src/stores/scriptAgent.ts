@@ -50,7 +50,7 @@ export default defineStore(
         { tag: "scriptItem", keepInMessage: false },
       ],
       onXmlTag: (data) => {
-        const { tag, value, children, status, attrs } = data;
+        const { tag, value, attrs } = data;
         if (tag === "storySkeleton") {
           planData.value.storySkeleton = value;
         } else if (tag === "adaptationStrategy") {
@@ -69,13 +69,6 @@ export default defineStore(
               planData.value.script.push({ name, content });
             }
           }
-        }
-        if (status === "complete" && currentProjectId.value !== null) {
-          const projectId = currentProjectId.value;
-          const version = contextVersion.value;
-          void setPlanData(planData.value, projectId, version).catch((error) => {
-            console.error("[scriptAgent] 工作区数据保存失败:", error);
-          });
         }
       },
       autoConnect: false,

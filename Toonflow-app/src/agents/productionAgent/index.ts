@@ -7,6 +7,7 @@ import u from "@/utils";
 import Memory from "@/utils/agent/memory";
 import ResTool from "@/socket/resTool";
 import useTools from "@/agents/productionAgent/tools";
+import { saveProductionFlowArtifact } from "@/utils/productionFlow";
 import { CONTENT_SAFETY_SETTING_KEY, DEFAULT_CONTENT_SAFETY_CONSTRAINT } from "@/constants/contentSafety";
 
 export interface AgentContext {
@@ -18,6 +19,51 @@ export interface AgentContext {
   resTool: ResTool;
   msg: ReturnType<ResTool["newMessage"]>;
   thinkConfig: { think: boolean; thinlLevel: number };
+}
+
+const SUB_AGENT_MAX_ATTEMPTS = 3;
+const TRANSIENT_AI_ERROR =
+  /(?:upstream_error|temporarily unavailable|service unavailable|overloaded|rate.?limit|too many requests|timeout|timed out|econnreset|etimedout|eai_again|\b(?:429|502|503|504)\b)/i;
+
+function collectErrorText(error: unknown, depth = 0): string {
+  if (depth > 3 || error == null) return "";
+  if (typeof error === "string") return error;
+  if (typeof error !== "object") return String(error);
+
+  const value = error as Record<string, unknown>;
+  const directValues = ["name", "message", "type", "code", "status", "statusCode", "responseBody"]
+    .map((key) => value[key])
+    .filter((item): item is string | number => typeof item === "string" || typeof item === "number")
+    .map(String);
+  const nestedValues = [value.cause, value.lastError, ...(Array.isArray(value.errors) ? value.errors : [])]
+    .map((item) => collectErrorText(item, depth + 1))
+    .filter(Boolean);
+  return [...directValues, ...nestedValues].join(" ");
+}
+
+function isTransientAiError(error: unknown): boolean {
+  return TRANSIENT_AI_ERROR.test(collectErrorText(error));
+}
+
+function createAbortError() {
+  const error = new Error("生成已停止");
+  error.name = "AbortError";
+  return error;
+}
+
+async function waitBeforeRetry(delayMs: number, signal?: AbortSignal) {
+  if (signal?.aborted) throw createAbortError();
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(createAbortError());
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 function removeAllXmlTags(text: string) {
@@ -119,6 +165,8 @@ export async function decisionAI(ctx: AgentContext) {
 async function createSubAgents(parentCtx: AgentContext, project: any, safety: string) {
   const { resTool, abortSignal } = parentCtx;
   const memory = new Memory("productionAgent", parentCtx.isolationKey);
+  let supervisionStarted = false;
+  let supervisionCompleted = false;
 
   async function runAgent(config: {
     key: `${string}:${string}`;
@@ -128,28 +176,72 @@ async function createSubAgents(parentCtx: AgentContext, project: any, safety: st
     memoryKey: string;
     phase?: "directorPlan" | "storyboardTable" | "storyboardPanel";
     format?: string;
+    requiredArtifact?: "scriptPlan" | "storyboardTable";
+    isSupervision?: boolean;
   }) {
+    if (supervisionStarted || supervisionCompleted) {
+      return "审核已开始或完成。本轮必须立即停止并等待用户下一条消息，不能继续执行或再次审核。";
+    }
+    if (config.isSupervision) supervisionStarted = true;
     parentCtx.msg.complete();
     const subMsg = resTool.newMessage("assistant", config.name);
     const systemBase = await readSkill(config.skill);
     const techniqueContext = config.phase ? await buildTechniqueContext(project, config.phase) : "";
     const system = withContentSafety(`${systemBase}${techniqueContext}${config.format || ""}`, safety);
-    const { textStream } = await u.Ai.Text(config.key).stream({
-      system,
-      messages: [
-        { role: "assistant", content: projectModelInfo(project) },
-        { role: "user", content: `${config.prompt}${config.format || ""}` },
-      ],
-      abortSignal,
-      tools: useTools({ resTool, msg: subMsg }),
-    });
-
     const stream = subMsg.text();
     let fullResponse = "";
+    for (let attempt = 1; attempt <= SUB_AGENT_MAX_ATTEMPTS; attempt++) {
+      let attemptResponse = "";
+      try {
+        const { textStream } = await u.Ai.Text(config.key).stream({
+          system,
+          messages: [
+            { role: "assistant", content: projectModelInfo(project) },
+            { role: "user", content: `${config.prompt}${config.format || ""}` },
+          ],
+          abortSignal,
+          tools: useTools({ resTool, msg: subMsg }),
+        });
+
+        for await (const chunk of textStream) {
+          stream.append(chunk);
+          attemptResponse += chunk;
+        }
+        if (!attemptResponse.trim() && (config.isSupervision || config.requiredArtifact)) throw new Error("模型服务未返回有效内容");
+        fullResponse = attemptResponse;
+        break;
+      } catch (error: any) {
+        const canRetry =
+          config.isSupervision === true &&
+          !attemptResponse.trim() &&
+          (isTransientAiError(error) || /未返回有效内容/.test(collectErrorText(error)));
+        if (error?.name === "AbortError" || abortSignal?.aborted || !canRetry || attempt === SUB_AGENT_MAX_ATTEMPTS) {
+          stream.complete();
+          subMsg.error(u.error(error).message);
+          throw error;
+        }
+
+        console.warn(`[productionAgent] ${config.key} 调用失败，准备第 ${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS} 次尝试:`, u.error(error).message);
+        const retryState = subMsg.thinking("模型服务暂时不可用，正在自动重试...");
+        retryState.appendText(`第 ${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS} 次尝试`);
+        retryState.complete();
+        await waitBeforeRetry(750 * attempt, abortSignal);
+      }
+    }
+
+    let result = fullResponse;
     try {
-      for await (const chunk of textStream) {
-        stream.append(chunk);
-        fullResponse += chunk;
+      if (config.requiredArtifact) {
+        const artifact = getLastXmlElement(fullResponse, config.requiredArtifact);
+        if (!artifact) throw new Error(`${config.requiredArtifact === "scriptPlan" ? "导演规划" : "分镜表"}任务未输出完整 XML 产出物`);
+        await saveProductionFlowArtifact(
+          Number(resTool.data.projectId),
+          Number(resTool.data.scriptId),
+          config.requiredArtifact,
+          artifact,
+        );
+        result = `${config.requiredArtifact === "scriptPlan" ? "导演规划" : "分镜表"}已保存到工作区（${artifact.length}字）`;
+        resTool.socket.emit("flowDataUpdated", { reason: config.requiredArtifact });
       }
       stream.complete();
       subMsg.complete();
@@ -158,15 +250,33 @@ async function createSubAgents(parentCtx: AgentContext, project: any, safety: st
       subMsg.error(u.error(error).message);
       throw error;
     }
-    const memoryContent = removeAllXmlTags(fullResponse);
-    if (memoryContent) {
-      await memory.add(config.memoryKey, memoryContent, {
-        name: config.name,
-        createTime: new Date(subMsg.datetime).getTime(),
-      });
+
+    try {
+      const memoryContent = config.requiredArtifact ? result : removeAllXmlTags(fullResponse);
+      if (memoryContent) {
+        await memory.add(config.memoryKey, memoryContent, {
+          name: config.name,
+          createTime: new Date(subMsg.datetime).getTime(),
+        });
+      }
+    } catch (error) {
+      console.warn(`[productionAgent] ${config.memoryKey} 记忆写入失败，正式产出不受影响:`, u.error(error).message);
     }
     parentCtx.msg = resTool.newMessage("assistant", "视频策划");
-    return fullResponse;
+    if (config.isSupervision) supervisionCompleted = true;
+    return result;
+  }
+
+  function getLastXmlElement(text: string, tag: "scriptPlan" | "storyboardTable") {
+    const openPattern = new RegExp(`<${tag}(?:\\s[^>]*)?>`, "g");
+    let lastOpen: RegExpExecArray | null = null;
+    let match: RegExpExecArray | null;
+    while ((match = openPattern.exec(text)) !== null) lastOpen = match;
+    if (!lastOpen) return undefined;
+    const contentStart = lastOpen.index + lastOpen[0].length;
+    const closeIndex = text.indexOf(`</${tag}>`, contentStart);
+    if (closeIndex === -1) return undefined;
+    return text.slice(contentStart, closeIndex).trim() || undefined;
   }
 
   const promptInput = z.object({ prompt: z.string().describe("交给执行层的具体任务") });
@@ -194,7 +304,9 @@ async function createSubAgents(parentCtx: AgentContext, project: any, safety: st
           name: "执行导演",
           memoryKey: "assistant:execution",
           phase: "directorPlan",
-          format: "\n你必须一次性使用 <scriptPlan>内容</scriptPlan> 写入工作区。",
+          requiredArtifact: "scriptPlan",
+          format:
+            "\n你必须输出一个完整的 <scriptPlan>内容</scriptPlan>。该 XML 是唯一产出协议，宿主会自动事务保存并回读校验；无需寻找写入工具。闭合 XML 后立即结束输出。",
         }),
     }),
     run_sub_agent_storyboard_table: tool({
@@ -208,7 +320,9 @@ async function createSubAgents(parentCtx: AgentContext, project: any, safety: st
           name: "执行导演",
           memoryKey: "assistant:execution",
           phase: "storyboardTable",
-          format: "\n你必须一次性使用 <storyboardTable>内容</storyboardTable> 写入工作区。",
+          requiredArtifact: "storyboardTable",
+          format:
+            "\n你必须输出一个完整的 <storyboardTable>内容</storyboardTable>。该 XML 是唯一产出协议，宿主会自动事务保存并回读校验；无需寻找写入工具。闭合 XML 后立即结束输出。",
         }),
     }),
     run_sub_agent_storyboard_panel: tool({
@@ -234,7 +348,14 @@ async function createSubAgents(parentCtx: AgentContext, project: any, safety: st
       description: "派发独立质量审核任务",
       inputSchema: promptInput,
       execute: ({ prompt }) =>
-        runAgent({ key: "productionAgent:supervisionAgent", prompt, skill: "production_agent_supervision.md", name: "监制", memoryKey: "assistant:supervision" }),
+        runAgent({
+          key: "productionAgent:supervisionAgent",
+          prompt,
+          skill: "production_agent_supervision.md",
+          name: "监制",
+          memoryKey: "assistant:supervision",
+          isSupervision: true,
+        }),
     }),
   };
 }
