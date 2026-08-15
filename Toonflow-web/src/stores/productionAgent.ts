@@ -45,7 +45,7 @@ export default defineStore(
       scriptId: undefined as number | undefined,
     });
 
-    const { connected, messages, chat, stopGenerate, socket, status, reconnect, connect, disconnect } = useChat({
+    const { connected, messages, renderableMessages, chat, stopGenerate, socket, status, reconnect, connect, disconnect } = useChat({
       url: `${settingStore().baseUrl}/socket/productionAgent`,
       auth: chatAuth,
       manageLifecycle: false,
@@ -197,6 +197,7 @@ export default defineStore(
     return {
       connected,
       messages,
+      renderableMessages,
       chat,
       stopGenerate,
       socket,

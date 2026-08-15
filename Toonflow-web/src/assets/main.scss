@@ -96,6 +96,13 @@ body,
   background-color: transparent;
 }
 
+// Keep the chat scroll control anchored to the message viewport. The
+// component default reserves 210px for a sender that lives inside t-chat,
+// while this app renders the sender as its sibling.
+.t-chat > .t-chat__to-bottom {
+  bottom: 12px;
+}
+
 .noFooter {
   .t-dialog__body--fullscreen--without-footer {
     height: 100% !important;

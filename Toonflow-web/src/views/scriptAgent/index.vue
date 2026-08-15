@@ -5,7 +5,7 @@
         <div class="box pr">
           <t-chat-list :clear-history="false">
             <t-chat-message
-              v-for="message in messages"
+              v-for="message in renderableMessages"
               :key="message.id"
               :message="message"
               :name="(message as any).name"
@@ -174,7 +174,7 @@ const { project } = storeToRefs(projectStore());
 import editMdPreivew from "@/components/editMdPreivew.vue";
 import scriptAgentStore from "@/stores/scriptAgent";
 const scriptAgent = scriptAgentStore();
-const { connected, messages, status, planData } = storeToRefs(scriptAgent);
+const { connected, messages, renderableMessages, status, planData } = storeToRefs(scriptAgent);
 const currentTable = ref(1);
 const inputValue = ref("");
 const activeProjectId = computed<number | null>(() => {

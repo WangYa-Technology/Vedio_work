@@ -128,6 +128,33 @@ export function useChat(options: UseChatOptions) {
 
   const lastMessage = computed(() => messages.value[messages.value.length - 1]);
 
+  const hasRenderableValue = (value: unknown): boolean => {
+    if (typeof value === "string") return value.trim().length > 0;
+    if (typeof value === "number" || typeof value === "boolean") return true;
+    if (Array.isArray(value)) return value.some(hasRenderableValue);
+    if (value && typeof value === "object") return Object.values(value).some(hasRenderableValue);
+    return false;
+  };
+
+  const hasRenderableContent = (content: AIMessageContent) => {
+    if (content.type === "reasoning" && Array.isArray(content.data)) {
+      return content.data.some(hasRenderableContent);
+    }
+    return hasRenderableValue(content.data);
+  };
+
+  // XML artifacts are hidden from chat after being routed to the workspace.
+  // Remove the empty content blocks they leave behind so the chat component
+  // does not render an empty outlined bubble.
+  const renderableMessages = computed<ChatMessagesData[]>(() =>
+    messages.value.flatMap((message) => {
+      const content = message.content?.filter((item) => hasRenderableContent(item as AIMessageContent));
+      if (!content?.length) return [];
+      if (content.length === message.content?.length) return [message];
+      return [{ ...message, content } as ChatMessagesData];
+    }),
+  );
+
   // 工具方法
   const findMessage = (id: string): ChatMessagesData | undefined => {
     return messages.value.find((m) => m.id === id);
@@ -712,6 +739,7 @@ export function useChat(options: UseChatOptions) {
     connecting,
     status,
     messages,
+    renderableMessages,
     currentMessageId,
     xmlData,
     xmlDataByMessage,

@@ -119,7 +119,7 @@
       <div class="chatBody" v-loading="loadingHistory">
         <t-chat-list :clear-history="false">
           <t-chat-message
-            v-for="message in messages"
+            v-for="message in renderableMessages"
             :key="message.id"
             :message="message"
             :name="(message as any).name"
@@ -156,7 +156,7 @@ import workbench from "./components/workbench/index.vue";
 const projectState = projectStore();
 const { project, allProject } = storeToRefs(projectState);
 const productionStore = productionAgentStore();
-const { flowData, connected, messages, status, loadingHistory, thinkLevel } = storeToRefs(productionStore);
+const { flowData, connected, renderableMessages, status, loadingHistory, thinkLevel } = storeToRefs(productionStore);
 
 const inputValue = ref("");
 const loadingData = ref(false);
