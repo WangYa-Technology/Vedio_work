@@ -404,8 +404,9 @@ export default defineComponent({
   display: grid;
   grid-template-columns: minmax(360px, 0.9fr) minmax(480px, 1.5fr);
   gap: 18px;
-  height: calc(100vh - 110px);
-  min-height: 520px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .shotListPanel,

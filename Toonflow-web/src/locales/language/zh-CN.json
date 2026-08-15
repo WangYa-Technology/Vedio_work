@@ -1347,6 +1347,9 @@
       "autoLayoutLR": "自动排版-左右布局",
       "autoLayoutTB": "自动排版-上下布局",
       "getFlowData": "刷新工作区",
+      "directorPlan": "导演规划",
+      "storyboardList": "分镜列表",
+      "noDirectorPlan": "暂无导演规划",
       "confirm": "切换剧集确认",
       "confirmEpisodesSwitch": "当前任务仍在进行中，切换剧集会重连会话，是否继续切换？"
     },

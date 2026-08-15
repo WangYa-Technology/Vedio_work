@@ -8,7 +8,12 @@ import Memory from "@/utils/agent/memory";
 import ResTool from "@/socket/resTool";
 import useTools from "@/agents/productionAgent/tools";
 import { saveProductionFlowArtifact } from "@/utils/productionFlow";
-import { CONTENT_SAFETY_SETTING_KEY, DEFAULT_CONTENT_SAFETY_CONSTRAINT } from "@/constants/contentSafety";
+import {
+  CONTENT_SAFETY_SETTING_KEY,
+  DEFAULT_CONTENT_SAFETY_CONSTRAINT,
+} from "@/constants/contentSafety";
+import { resolveProjectImageModel } from "@/services/imageGeneration";
+import { resolveProjectVideoModel } from "@/services/videoGeneration";
 
 export interface AgentContext {
   socket: Socket;
@@ -31,11 +36,26 @@ function collectErrorText(error: unknown, depth = 0): string {
   if (typeof error !== "object") return String(error);
 
   const value = error as Record<string, unknown>;
-  const directValues = ["name", "message", "type", "code", "status", "statusCode", "responseBody"]
+  const directValues = [
+    "name",
+    "message",
+    "type",
+    "code",
+    "status",
+    "statusCode",
+    "responseBody",
+  ]
     .map((key) => value[key])
-    .filter((item): item is string | number => typeof item === "string" || typeof item === "number")
+    .filter(
+      (item): item is string | number =>
+        typeof item === "string" || typeof item === "number",
+    )
     .map(String);
-  const nestedValues = [value.cause, value.lastError, ...(Array.isArray(value.errors) ? value.errors : [])]
+  const nestedValues = [
+    value.cause,
+    value.lastError,
+    ...(Array.isArray(value.errors) ? value.errors : []),
+  ]
     .map((item) => collectErrorText(item, depth + 1))
     .filter(Boolean);
   return [...directValues, ...nestedValues].join(" ");
@@ -76,19 +96,33 @@ function removeAllXmlTags(text: string) {
 
 function buildMemPrompt(mem: Awaited<ReturnType<Memory["get"]>>) {
   const sections: string[] = [];
-  if (mem.rag.length) sections.push(`[相关记忆]\n${mem.rag.map((item) => item.content).join("\n")}`);
-  if (mem.summaries.length) sections.push(`[历史摘要]\n${mem.summaries.map((item, index) => `${index + 1}. ${item.content}`).join("\n")}`);
-  if (mem.shortTerm.length) sections.push(`[近期对话]\n${mem.shortTerm.map((item) => `${item.role}: ${item.content}`).join("\n")}`);
+  if (mem.rag.length)
+    sections.push(
+      `[相关记忆]\n${mem.rag.map((item) => item.content).join("\n")}`,
+    );
+  if (mem.summaries.length)
+    sections.push(
+      `[历史摘要]\n${mem.summaries.map((item, index) => `${index + 1}. ${item.content}`).join("\n")}`,
+    );
+  if (mem.shortTerm.length)
+    sections.push(
+      `[近期对话]\n${mem.shortTerm.map((item) => `${item.role}: ${item.content}`).join("\n")}`,
+    );
   return `## Memory\n以下是你对用户的记忆，可作为参考但不要主动提及：\n${sections.join("\n\n")}`;
 }
 
 async function getContentSafetyConstraint() {
-  const setting = await u.db("o_setting").where("key", CONTENT_SAFETY_SETTING_KEY).first();
+  const setting = await u
+    .db("o_setting")
+    .where("key", CONTENT_SAFETY_SETTING_KEY)
+    .first();
   return String(setting?.value ?? DEFAULT_CONTENT_SAFETY_CONSTRAINT).trim();
 }
 
 function withContentSafety(system: string, constraint: string) {
-  return constraint ? `${system}\n\n## 内容安全约束（用户设置）\n${constraint}` : system;
+  return constraint
+    ? `${system}\n\n## 内容安全约束（用户设置）\n${constraint}`
+    : system;
 }
 
 async function readSkill(name: string) {
@@ -103,22 +137,50 @@ async function readOptional(filePath: string) {
   }
 }
 
-async function buildTechniqueContext(project: any, phase: "directorPlan" | "storyboardTable" | "storyboardPanel") {
+async function buildTechniqueContext(
+  project: any,
+  phase: "directorPlan" | "storyboardTable" | "storyboardPanel",
+) {
   const fileName =
-    phase === "directorPlan" ? "director_planning_style.md" : phase === "storyboardTable" ? "director_storyboard_table_style.md" : "director_storyboard.md";
+    phase === "directorPlan"
+      ? "director_planning_style.md"
+      : phase === "storyboardTable"
+        ? "director_storyboard_table_style.md"
+        : "director_storyboard.md";
   const root = u.getPath("skills");
   const files = [
-    path.join(root, "art_skills", String(project.artStyle || ""), "driector_skills", fileName),
-    path.join(root, "story_skills", String(project.directorManual || ""), "driector_skills", fileName),
+    path.join(
+      root,
+      "art_skills",
+      String(project.artStyle || ""),
+      "driector_skills",
+      fileName,
+    ),
+    path.join(
+      root,
+      "story_skills",
+      String(project.directorManual || ""),
+      "driector_skills",
+      fileName,
+    ),
   ];
-  if (phase === "storyboardPanel") files.unshift(path.join(root, "production_skills", "storyboard_prompt_techniques.md"));
+  if (phase === "storyboardPanel")
+    files.unshift(
+      path.join(root, "production_skills", "storyboard_prompt_techniques.md"),
+    );
   const contents = (await Promise.all(files.map(readOptional))).filter(Boolean);
-  return contents.length ? `\n\n## 已加载的项目技法\n${contents.join("\n\n---\n\n")}` : "";
+  return contents.length
+    ? `\n\n## 已加载的项目技法\n${contents.join("\n\n---\n\n")}`
+    : "";
 }
 
 function projectModelInfo(project: any) {
-  const imageModel = String(project.imageModel || "未配置").split(/:(.+)/)[1] || String(project.imageModel || "未配置");
-  const videoModel = String(project.videoModel || "未配置").split(/:(.+)/)[1] || String(project.videoModel || "未配置");
+  const imageModel =
+    String(project.imageModel || "未配置").split(/:(.+)/)[1] ||
+    String(project.imageModel || "未配置");
+  const videoModel =
+    String(project.videoModel || "未配置").split(/:(.+)/)[1] ||
+    String(project.videoModel || "未配置");
   let videoMode: unknown = project.mode;
   try {
     videoMode = JSON.parse(project.mode || "null");
@@ -136,13 +198,32 @@ export async function decisionAI(ctx: AgentContext) {
   const memory = new Memory("productionAgent", isolationKey);
   await memory.add("user", text, { createTime: userMessageTime });
 
-  const project = await u.db("o_project").where("id", resTool.data.projectId).first();
+  const project = await u
+    .db("o_project")
+    .where("id", resTool.data.projectId)
+    .first();
   if (!project) throw new Error(`项目不存在，ID: ${resTool.data.projectId}`);
+  if (!project.imageModel) {
+    try {
+      await resolveProjectImageModel(project);
+    } catch {
+      // 规划阶段不因模型缺失或多选而中断，真正提交生图时会返回明确错误。
+    }
+  }
+  if (!project.videoModel) {
+    try {
+      await resolveProjectVideoModel(project);
+    } catch {
+      // 视频工作台仍允许用户临时选模型，规划阶段只补全可唯一确定的配置。
+    }
+  }
   const prompt = await readSkill("production_agent_decision.md");
   const safety = await getContentSafetyConstraint();
   const mem = buildMemPrompt(await memory.get(text));
 
-  const { textStream } = await u.Ai.Text("productionAgent:decisionAgent").stream({
+  const { textStream } = await u.Ai.Text(
+    "productionAgent:decisionAgent",
+  ).stream({
     messages: [
       { role: "system", content: withContentSafety(prompt, safety) },
       { role: "assistant", content: `${mem}\n\n${projectModelInfo(project)}` },
@@ -162,7 +243,11 @@ export async function decisionAI(ctx: AgentContext) {
   return textStream;
 }
 
-async function createSubAgents(parentCtx: AgentContext, project: any, safety: string) {
+async function createSubAgents(
+  parentCtx: AgentContext,
+  project: any,
+  safety: string,
+) {
   const { resTool, abortSignal } = parentCtx;
   const memory = new Memory("productionAgent", parentCtx.isolationKey);
   let supervisionStarted = false;
@@ -186,8 +271,13 @@ async function createSubAgents(parentCtx: AgentContext, project: any, safety: st
     parentCtx.msg.complete();
     const subMsg = resTool.newMessage("assistant", config.name);
     const systemBase = await readSkill(config.skill);
-    const techniqueContext = config.phase ? await buildTechniqueContext(project, config.phase) : "";
-    const system = withContentSafety(`${systemBase}${techniqueContext}${config.format || ""}`, safety);
+    const techniqueContext = config.phase
+      ? await buildTechniqueContext(project, config.phase)
+      : "";
+    const system = withContentSafety(
+      `${systemBase}${techniqueContext}${config.format || ""}`,
+      safety,
+    );
     const stream = subMsg.text();
     let fullResponse = "";
     for (let attempt = 1; attempt <= SUB_AGENT_MAX_ATTEMPTS; attempt++) {
@@ -207,23 +297,40 @@ async function createSubAgents(parentCtx: AgentContext, project: any, safety: st
           stream.append(chunk);
           attemptResponse += chunk;
         }
-        if (!attemptResponse.trim() && (config.isSupervision || config.requiredArtifact)) throw new Error("模型服务未返回有效内容");
+        if (
+          !attemptResponse.trim() &&
+          (config.isSupervision || config.requiredArtifact)
+        )
+          throw new Error("模型服务未返回有效内容");
         fullResponse = attemptResponse;
         break;
       } catch (error: any) {
         const canRetry =
           config.isSupervision === true &&
           !attemptResponse.trim() &&
-          (isTransientAiError(error) || /未返回有效内容/.test(collectErrorText(error)));
-        if (error?.name === "AbortError" || abortSignal?.aborted || !canRetry || attempt === SUB_AGENT_MAX_ATTEMPTS) {
+          (isTransientAiError(error) ||
+            /未返回有效内容/.test(collectErrorText(error)));
+        if (
+          error?.name === "AbortError" ||
+          abortSignal?.aborted ||
+          !canRetry ||
+          attempt === SUB_AGENT_MAX_ATTEMPTS
+        ) {
           stream.complete();
           subMsg.error(u.error(error).message);
           throw error;
         }
 
-        console.warn(`[productionAgent] ${config.key} 调用失败，准备第 ${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS} 次尝试:`, u.error(error).message);
-        const retryState = subMsg.thinking("模型服务暂时不可用，正在自动重试...");
-        retryState.appendText(`第 ${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS} 次尝试`);
+        console.warn(
+          `[productionAgent] ${config.key} 调用失败，准备第 ${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS} 次尝试:`,
+          u.error(error).message,
+        );
+        const retryState = subMsg.thinking(
+          "模型服务暂时不可用，正在自动重试...",
+        );
+        retryState.appendText(
+          `第 ${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS} 次尝试`,
+        );
         retryState.complete();
         await waitBeforeRetry(750 * attempt, abortSignal);
       }
@@ -232,8 +339,14 @@ async function createSubAgents(parentCtx: AgentContext, project: any, safety: st
     let result = fullResponse;
     try {
       if (config.requiredArtifact) {
-        const artifact = getLastXmlElement(fullResponse, config.requiredArtifact);
-        if (!artifact) throw new Error(`${config.requiredArtifact === "scriptPlan" ? "导演规划" : "分镜表"}任务未输出完整 XML 产出物`);
+        const artifact = getLastXmlElement(
+          fullResponse,
+          config.requiredArtifact,
+        );
+        if (!artifact)
+          throw new Error(
+            `${config.requiredArtifact === "scriptPlan" ? "导演规划" : "分镜表"}任务未输出完整 XML 产出物`,
+          );
         await saveProductionFlowArtifact(
           Number(resTool.data.projectId),
           Number(resTool.data.scriptId),
@@ -241,7 +354,9 @@ async function createSubAgents(parentCtx: AgentContext, project: any, safety: st
           artifact,
         );
         result = `${config.requiredArtifact === "scriptPlan" ? "导演规划" : "分镜表"}已保存到工作区（${artifact.length}字）`;
-        resTool.socket.emit("flowDataUpdated", { reason: config.requiredArtifact });
+        resTool.socket.emit("flowDataUpdated", {
+          reason: config.requiredArtifact,
+        });
       }
       stream.complete();
       subMsg.complete();
@@ -252,7 +367,9 @@ async function createSubAgents(parentCtx: AgentContext, project: any, safety: st
     }
 
     try {
-      const memoryContent = config.requiredArtifact ? result : removeAllXmlTags(fullResponse);
+      const memoryContent = config.requiredArtifact
+        ? result
+        : removeAllXmlTags(fullResponse);
       if (memoryContent) {
         await memory.add(config.memoryKey, memoryContent, {
           name: config.name,
@@ -260,14 +377,20 @@ async function createSubAgents(parentCtx: AgentContext, project: any, safety: st
         });
       }
     } catch (error) {
-      console.warn(`[productionAgent] ${config.memoryKey} 记忆写入失败，正式产出不受影响:`, u.error(error).message);
+      console.warn(
+        `[productionAgent] ${config.memoryKey} 记忆写入失败，正式产出不受影响:`,
+        u.error(error).message,
+      );
     }
     parentCtx.msg = resTool.newMessage("assistant", "视频策划");
     if (config.isSupervision) supervisionCompleted = true;
     return result;
   }
 
-  function getLastXmlElement(text: string, tag: "scriptPlan" | "storyboardTable") {
+  function getLastXmlElement(
+    text: string,
+    tag: "scriptPlan" | "storyboardTable",
+  ) {
     const openPattern = new RegExp(`<${tag}(?:\\s[^>]*)?>`, "g");
     let lastOpen: RegExpExecArray | null = null;
     let match: RegExpExecArray | null;
@@ -279,19 +402,33 @@ async function createSubAgents(parentCtx: AgentContext, project: any, safety: st
     return text.slice(contentStart, closeIndex).trim() || undefined;
   }
 
-  const promptInput = z.object({ prompt: z.string().describe("交给执行层的具体任务") });
+  const promptInput = z.object({
+    prompt: z.string().describe("交给执行层的具体任务"),
+  });
   return {
     run_sub_agent_derive_assets: tool({
       description: "派发衍生资产分析与写入任务",
       inputSchema: promptInput,
       execute: ({ prompt }) =>
-        runAgent({ key: "productionAgent:deriveAssetsAgent", prompt, skill: "production_execution_derive_assets.md", name: "执行导演", memoryKey: "assistant:execution" }),
+        runAgent({
+          key: "productionAgent:deriveAssetsAgent",
+          prompt,
+          skill: "production_execution_derive_assets.md",
+          name: "执行导演",
+          memoryKey: "assistant:execution",
+        }),
     }),
     run_sub_agent_generate_assets: tool({
       description: "派发资产图片生成任务",
       inputSchema: promptInput,
       execute: ({ prompt }) =>
-        runAgent({ key: "productionAgent:generateAssetsAgent", prompt, skill: "production_execution_generate_assets.md", name: "执行导演", memoryKey: "assistant:execution" }),
+        runAgent({
+          key: "productionAgent:generateAssetsAgent",
+          prompt,
+          skill: "production_execution_generate_assets.md",
+          name: "执行导演",
+          memoryKey: "assistant:execution",
+        }),
     }),
     run_sub_agent_director_plan: tool({
       description: "派发导演规划任务",
@@ -342,7 +479,13 @@ async function createSubAgents(parentCtx: AgentContext, project: any, safety: st
       description: "派发分镜图片生成、状态跟踪或失败检查任务",
       inputSchema: promptInput,
       execute: ({ prompt }) =>
-        runAgent({ key: "productionAgent:storyboardGenAgent", prompt, skill: "production_execution_storyboard_gen.md", name: "执行导演", memoryKey: "assistant:execution" }),
+        runAgent({
+          key: "productionAgent:storyboardGenAgent",
+          prompt,
+          skill: "production_execution_storyboard_gen.md",
+          name: "执行导演",
+          memoryKey: "assistant:execution",
+        }),
     }),
     run_sub_agent_supervision: tool({
       description: "派发独立质量审核任务",

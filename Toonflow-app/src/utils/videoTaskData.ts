@@ -1,5 +1,6 @@
 import u from "@/utils";
 import { buildProductionFlowData } from "@/utils/productionFlow";
+import { resolveProjectVideoModel } from "@/services/videoGeneration";
 
 type AnyObject = Record<string, any>;
 
@@ -201,6 +202,13 @@ async function ensureTracks(
 
 export async function buildVideoTaskData(projectId: number, scriptId: number) {
   const project = await u.db("o_project").where("id", projectId).first();
+  if (project && !project.videoModel) {
+    try {
+      await resolveProjectVideoModel(project);
+    } catch {
+      // 保持工作台可打开；无法唯一匹配时由用户在面板中明确选择。
+    }
+  }
   const configuredMode = parseMode(project?.mode);
   const modelParts = String(project?.videoModel || "").split(/:(.+)/);
   const vendor = modelParts[0]

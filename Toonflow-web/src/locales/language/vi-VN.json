@@ -1233,6 +1233,9 @@
       "autoLayoutLR": "Tự động sắp chữ-bố trí bên trái và bên phải",
       "autoLayoutTB": "Tự động sắp chữ bố cục trên và dưới",
       "getFlowData": "Làm mới không gian làm việc",
+      "directorPlan": "Kế hoạch đạo diễn",
+      "storyboardList": "Danh sách phân cảnh",
+      "noDirectorPlan": "Chưa có kế hoạch đạo diễn",
       "confirm": "Xác nhận chuyển tập",
       "confirmEpisodesSwitch": "Nhiệm vụ hiện tại vẫn đang được tiến hành. Việc chuyển các tập sẽ kết nối lại phiên. Bạn có muốn tiếp tục chuyển đổi không?"
     },

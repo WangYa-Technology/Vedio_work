@@ -1,75 +1,85 @@
 <template>
   <div class="productionLayout">
-    <!-- Left Panel: Shot list grouped by episode -->
+    <!-- Left Panel: Director plan and shot list -->
     <div class="shotPanel">
-      <div class="panelHeader f ac jb">
-        <span class="panelTitle">{{ $t("workbench.production.shots") }}</span>
-        <div class="f ac" style="gap: 8px">
-          <t-select
-            :value="currentEpisodesId ?? undefined"
-            :placeholder="$t('workbench.production.selectPlaceholder')"
-            autoWidth
-            :options="episodesOptions"
-            filterable
-            @change="handleEpisodesChange">
-            <template #label>
-              <i-document-folder size="20" />
-            </template>
-          </t-select>
-          <t-tooltip placement="bottom" theme="primary" :content="$t('workbench.production.getFlowData')">
-            <t-button variant="outline" size="small" @click="refreshData">
-              <template #icon>
-                <i-refresh size="14" />
+      <t-tabs v-model="activeWorkspaceTab" class="workspaceTabs">
+        <template #action>
+          <div class="workspaceActions">
+            <t-select
+              :value="currentEpisodesId ?? undefined"
+              :placeholder="$t('workbench.production.selectPlaceholder')"
+              autoWidth
+              size="small"
+              :options="episodesOptions"
+              filterable
+              @change="handleEpisodesChange">
+              <template #label>
+                <i-document-folder size="18" />
               </template>
+            </t-select>
+            <t-tooltip placement="bottom" theme="primary" :content="$t('workbench.production.getFlowData')">
+              <t-button variant="outline" shape="square" size="small" @click="refreshData">
+                <template #icon>
+                  <i-refresh size="14" />
+                </template>
+              </t-button>
+            </t-tooltip>
+            <t-button variant="outline" size="small" @click="workbenchVisible = true">
+              <template #icon>
+                <i-playback-progress size="14" />
+              </template>
+              {{ $t("workbench.production.wb.videoGeneration") }}
             </t-button>
-          </t-tooltip>
-          <t-button variant="outline" size="small" @click="workbenchVisible = true">
-            <template #icon>
-              <i-playback-progress size="14" />
-            </template>
-            {{ $t("workbench.production.wb.videoGeneration") }}
-          </t-button>
-          <i-loading-four class="spin" size="16" v-show="loadingData" />
-        </div>
-      </div>
-
-      <div class="shotList" v-loading="loadingData">
-        <template v-if="storyboardSegments.length > 0">
-          <div
-            v-for="(segment, index) in storyboardSegments"
-            :key="segment.id"
-            class="shotCard segmentCard">
-            <div class="shotIndex">{{ index + 1 }}</div>
-            <div class="shotContent">
-              <div class="shotPrompt">{{ segment.sceneTitle }} / {{ segment.segmentTitle }}</div>
-              <div class="shotMeta f ac" style="gap: 8px; margin-top: 4px; flex-wrap: wrap">
-                <t-tag size="small" variant="outline">{{ segment.durationLabel }}</t-tag>
-                <t-tag size="small" variant="light">{{ segment.rows.length }} 镜</t-tag>
-              </div>
-              <div class="shotFields">
-                <div v-if="segment.assetNames" class="shotField">
-                  <span class="shotFieldLabel">参考</span>
-                  <span class="shotFieldValue">{{ segment.assetNames }}</span>
-                </div>
-                <div v-for="row in segment.rows" :key="`${segment.id}-${row.serial}`" class="segmentShot">
-                  <div class="segmentShotHeader">
-                    <t-tag size="small" variant="outline">镜头 {{ row.serial }}</t-tag>
-                    <t-tag v-if="row.duration" size="small" variant="light">{{ row.duration }}s</t-tag>
-                    <t-tag v-if="row.scale" size="small" variant="light">{{ row.scale }}</t-tag>
-                    <t-tag v-if="row.cameraMovement" size="small" variant="light">{{ row.cameraMovement }}</t-tag>
-                  </div>
-                  <div class="segmentShotDesc">{{ row.description }}</div>
-                  <div v-if="row.dialogue" class="segmentShotLine">台词：{{ row.dialogue }}</div>
-                  <div v-if="row.sound" class="segmentShotLine">音效：{{ row.sound }}</div>
-                </div>
-              </div>
-            </div>
+            <i-loading-four class="spin" size="16" v-show="loadingData" />
           </div>
         </template>
-        <div v-else class="emptyShots">
-          <t-empty :description="$t('workbench.production.noShots')" />
-        </div>
-      </div>
+
+        <t-tab-panel value="directorPlan" :label="$t('workbench.production.directorPlan')">
+          <div class="directorPlan" v-loading="loadingData">
+            <MdPreview v-if="directorPlanPreview" :modelValue="directorPlanPreview" />
+            <div v-else class="workspaceEmpty">
+              <t-empty :description="$t('workbench.production.noDirectorPlan')" />
+            </div>
+          </div>
+        </t-tab-panel>
+
+        <t-tab-panel value="storyboard" :label="$t('workbench.production.storyboardList')">
+          <div class="shotList" v-loading="loadingData">
+            <template v-if="storyboardSegments.length > 0">
+              <div v-for="(segment, index) in storyboardSegments" :key="segment.id" class="shotCard segmentCard">
+                <div class="shotIndex">{{ index + 1 }}</div>
+                <div class="shotContent">
+                  <div class="shotPrompt">{{ segment.sceneTitle }} / {{ segment.segmentTitle }}</div>
+                  <div class="shotMeta f ac" style="gap: 8px; margin-top: 4px; flex-wrap: wrap">
+                    <t-tag size="small" variant="outline">{{ segment.durationLabel }}</t-tag>
+                    <t-tag size="small" variant="light">{{ segment.rows.length }} 镜</t-tag>
+                  </div>
+                  <div class="shotFields">
+                    <div v-if="segment.assetNames" class="shotField">
+                      <span class="shotFieldLabel">参考</span>
+                      <span class="shotFieldValue">{{ segment.assetNames }}</span>
+                    </div>
+                    <div v-for="row in segment.rows" :key="`${segment.id}-${row.serial}`" class="segmentShot">
+                      <div class="segmentShotHeader">
+                        <t-tag size="small" variant="outline">镜头 {{ row.serial }}</t-tag>
+                        <t-tag v-if="row.duration" size="small" variant="light">{{ row.duration }}s</t-tag>
+                        <t-tag v-if="row.scale" size="small" variant="light">{{ row.scale }}</t-tag>
+                        <t-tag v-if="row.cameraMovement" size="small" variant="light">{{ row.cameraMovement }}</t-tag>
+                      </div>
+                      <div class="segmentShotDesc">{{ row.description }}</div>
+                      <div v-if="row.dialogue" class="segmentShotLine">台词：{{ row.dialogue }}</div>
+                      <div v-if="row.sound" class="segmentShotLine">音效：{{ row.sound }}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
+            <div v-else class="workspaceEmpty">
+              <t-empty :description="$t('workbench.production.noShots')" />
+            </div>
+          </div>
+        </t-tab-panel>
+      </t-tabs>
     </div>
 
     <!-- Right Panel: Chat interface -->
@@ -80,12 +90,7 @@
           <span class="chatTitle">{{ currentEpisodeLabel || $t("workbench.production.productionAgent") }}</span>
         </span>
         <div class="f ac" style="gap: 6px">
-          <t-select
-            :value="thinkLevel"
-            :options="thinkLevelOptions"
-            autoWidth
-            size="small"
-            @change="handleThinkLevelChange" />
+          <t-select :value="thinkLevel" :options="thinkLevelOptions" autoWidth size="small" @change="handleThinkLevelChange" />
           <t-popup trigger="click" placement="bottom-right">
             <t-button shape="square" variant="outline" size="small">
               <template #icon>
@@ -152,6 +157,8 @@ import axios from "@/utils/axios";
 import projectStore from "@/stores/project";
 import productionAgentStore from "@/stores/productionAgent";
 import workbench from "./components/workbench/index.vue";
+import { MdPreview } from "md-editor-v3";
+import "md-editor-v3/lib/preview.css";
 
 const projectState = projectStore();
 const { project, allProject } = storeToRefs(projectState);
@@ -161,6 +168,7 @@ const { flowData, connected, renderableMessages, status, loadingHistory, thinkLe
 const inputValue = ref("");
 const loadingData = ref(false);
 const workbenchVisible = ref(false);
+const activeWorkspaceTab = ref<"directorPlan" | "storyboard">("directorPlan");
 const episodesOptions = ref<{ label: string; value: number }[]>([]);
 const currentEpisodesId = ref<number | null>(null);
 const thinkLevelOptions = [
@@ -191,11 +199,52 @@ const storyboardSegments = computed(() => {
     ],
   }));
 });
+const directorPlanPreview = computed(() => formatDirectorPlan(flowData.value?.scriptPlan || ""));
 
 const currentEpisodeLabel = computed(() => {
   const ep = episodesOptions.value.find((o) => o.value === currentEpisodesId.value);
   return ep?.label ?? "";
 });
+
+watch(
+  [() => flowData.value?.scriptPlan, () => flowData.value?.storyboardTable],
+  ([scriptPlan, storyboardTable], [previousScriptPlan, previousStoryboardTable]) => {
+    if (storyboardTable?.trim() && storyboardTable !== previousStoryboardTable) {
+      activeWorkspaceTab.value = "storyboard";
+    } else if (scriptPlan?.trim() && scriptPlan !== previousScriptPlan) {
+      activeWorkspaceTab.value = "directorPlan";
+    }
+  },
+);
+
+function formatDirectorPlan(content: string) {
+  let markdown = content
+    .trim()
+    .replace(/^<scriptPlan>\s*/i, "")
+    .replace(/\s*<\/scriptPlan>$/i, "");
+
+  const sectionTags = ["分场汇总表", "逐场注意事项", "场间过渡"];
+  const fieldTags = ["情感砸点", "一致性锚点", "空间距离", "环境音", "易错提示"];
+  const hasStructuredTags = sectionTags.some((tag) => markdown.includes(`<${tag}>`)) || /<场次\b/.test(markdown);
+
+  if (hasStructuredTags) {
+    markdown = markdown.replace(/^[\t ]+/gm, "");
+  }
+
+  for (const tag of sectionTags) {
+    markdown = markdown.replace(new RegExp(`<${tag}>\\s*`, "g"), `## ${tag}\n\n`).replace(new RegExp(`\\s*</${tag}>`, "g"), "\n\n");
+  }
+
+  markdown = markdown.replace(/<场次\s+id\s*=\s*["']?([^"'>\s]+)["']?\s*>\s*/g, (_match, id) => `### ${id}\n\n`).replace(/\s*<\/场次>/g, "\n\n");
+
+  for (const tag of fieldTags) {
+    markdown = markdown.replace(new RegExp(`<${tag}>\\s*([\\s\\S]*?)\\s*</${tag}>`, "g"), (_match, value) => {
+      return `- **${tag}**：${String(value).trim()}\n`;
+    });
+  }
+
+  return markdown.replace(/\n{3,}/g, "\n\n").trim();
+}
 
 function stateTheme(state: string) {
   if (state === "已完成") return "success";
@@ -239,11 +288,17 @@ function parseStoryboardTable(markdown: string) {
     }
     if (!currentSegment) continue;
     if (line.startsWith("**引用资产名称**")) {
-      currentSegment.assetNames = line.replace(/^\*\*引用资产名称\*\*[:：]\s*/, "").replace(/^\[/, "").replace(/\]$/, "");
+      currentSegment.assetNames = line
+        .replace(/^\*\*引用资产名称\*\*[:：]\s*/, "")
+        .replace(/^\[/, "")
+        .replace(/\]$/, "");
       continue;
     }
     if (line.startsWith("**引用资产ID**")) {
-      currentSegment.assetIds = line.replace(/^\*\*引用资产ID\*\*[:：]\s*/, "").replace(/^\[/, "").replace(/\]$/, "");
+      currentSegment.assetIds = line
+        .replace(/^\*\*引用资产ID\*\*[:：]\s*/, "")
+        .replace(/^\[/, "")
+        .replace(/\]$/, "");
       continue;
     }
     if (!line.startsWith("|") || line.includes("---") || line.includes("序号")) continue;
@@ -417,21 +472,122 @@ onUnmounted(() => {
     border-right: 1px solid var(--td-border-level-1-color, #e7e7e7);
     overflow: hidden;
 
-    .panelHeader {
-      padding: 10px 16px;
-      border-bottom: 1px solid var(--td-border-level-1-color, #e7e7e7);
-      flex-shrink: 0;
+    .workspaceTabs {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
 
-      .panelTitle {
-        font-size: 16px;
-        font-weight: 600;
+      :deep(.t-tabs__header) {
+        flex-shrink: 0;
+        padding-left: 8px;
+      }
+
+      :deep(.t-tabs__content) {
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      :deep(.t-tab-panel) {
+        height: 100%;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      :deep(.t-tabs__operations--right) {
+        top: 0;
+        bottom: 0;
+        padding-right: 12px;
+      }
+
+      :deep(.t-tabs__btn--right) {
+        display: none;
       }
     }
 
+    .workspaceActions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .directorPlan {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      box-sizing: border-box;
+      padding: 16px 20px 32px;
+
+      :deep(.md-editor-preview-wrapper) {
+        padding: 0;
+      }
+
+      :deep(.md-editor-preview) {
+        color: var(--td-text-color-primary, #333);
+        font-size: 14px;
+        line-height: 1.75;
+
+        h2 {
+          margin: 24px 0 12px;
+          padding-bottom: 8px;
+          border-bottom: 1px solid var(--td-border-level-1-color, #e7e7e7);
+          font-size: 18px;
+          font-weight: 600;
+          line-height: 1.4;
+        }
+
+        h2:first-child {
+          margin-top: 0;
+        }
+
+        h3 {
+          margin: 20px 0 8px;
+          font-size: 15px;
+          font-weight: 600;
+          line-height: 1.4;
+        }
+
+        table {
+          width: 100%;
+          margin: 0 0 20px;
+          border-collapse: collapse;
+          font-size: 13px;
+        }
+
+        th,
+        td {
+          padding: 8px 10px;
+          border: 1px solid var(--td-border-level-1-color, #e7e7e7);
+          text-align: left;
+          vertical-align: top;
+        }
+
+        th {
+          background: var(--td-bg-color-page, #f5f5f5);
+          font-weight: 600;
+        }
+
+        li {
+          margin-bottom: 6px;
+        }
+      }
+    }
+
+    .workspaceEmpty {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
     .shotList {
+      height: 100%;
       flex: 1;
       min-height: 0;
       overflow-y: auto;
+      box-sizing: border-box;
       padding: 12px;
       display: flex;
       flex-direction: column;
@@ -518,7 +674,6 @@ onUnmounted(() => {
               }
             }
           }
-
         }
       }
 
@@ -556,13 +711,6 @@ onUnmounted(() => {
           line-height: 1.5;
           word-break: break-word;
         }
-      }
-
-      .emptyShots {
-        flex: 1;
-        display: flex;
-        align-items: center;
-        justify-content: center;
       }
     }
   }

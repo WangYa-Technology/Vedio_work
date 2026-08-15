@@ -232,15 +232,35 @@ async function handleBatchDownload(value: ImportVideoItem[]) {
 }
 </script>
 
-<style lang="scss" scoped>
+<style lang="scss">
 .fullscreenDialog {
-  :deep(.t-dialog__body) {
+  .t-dialog__position {
+    box-sizing: border-box;
+    height: 100%;
+    min-height: 0;
+    padding-block: clamp(12px, 2vh, 24px);
+  }
+
+  .t-dialog {
     display: flex;
     flex-direction: column;
-    height: 88vh;
-    min-height: 620px;
+    height: 100%;
+    max-height: 100%;
+    overflow: hidden;
+    padding: 12px 16px 16px;
+  }
+
+  .t-dialog__body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    height: auto;
+    min-height: 0;
+    max-height: none;
     overflow: hidden;
     position: relative;
+    box-sizing: border-box;
+    padding: 0;
   }
 
   .importLoadingMask {
@@ -261,16 +281,22 @@ async function handleBatchDownload(value: ImportVideoItem[]) {
   }
   .closure {
     position: absolute;
-    top: var(--td-comp-paddingTB-xl);
-    right: var(--td-comp-paddingLR-xxl);
+    top: 12px;
+    right: 16px;
     z-index: 9999;
     cursor: pointer;
-    margin-top: 20px;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
   .topMenu {
-    padding-bottom: 16px;
+    flex: 0 0 auto;
+    min-height: 58px;
+    padding-bottom: 10px;
     width: fit-content;
-    margin-top: 10px;
+    margin-top: 0;
     .item {
       margin-right: 4px;
       cursor: pointer;
@@ -298,11 +324,12 @@ async function handleBatchDownload(value: ImportVideoItem[]) {
   }
   .content {
     flex: 1;
+    min-height: 0;
     overflow: hidden;
   }
   .editImage {
     width: 100%;
-    height: 75vh;
+    height: 100%;
   }
 }
 </style>

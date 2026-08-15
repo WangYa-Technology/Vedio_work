@@ -1459,6 +1459,9 @@ async function getGenerateData() {
     scriptId: episodesId.value ?? 0,
   });
   projectConfig.value = data.projectConfig || {};
+  if (data.projectConfig?.videoModel && data.projectConfig.videoModel !== selectModel.value) {
+    selectModel.value = String(data.projectConfig.videoModel);
+  }
   trackList.value = Array.isArray(data.trackList) ? data.trackList : [];
   if (data.projectConfig?.mode) {
     selectMode.value = String(data.projectConfig.mode);
@@ -1641,7 +1644,9 @@ async function downloadVideo(value: HistoryVideoItem) {
 .generateContainer {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 120px);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   gap: 12px;
   .sceneNavigator {
     flex: 0 0 auto;

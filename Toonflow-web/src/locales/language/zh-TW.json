@@ -1246,6 +1246,9 @@
       "autoLayoutLR": "自動排版-左右佈局",
       "autoLayoutTB": "自動排版-上下佈局",
       "getFlowData": "刷新工作區",
+      "directorPlan": "導演規劃",
+      "storyboardList": "分鏡列表",
+      "noDirectorPlan": "暫無導演規劃",
       "confirm": "切換劇集確認",
       "confirmEpisodesSwitch": "目前任務仍在進行中，切換劇集會重連會話，是否繼續切換？"
     },

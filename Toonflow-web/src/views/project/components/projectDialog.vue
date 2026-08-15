@@ -25,7 +25,12 @@
             <t-form-item :label="$t('workbench.project.dialog.novelType')">
               <t-input v-model="formState.type" :placeholder="$t('workbench.project.dialog.novelTypePh')" />
             </t-form-item>
-            <!-- Image/video model selection hidden: productionAgent removed -->
+            <t-form-item :label="$t('workbench.project.dialog.modelData')">
+              <modelSelect v-model="formState.imageModel" type="image" />
+            </t-form-item>
+            <t-form-item :label="$t('workbench.project.dialog.videoModelData')">
+              <modelSelect v-model="formState.videoModel" type="video" changeConfig @change="changeFn" />
+            </t-form-item>
 
             <t-form-item :label="$t('workbench.project.dialog.videoRatio')">
               <t-select v-model="formState.videoRatio" :options="RATIO_OPTIONS" />
@@ -394,6 +399,7 @@ function handleOk() {
   if (!formState.value.directorManual) return window.$message.warning($t("workbench.project.msg.directorManual"));
   if (!formState.value.videoRatio) return window.$message.warning($t("workbench.project.msg.enterVideoRatio"));
   if (!formState.value.intro) return window.$message.warning($t("workbench.project.msg.enterProjectIntro"));
+  if (!formState.value.imageModel) return window.$message.warning($t("workbench.project.msg.enterImageModel"));
   if (isEdit.value) {
     emit("edit", {
       id: formState.value.id as unknown as string,

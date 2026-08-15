@@ -1241,6 +1241,9 @@
       "autoLayoutLR": "自動組版 - 左右レイアウト",
       "autoLayoutTB": "自動写植上下レイアウト",
       "getFlowData": "ワークスペースを更新する",
+      "directorPlan": "監督プラン",
+      "storyboardList": "絵コンテ一覧",
+      "noDirectorPlan": "監督プランはありません",
       "confirm": "エピソード切り替え確認",
       "confirmEpisodesSwitch": "現在のタスクはまだ進行中です。エピソードを切り替えるとセッションが再接続されます。切り替えを続けますか?"
     },

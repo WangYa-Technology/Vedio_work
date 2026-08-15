@@ -3,7 +3,11 @@ import { z } from "zod";
 import u from "@/utils";
 import ResTool from "@/socket/resTool";
 import { buildProductionFlowData } from "@/utils/productionFlow";
-import { queueAssetImagesById, queueStoryboardImages } from "@/services/imageGeneration";
+import {
+  buildDerivedAssetPrompt,
+  queueAssetImagesById,
+  queueStoryboardImages,
+} from "@/services/imageGeneration";
 
 interface ToolConfig {
   resTool: ResTool;
@@ -112,22 +116,35 @@ export default ({ resTool, msg, toolsNames }: ToolConfig) => {
       inputSchema: z.object({
         assetsId: z.number().describe("父资产真实 ID"),
         id: z.number().nullable().describe("更新时填写衍生资产真实 ID，新增时为 null"),
-        name: z.string(),
-        desc: z.string(),
+        name: z.string().trim().min(1),
+        desc: z.string().trim().min(1),
+        prompt: z.string().trim().min(1).describe("可直接用于图片生成的衍生目标提示词"),
       }),
-      execute: async ({ assetsId, id, name, desc }) => {
+      execute: async ({ assetsId, id, name, desc, prompt }) => {
         ensureContext();
         const thinking = msg.thinking("正在写入衍生资产...");
         let assetId = id;
+        let savedPrompt = "";
         await u.db.transaction(async (trx) => {
           const parent = await trx("o_assets").where({ id: assetsId, projectId }).first();
           if (!parent || parent.assetsId != null) throw new Error(`父资产不存在：${assetsId}`);
+          savedPrompt = buildDerivedAssetPrompt({
+            type: parent.type,
+            parentName: parent.name || `资产 ${assetsId}`,
+            parentDescribe: parent.describe,
+            name,
+            describe: desc,
+            prompt,
+          });
           const data = {
             assetsId,
             projectId,
             name,
             type: parent.type,
             describe: desc,
+            prompt: savedPrompt,
+            promptState: "已完成",
+            promptErrorReason: "",
             startTime: Date.now(),
           };
           if (assetId != null) {
@@ -141,7 +158,9 @@ export default ({ resTool, msg, toolsNames }: ToolConfig) => {
         });
         const saved = await u.db("o_assets").where({ id: assetId, projectId, assetsId }).first();
         const linked = await u.db("o_scriptAssets").where({ scriptId, assetId }).first();
-        if (!saved || !linked || saved.name !== name || saved.describe !== desc) throw new Error("衍生资产写入后回读校验失败");
+        if (!saved || !linked || saved.name !== name || saved.describe !== desc || saved.prompt !== savedPrompt) {
+          throw new Error("衍生资产写入后回读校验失败");
+        }
         socket.emit("flowDataUpdated", { reason: "deriveAsset", assetId });
         thinking.updateTitle("衍生资产写入完成");
         thinking.complete();

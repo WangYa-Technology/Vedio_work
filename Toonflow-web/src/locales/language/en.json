@@ -1342,6 +1342,9 @@
       "autoLayoutLR": "Automatic typesetting-left and right layout",
       "autoLayoutTB": "Automatic typesetting-top and bottom layout",
       "getFlowData": "Refresh workspace",
+      "directorPlan": "Director Plan",
+      "storyboardList": "Storyboard List",
+      "noDirectorPlan": "No director plan",
       "confirm": "Switch episode confirmation",
       "confirmEpisodesSwitch": "The current task is still in progress. Switching episodes will reconnect the session. Do you want to continue switching?"
     },
