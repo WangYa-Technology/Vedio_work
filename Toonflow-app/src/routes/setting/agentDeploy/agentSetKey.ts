@@ -35,7 +35,7 @@ export default router.post(
           modelName: `${vendorId}:claude-sonnet-4-6`,
           vendorId,
         });
-        await u.db("o_agentDeploy").where("key", "storyboardAgent").update({
+        await u.db("o_agentDeploy").where("key", "productionAgent").update({
           model: "claude-sonnet-4-6",
           modelName: `${vendorId}:claude-sonnet-4-6`,
           vendorId,

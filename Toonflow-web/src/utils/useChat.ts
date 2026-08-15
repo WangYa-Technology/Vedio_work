@@ -106,6 +106,7 @@ export function useChat(options: UseChatOptions) {
   const hiddenXmlTags = normalizedXmlTagOptions.filter((item) => item.keepInMessage ?? keepXmlInMessage ? false : true).map((item) => item.tag);
   const emittedXmlState = new Map<string, Record<string, string>>();
   const rawContentState = new Map<string, string>();
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   // 计算属性 - 修复：增加对内容流状态的判断
   const isGenerating = computed(() => {
@@ -534,6 +535,11 @@ export function useChat(options: UseChatOptions) {
   const connect = () => {
     if (socket.value?.connected || connecting.value) return;
 
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+
     connecting.value = true;
 
     if (!socket.value) {
@@ -554,6 +560,10 @@ export function useChat(options: UseChatOptions) {
   };
 
   const disconnect = () => {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
     socket.value?.disconnect();
     connected.value = false;
     connecting.value = false;
@@ -561,7 +571,10 @@ export function useChat(options: UseChatOptions) {
 
   const reconnect = () => {
     disconnect();
-    setTimeout(connect, 100);
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connect();
+    }, 100);
   };
 
   // 发送方法

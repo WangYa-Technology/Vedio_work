@@ -1,8 +1,112 @@
 <template>
   <div class="generateContainer">
+    <section class="sceneNavigator" v-if="sceneGroups.length">
+      <div class="sceneToolbar f ac jb">
+        <div class="sceneToolbarTitle">
+          <strong>视频场次</strong>
+          <span>场次批量推理，片段独立生成（单段最长 15 秒），当前 {{ activeSceneIndex + 1 }} / {{ sceneGroups.length }}</span>
+        </div>
+        <div class="sceneToolbarActions f ac">
+          <t-checkbox v-model="checkAll" @change="handleCheckAll">{{ $t("workbench.generate.selectAll") }}</t-checkbox>
+          <span class="selectedCount" v-if="selectedSceneCount">已选 {{ selectedSceneCount }} 场 · {{ selectedSegmentCount }} 段</span>
+          <t-button size="small" variant="outline" @click="batchGenText">{{ $t("workbench.generate.batchGenerateText") }}</t-button>
+          <t-button size="small" variant="outline" @click="batchGenVideo">{{ $t("workbench.generate.batchGenerateVideo") }}</t-button>
+          <t-button size="small" :disabled="!selectedSegmentCount" @click="importVideo">
+            {{ $t("workbench.generate.importVideo") }}
+          </t-button>
+        </div>
+      </div>
+      <div class="sceneGroups">
+        <div
+          class="sceneGroup"
+          :class="{ active: sceneIndex === activeSceneIndex }"
+          v-for="(scene, sceneIndex) in sceneGroups"
+          :key="scene.key"
+          role="button"
+          tabindex="0"
+          @click="selectScene(scene)"
+          @keydown.enter="selectScene(scene)">
+          <t-checkbox
+            class="sceneGroupCheck"
+            :checked="isSceneChecked(scene)"
+            :indeterminate="isScenePartiallyChecked(scene)"
+            @click.stop
+            @change="(val: boolean) => toggleSceneCheck(scene, val)" />
+          <div class="sceneGroupHeader">
+            <strong>场次 {{ sceneIndex + 1 }}</strong>
+            <span :title="scene.title">{{ scene.title }}</span>
+            <small>{{ scene.entries.length }} 段 · {{ scene.duration }}s</small>
+          </div>
+          <div class="sceneGroupSegments">
+            <span v-for="entry in scene.entries" :key="entry.track.id">{{ entry.track.segmentTitle }} {{ entry.track.duration }}s</span>
+          </div>
+        </div>
+      </div>
+      <div class="activeSceneSegments" v-if="activeSceneGroup">
+        <span class="activeSceneSegmentsLabel">本场视频段</span>
+        <button
+          v-for="entry in activeSceneGroup.entries"
+          :key="entry.track.id"
+          type="button"
+          :class="{ active: entry.index === activeTrackIndex }"
+          @click="activeTrackIndex = entry.index">
+          #{{ entry.index + 1 }} {{ entry.track.segmentTitle }} · {{ entry.track.duration }}s
+        </button>
+      </div>
+    </section>
     <div class="data f">
       <div class="videoToImage">
-        <video v-if="videoUrl" :src="videoUrl" class="previewVideo" controls preload="metadata" />
+        <div v-if="activeTrack" class="taskBrief">
+          <div class="taskBriefHeader">
+            <div>
+              <span class="taskKicker">视频任务 #{{ activeTrackIndex + 1 }}</span>
+              <h3>{{ activeTrack.title }}</h3>
+            </div>
+            <t-tag :theme="activeTrack.readiness?.ready ? 'success' : 'warning'" size="small">
+              {{ activeTrack.readiness?.ready ? "参数已就绪" : "待补充" }}
+            </t-tag>
+          </div>
+          <div class="storyboardPreview" v-if="activeTrack.storyboard?.src && shouldShowStoryboardPreview">
+            <img :src="activeTrack.storyboard.src" alt="分镜预览" />
+            <span>分镜预览图（当前模式不作为视频参考图提交）</span>
+          </div>
+          <div class="taskStats">
+            <div>
+              <span>片段时长</span>
+              <strong>{{ activeTrack.duration }} 秒</strong>
+            </div>
+            <div>
+              <span>参考图</span>
+              <strong>{{ activeTrack.readiness?.referenceCount || 0 }} 张</strong>
+            </div>
+            <div>
+              <span>模型</span>
+              <strong>{{ projectConfig.modelName || "未配置" }}</strong>
+            </div>
+          </div>
+          <div class="segmentTable" v-if="activeTrack.segmentRows?.length">
+            <div class="segmentRow segmentRowHeader">
+              <span>镜头</span>
+              <span>画面与动作</span>
+              <span>台词 / 音效</span>
+              <span>时长</span>
+              <span>景别 / 运镜</span>
+            </div>
+            <div class="segmentRow" v-for="row in activeTrack.segmentRows" :key="row.serial">
+              <span>{{ row.serial }}</span>
+              <span>{{ row.description }}</span>
+              <div class="dialogueCell">
+                <p><b>台词</b>{{ displaySegmentField(row.dialogue, "台词") }}</p>
+                <p><b>音效</b>{{ displaySegmentField(row.sound, "音效") }}</p>
+              </div>
+              <span>{{ row.duration }}s</span>
+              <span>{{ row.scale || "—" }} / {{ row.cameraMovement || "—" }}</span>
+            </div>
+          </div>
+          <div class="taskNotice" v-if="activeTrack.readiness?.messages?.length">
+            {{ activeTrack.readiness.messages.join("；") }}
+          </div>
+        </div>
         <div v-else class="emptyVideo c">{{ $t("workbench.generate.noVideo") }}</div>
       </div>
       <div class="configurationParameters" :class="{ hasActive: trackList.length > 0 }">
@@ -11,13 +115,52 @@
             <t-tag theme="primary" size="small" style="margin-right: 10px">#{{ activeTrackIndex + 1 }}</t-tag>
             {{ $t("workbench.generate.prompt") }}
           </div>
-          <t-button size="small" class="genTextbtn" :loading="activeTrackGenTextLoading" @click="genText">
-            {{ $t("workbench.generate.generateText") }}
-          </t-button>
+          <div class="promptActions f ac">
+            <t-select
+              v-model="selectedVideoPromptTemplateId"
+              :options="videoPromptTemplateOptions"
+              :loading="videoPromptTemplateLoading"
+              size="small"
+              class="videoPromptTemplateSelect"
+              @focus="loadVideoPromptTemplates"
+              placeholder="选择视频推理模版" />
+            <t-button size="small" class="genTextbtn" :loading="activeTrackGenTextLoading" @click="genText">AI生成本场提示词</t-button>
+          </div>
         </div>
-        <div class="promptInput">
-          <promptEditor v-model="promptText" :references="references" :placeholder="$t('workbench.generate.promptPlaceholder')" />
-          <!-- <t-textarea class="input" v-model="promptText" :autosize="{ minRows: 4, maxRows: 8 }" :disabled="activeTrackGenTextLoading" /> -->
+        <div v-if="activeScenePromptError" class="promptError" role="alert">
+          <i-error-circle-filled size="16" />
+          <span>{{ activeScenePromptError }}</span>
+        </div>
+        <div class="promptStack">
+          <div class="promptSection">
+            <div class="promptSectionHeader">
+              <span>推理前内容</span>
+              <small>当前片段的分镜与参考资产</small>
+            </div>
+            <div class="promptInput promptInputSource">
+              <promptEditor
+                :key="`source-${activeTrack?.id ?? 'empty'}`"
+                :model-value="preInferenceText"
+                :references="references"
+                placeholder="暂无推理前内容"
+                readonly />
+            </div>
+          </div>
+          <div class="promptSection">
+            <div class="promptSectionHeader">
+              <span>推理后文本</span>
+              <small :class="{ inferred: activeTrack?.promptSource === 'videoTrack' }">
+                {{ activeTrack?.promptSource === "videoTrack" ? "已推理" : "待推理" }}
+              </small>
+            </div>
+            <div class="promptInput promptInputResult">
+              <promptEditor
+                :key="`result-${activeTrack?.id ?? 'empty'}`"
+                v-model="promptText"
+                :references="references"
+                :placeholder="$t('workbench.generate.promptPlaceholder')" />
+            </div>
+          </div>
         </div>
         <div class="modeOpt f w">
           <template v-if="isMixedMode">
@@ -75,70 +218,39 @@
             <t-select size="small" class="mode" v-model="selectMode">
               <t-option v-for="(item, index) in modeList" :key="index" :value="item.value" :label="item.label"></t-option>
             </t-select>
-            <t-button
-              size="small"
-              variant="outline"
-              :theme="selectedAudio ? 'success' : 'danger'"
-              class="audio"
-              @click="selectedAudio = !selectedAudio">
-              <template #icon>
-                <i-volume-notice v-if="selectedAudio" size="16" />
-                <i-volume-mute v-else size="16" />
-              </template>
-            </t-button>
-            <div class="status">
-              <t-popup
-                trigger="click"
-                placement="top"
-                overlay-class-name="resDurPickerPopup"
-                :overlay-inner-style="{ padding: '16px', borderRadius: '8px' }">
-                <t-tag class="btn" variant="outline">{{ selectedResolution }}·{{ effectiveDuration }}s</t-tag>
-                <template #content>
-                  <div class="resolutionDurationPicker">
-                    <div
-                      v-if="
-                        Array.isArray(modeOptions.durationResolutionMap) &&
-                        modeOptions.durationResolutionMap.length > 0 &&
-                        modeOptions.durationResolutionMap[0].resolution &&
-                        modeOptions.durationResolutionMap[0].resolution.length > 0
-                      "
-                      class="pickerSection">
-                      <div class="pickerLabel">{{ $t("workbench.generate.resolution") }}</div>
-                      <div class="pickerOptions">
-                        <div
-                          v-for="res in modeOptions.durationResolutionMap[0].resolution"
-                          :key="res"
-                          class="pickerOption"
-                          :class="{ active: selectedResolution === res }"
-                          @click="handleResolutionChange(res)">
-                          {{ res }}
-                        </div>
-                      </div>
-                    </div>
-                    <div
-                      v-if="
-                        Array.isArray(modeOptions.durationResolutionMap) &&
-                        modeOptions.durationResolutionMap.length > 0 &&
-                        modeOptions.durationResolutionMap[0].duration &&
-                        modeOptions.durationResolutionMap[0].duration.length > 0
-                      "
-                      class="pickerSection">
-                      <div class="pickerLabel">{{ $t("workbench.generate.duration") }}</div>
-                      <div class="pickerOptions">
-                        <div
-                          v-for="dur in modeOptions.durationResolutionMap[0].duration"
-                          :key="dur"
-                          class="pickerOption"
-                          :class="{ active: effectiveDuration === dur }"
-                          @click="handleDurationChange(dur)">
-                          {{ dur }}s
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+            <t-tooltip v-if="showAudioControl" :content="audioControlTooltip" placement="top">
+              <t-button
+                size="small"
+                variant="outline"
+                :theme="selectedAudio ? 'success' : 'danger'"
+                class="audio"
+                :class="{ fixed: modeOptions.audio === true }"
+                :aria-label="audioControlTooltip"
+                :aria-pressed="selectedAudio"
+                @click="toggleAudio">
+                <template #icon>
+                  <SoundIcon v-if="selectedAudio" size="16" />
+                  <SoundMuteIcon v-else size="16" />
                 </template>
-              </t-popup>
-            </div>
+              </t-button>
+            </t-tooltip>
+            <t-tooltip content="生成清晰度" placement="top">
+              <t-select
+                v-model="selectedResolution"
+                size="small"
+                class="resolutionSelect"
+                :options="resolutionOptions"
+                aria-label="生成清晰度" />
+            </t-tooltip>
+            <t-tooltip content="片段时长" placement="top">
+              <t-select
+                :value="effectiveDuration"
+                size="small"
+                class="durationSelect"
+                :options="durationOptions"
+                aria-label="片段时长"
+                @change="handleDurationSelect" />
+            </t-tooltip>
           </div>
           <div class="genBtn">
             <t-button size="small" :loading="generating" @click="generateVideo">{{ $t("workbench.generate.generate") }}</t-button>
@@ -152,11 +264,16 @@
           <div class="historyItemBox">
             <div
               class="historyItem"
-              :class="{ active: v.id === selectVideoId, generating: v.state === '生成中', failed: v.state === '生成失败' }"
+              :class="{
+                active: v.id === selectVideoId,
+                generating: v.state === '生成中',
+                failed: v.state === '生成失败',
+              }"
               v-for="v in activeTrackVideos"
               :key="v.id"
               @click="previewVideo(v)">
-              <video :src="v.src" preload="metadata" muted />
+              <video v-if="isVideoPlayable(v)" :src="v.src" preload="metadata" playsinline muted />
+              <div v-if="isVideoPlayable(v)" class="playOverlay c"><PlayIcon size="22" /></div>
               <div v-if="v.state === '生成中'" class="loadingOverlay c fc">
                 <t-loading size="24px" />
                 <span class="loadingText">{{ $t("workbench.generate.generating") }}</span>
@@ -166,13 +283,13 @@
                   {{ $t("workbench.generate.generateFailed") }}
                 </t-tag>
               </t-tooltip>
-              <div v-if="v.state !== '生成中'" class="selectBtn" @click.stop="selectVideo(v)">
+              <div v-if="isVideoPlayable(v)" class="selectBtn" @click.stop="selectVideo(v)">
                 <i-check size="16" />
               </div>
               <div class="delBtn" @click.stop="handleDeleteVideo(v)">
                 <i-delete size="16" />
               </div>
-              <div v-if="v.state !== '生成中' && v.state !== '生成失败'" class="download" @click.stop="downloadVideo(v)">
+              <div v-if="isVideoPlayable(v)" class="download" @click.stop="downloadVideo(v)">
                 <i-to-bottom size="16" />
               </div>
             </div>
@@ -180,51 +297,84 @@
         </div>
       </div>
     </div>
-    <div class="videoTrack">
-      <div class="trackMenu f ac jb">
-        <div class="left f ac">
-          <t-checkbox v-model="checkAll" @change="handleCheckAll">{{ $t("workbench.generate.selectAll") }}</t-checkbox>
-          <span class="selectedCount" v-if="checkedTrackIds.length">{{ $t("workbench.generate.selected") }} {{ checkedTrackIds.length }} 段</span>
-        </div>
-        <div class="right f ac">
-          <t-button size="small" variant="outline" @click="batchGenText">{{ $t("workbench.generate.batchGenerateText") }}</t-button>
-          <t-button size="small" variant="outline" @click="batchGenVideo">{{ $t("workbench.generate.batchGenerateVideo") }}</t-button>
-          <!-- <t-button size="small" variant="outline" @click="importVideo">{{ $t("workbench.generate.importVideo") }}</t-button> -->
-        </div>
-      </div>
-      <div class="itemBox">
-        <div
-          class="item"
-          :class="{ active: index === activeTrackIndex }"
-          v-for="(track, index) in trackList"
-          :key="index"
-          @click="activeTrackIndex = index">
-          <t-checkbox
-            class="trackCheck"
-            :checked="track.id != null && checkedTrackIds.includes(track.id)"
-            @click.stop
-            @change="(val: boolean) => toggleCheck(track.id, val)" />
-          <t-tag class="indexTag" size="small">#{{ index + 1 }}</t-tag>
-          <t-tag class="selectTag" theme="success" size="small" v-if="track.selectVideoId">已选择</t-tag>
-          <div class="thumbGroup" v-if="track.medias.length">
-            <template v-for="(m, i) in track.medias" :key="i">
-              <img v-if="m.fileType === 'image'" :src="m.src" class="thumb" />
-              <div v-else class="thumb placeholder c">
-                <i-volume-notice v-if="m.fileType === 'audio'" size="20" />
-                <i-video v-else size="24" />
-              </div>
-            </template>
-          </div>
-          <span v-else class="emptyTrack">{{ $t("workbench.generate.emptyTrack", index + 1) }}</span>
-          <div class="deleteBtn" @click.stop="confirmDeleteTrack(index)">
-            <i-close size="14" />
+    <t-dialog
+      v-model:visible="videoPreviewVisible"
+      :header="videoPreviewTitle"
+      :footer="false"
+      width="min(1120px, 90vw)"
+      placement="center"
+      destroy-on-close
+      :close-on-overlay-click="false"
+      @opened="handleVideoPreviewOpened"
+      @close="closeVideoPreview">
+      <div ref="videoPreviewDialogRef" class="videoPreviewDialog">
+        <div class="videoPreviewStage" @click="toggleModalPlayback">
+          <video
+            ref="modalVideoRef"
+            :src="modalVideoUrl"
+            playsinline
+            preload="metadata"
+            @loadedmetadata="handleModalMetadata"
+            @timeupdate="handleModalTimeUpdate"
+            @play="modalPlaying = true"
+            @pause="modalPlaying = false"
+            @ended="modalPlaying = false"
+            @volumechange="syncModalVolumeState"
+            @error="handleModalVideoError" />
+          <button
+            v-if="!modalPlaying && !modalError"
+            type="button"
+            class="modalCenterPlay"
+            :aria-label="modalEnded ? '重新播放' : '播放'"
+            @click.stop="toggleModalPlayback">
+            <PlayIcon size="38" />
+          </button>
+          <div v-if="modalError" class="modalVideoError c fc">
+            <i-error-circle-filled size="30" />
+            <span>{{ modalError }}</span>
           </div>
         </div>
-        <div class="item addItem c" @click="addTrack">
-          <i-plus size="36"></i-plus>
+        <div class="videoControlBar">
+          <t-tooltip :content="modalPlaying ? '暂停' : modalEnded ? '重新播放' : '播放'" placement="top">
+            <button type="button" class="mediaIconButton" :aria-label="modalPlaying ? '暂停' : '播放'" @click="toggleModalPlayback">
+              <PauseIcon v-if="modalPlaying" size="20" />
+              <PlayIcon v-else size="20" />
+            </button>
+          </t-tooltip>
+          <span class="mediaTime">{{ formatMediaTime(modalCurrentTime) }} / {{ formatMediaTime(modalDuration) }}</span>
+          <input
+            class="mediaProgress"
+            type="range"
+            min="0"
+            :max="Math.max(modalDuration, 0)"
+            step="0.01"
+            :value="modalCurrentTime"
+            aria-label="播放进度"
+            @input="seekModalVideo" />
+          <t-tooltip :content="modalMuted ? '取消静音' : '静音'" placement="top">
+            <button type="button" class="mediaIconButton" :aria-label="modalMuted ? '取消静音' : '静音'" @click="toggleModalMute">
+              <SoundMuteIcon v-if="modalMuted || modalVolume === 0" size="20" />
+              <SoundIcon v-else size="20" />
+            </button>
+          </t-tooltip>
+          <input
+            class="mediaVolume"
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            :value="modalVolume"
+            aria-label="音量"
+            @input="changeModalVolume" />
+          <span v-if="modalVideoDimensions" class="mediaResolution">{{ modalVideoDimensions }}</span>
+          <t-tooltip content="全屏" placement="top">
+            <button type="button" class="mediaIconButton" aria-label="全屏" @click="requestModalFullscreen">
+              <FullscreenIcon size="20" />
+            </button>
+          </t-tooltip>
         </div>
       </div>
-    </div>
+    </t-dialog>
   </div>
 </template>
 
@@ -233,6 +383,7 @@ import type { Ref } from "vue";
 import promptEditor from "@/components/promptEditor.vue";
 import assetsCheck, { type AssetType, type ClipMediaType } from "@/utils/assetsCheck";
 import { DialogPlugin } from "tdesign-vue-next";
+import { FullscreenIcon, PauseIcon, PlayIcon, SoundIcon, SoundMuteIcon } from "tdesign-icons-vue-next";
 import axios from "@/utils/axios";
 import projectStore from "@/stores/project";
 
@@ -240,7 +391,6 @@ const episodesId = inject<Ref<number>>("episodesId")!;
 
 const { project } = storeToRefs(projectStore());
 
-const videoUrl = ref("");
 const promptText = computed({
   get: () => {
     const track = trackList.value[activeTrackIndex.value];
@@ -282,38 +432,90 @@ const generating = computed(() => {
   return trackId != null ? !!generatingMap.value[trackId] : false;
 });
 const genTextLoadingMap = ref<Record<number, boolean>>({});
+const scenePromptErrorMap = ref<Record<string, string>>({});
 const activeTrackGenTextLoading = computed(() => {
-  const trackId = trackList.value[activeTrackIndex.value]?.id;
-  return trackId != null ? !!genTextLoadingMap.value[trackId] : false;
+  return Boolean(activeSceneGroup.value?.entries.some((entry) => genTextLoadingMap.value[entry.track.id]));
 });
 
-async function genText() {
-  const track = trackList.value[activeTrackIndex.value];
-  const trackId = track?.id;
-  if (trackId == null || genTextLoadingMap.value[trackId]) return;
-  const info = uploadBox.value
-    .filter((item) => item.prompt)
-    .map((item) => {
-      return {
-        id: item.id,
-        sources: item.sources ? item.sources : "storyboard",
-      };
-    });
-  genTextLoadingMap.value[trackId] = true;
+interface VideoPromptTemplate {
+  id: number;
+  name: string;
+  type: string;
+  data: string;
+}
+
+const videoPromptTemplates = ref<VideoPromptTemplate[]>([]);
+const selectedVideoPromptTemplateId = ref<number>();
+const videoPromptTemplateLoading = ref(false);
+const videoPromptTemplateOptions = computed(() => videoPromptTemplates.value.map((item) => ({ label: item.name, value: item.id })));
+
+function displaySegmentField(value: string | undefined, label: string) {
+  return String(value || "")
+    .trim()
+    .replace(new RegExp(`^${label}[：:]\\s*`), "")
+    .trim() || "无";
+}
+
+function getRequestErrorMessage(caught: any) {
+  const payload = caught?.response?.data ?? caught?.data ?? caught;
+  const message = payload?.message ?? payload?.error?.message ?? caught?.message;
+  if (typeof message === "string" && message.trim()) return message.trim();
+  if (typeof payload === "string" && payload.trim()) return payload.trim();
+  return "视频提示词推理失败，请稍后重试";
+}
+
+async function loadVideoPromptTemplates() {
+  videoPromptTemplateLoading.value = true;
+  try {
+    const { data } = await axios.post("/setting/promptManage/getPrompt");
+    videoPromptTemplates.value = (Array.isArray(data) ? data : [])
+      .filter((item: any) => item.type === "videoPromptGeneration")
+      .map((item: any) => ({ id: Number(item.id), name: item.name || "未命名视频模版", type: item.type, data: item.data || "" }));
+    if (!videoPromptTemplates.value.some((item) => item.id === selectedVideoPromptTemplateId.value)) {
+      selectedVideoPromptTemplateId.value = videoPromptTemplates.value[0]?.id;
+    }
+  } finally {
+    videoPromptTemplateLoading.value = false;
+  }
+}
+
+async function generateScenePrompts(scene: SceneGroup, requestedIds?: number[]) {
+  if (!selectedVideoPromptTemplateId.value) {
+    window.$message.warning("请先选择视频推理模版");
+    return;
+  }
+  const trackIds = (requestedIds?.length ? requestedIds : scene.entries.map((entry) => entry.track.id)).filter(Boolean);
+  if (!trackIds.length || trackIds.some((id) => genTextLoadingMap.value[id])) return;
+  scenePromptErrorMap.value[scene.key] = "";
+  trackIds.forEach((id) => (genTextLoadingMap.value[id] = true));
   try {
     const { data } = await axios.post("/production/workbench/generateVideoPrompt", {
       projectId: project.value?.id,
-      trackId,
-      info: info,
+      sceneTitle: scene.key === "__unassigned__" ? "" : scene.key,
+      trackIds,
+      templateId: selectedVideoPromptTemplateId.value,
       model: selectModel.value,
     });
-    const targetTrack = trackList.value.find((item) => item.id === trackId);
-    if (targetTrack) {
-      targetTrack.prompt = data;
+    for (const result of data?.prompts || []) {
+      const targetTrack = trackList.value.find((item) => item.id === Number(result.trackId));
+      if (targetTrack) {
+        targetTrack.prompt = result.prompt;
+        targetTrack.promptSource = "videoTrack";
+      }
     }
+    window.$message.success(`${scene.title} 的 ${trackIds.length} 段视频提示词已生成`);
+  } catch (caught: any) {
+    const message = getRequestErrorMessage(caught);
+    scenePromptErrorMap.value[scene.key] = message;
+    window.$message.error(message);
   } finally {
-    genTextLoadingMap.value[trackId] = false;
+    trackIds.forEach((id) => (genTextLoadingMap.value[id] = false));
   }
+}
+
+async function genText() {
+  if (!activeSceneGroup.value) return;
+  await generateScenePrompts(activeSceneGroup.value);
 }
 
 interface VideoItem {
@@ -334,9 +536,26 @@ interface HistoryVideoItem {
   state?: string | null;
   time?: number | null;
   videoTrackId?: number | null;
+  playable?: boolean;
 }
 
 const historyVideo = ref<HistoryVideoItem[]>([]);
+const videoPreviewVisible = ref(false);
+const modalVideoRef = ref<HTMLVideoElement | null>(null);
+const videoPreviewDialogRef = ref<HTMLDivElement | null>(null);
+const modalVideoUrl = ref("");
+const modalPlaying = ref(false);
+const modalCurrentTime = ref(0);
+const modalDuration = ref(0);
+const modalVolume = ref(1);
+const modalMuted = ref(false);
+const modalVideoDimensions = ref("");
+const modalError = ref("");
+const modalEnded = computed(() => modalDuration.value > 0 && modalCurrentTime.value >= modalDuration.value - 0.05);
+const videoPreviewTitle = computed(() => {
+  const suffix = modalVideoDimensions.value ? ` · ${modalVideoDimensions.value}` : "";
+  return `视频预览 #${activeTrackIndex.value + 1}${suffix}`;
+});
 
 const activeTrackVideos = computed(() => {
   const track = trackList.value[activeTrackIndex.value];
@@ -344,13 +563,148 @@ const activeTrackVideos = computed(() => {
   return historyVideo.value.filter((v) => v.videoTrackId === track.id);
 });
 
+function isVideoPlayable(v: HistoryVideoItem) {
+  return v.state !== "生成中" && v.state !== "生成失败" && v.playable !== false && Boolean(v.src);
+}
+
 function previewVideo(v: HistoryVideoItem) {
-  if (v.state === "生成中" || v.state === "生成失败") return;
-  videoUrl.value = v.src;
+  if (!isVideoPlayable(v)) {
+    window.$message.error(v.errorReason || "视频文件不可用，请重新生成");
+    return;
+  }
+  openVideoPreview(v);
+}
+
+function openVideoPreview(v: HistoryVideoItem) {
+  if (!isVideoPlayable(v)) return;
+  modalVideoUrl.value = v.src;
+  modalCurrentTime.value = 0;
+  modalDuration.value = 0;
+  modalVideoDimensions.value = "";
+  modalError.value = "";
+  modalPlaying.value = false;
+  modalMuted.value = false;
+  videoPreviewVisible.value = true;
+}
+
+function handleVideoPreviewOpened() {
+  const player = modalVideoRef.value;
+  if (!player) return;
+  player.muted = false;
+  player.volume = modalVolume.value;
+  player.load();
+}
+
+function handleModalMetadata() {
+  const player = modalVideoRef.value;
+  if (!player) return;
+  modalDuration.value = Number.isFinite(player.duration) ? player.duration : 0;
+  modalCurrentTime.value = player.currentTime || 0;
+  modalVideoDimensions.value = player.videoWidth && player.videoHeight
+    ? `${Math.min(player.videoWidth, player.videoHeight)}p · ${player.videoWidth}×${player.videoHeight}`
+    : "";
+  modalError.value = "";
+  syncModalVolumeState();
+}
+
+function handleModalTimeUpdate() {
+  const player = modalVideoRef.value;
+  if (!player) return;
+  modalCurrentTime.value = player.currentTime || 0;
+}
+
+function handleModalVideoError() {
+  modalPlaying.value = false;
+  modalError.value = "视频加载失败，请重新生成或检查视频文件";
+}
+
+async function toggleModalPlayback() {
+  const player = modalVideoRef.value;
+  if (!player || modalError.value) return;
+  if (!player.paused) {
+    player.pause();
+    return;
+  }
+  if (player.ended || modalEnded.value) {
+    player.currentTime = 0;
+    modalCurrentTime.value = 0;
+  }
+  player.muted = modalMuted.value;
+  player.volume = modalVolume.value;
+  try {
+    await player.play();
+  } catch {
+    window.$message.warning("浏览器阻止了播放，请再次点击播放按钮");
+  }
+}
+
+function seekModalVideo(event: Event) {
+  const player = modalVideoRef.value;
+  if (!player) return;
+  const value = Number((event.target as HTMLInputElement).value);
+  if (!Number.isFinite(value)) return;
+  player.currentTime = value;
+  modalCurrentTime.value = value;
+}
+
+function toggleModalMute() {
+  const player = modalVideoRef.value;
+  if (!player) return;
+  if (player.muted || player.volume === 0) {
+    if (player.volume === 0) player.volume = 0.8;
+    player.muted = false;
+  } else {
+    player.muted = true;
+  }
+  syncModalVolumeState();
+}
+
+function changeModalVolume(event: Event) {
+  const player = modalVideoRef.value;
+  if (!player) return;
+  const value = Math.max(0, Math.min(1, Number((event.target as HTMLInputElement).value)));
+  player.volume = value;
+  player.muted = value === 0;
+  syncModalVolumeState();
+}
+
+function syncModalVolumeState() {
+  const player = modalVideoRef.value;
+  if (!player) return;
+  modalVolume.value = player.volume;
+  modalMuted.value = player.muted || player.volume === 0;
+}
+
+async function requestModalFullscreen() {
+  const container = videoPreviewDialogRef.value;
+  const player = modalVideoRef.value as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null;
+  try {
+    if (container?.requestFullscreen) {
+      await container.requestFullscreen();
+    } else {
+      player?.webkitEnterFullscreen?.();
+    }
+  } catch {
+    window.$message.warning("当前浏览器无法进入全屏模式");
+  }
+}
+
+function closeVideoPreview() {
+  modalVideoRef.value?.pause();
+  modalPlaying.value = false;
+  videoPreviewVisible.value = false;
+}
+
+function formatMediaTime(value: number) {
+  if (!Number.isFinite(value) || value < 0) return "0:00";
+  const totalSeconds = Math.floor(value);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = String(totalSeconds % 60).padStart(2, "0");
+  return `${minutes}:${seconds}`;
 }
 
 async function selectVideo(v: HistoryVideoItem) {
-  if (v.state === "生成中" || v.state === "生成失败") return;
+  if (!isVideoPlayable(v)) return;
   const activeTrack = trackList.value[activeTrackIndex.value];
   if (v.id != null) {
     selectVideoId.value = v.id;
@@ -358,7 +712,6 @@ async function selectVideo(v: HistoryVideoItem) {
       trackSelectedVideoMap.value[activeTrack.id] = v.id;
     }
   }
-  videoUrl.value = v.src;
   try {
     await axios.post("/production/workbench/selectVideo", {
       projectId: project.value?.id,
@@ -375,7 +728,7 @@ async function selectVideo(v: HistoryVideoItem) {
 
 type ReferenceType = "videoReference" | "imageReference" | "audioReference" | "textReference";
 type Type = "imageReference" | "startImage" | "endImage" | "videoReference" | "audioReference";
-type VideoMode = "singleImage" | "startEndRequired" | "endFrameOptional" | "startFrameOptional" | "text" | ReferenceType[];
+type VideoMode = "singleImage" | "multiImage" | "startEndRequired" | "endFrameOptional" | "startFrameOptional" | "text" | string[];
 
 interface UploadItem {
   fileType: "image" | "video" | "audio";
@@ -393,17 +746,45 @@ interface VideoModel {
   type: "video";
   mode: (
     | "singleImage" // 单图
+    | "multiImage" // 旧版多图模式
     | "startEndRequired" // 首尾帧（两张都得有）
     | "endFrameOptional" // 首尾帧（尾帧可选）
     | "startFrameOptional" // 首尾帧（首帧可选）
     | "text" // 文本生视频
-    | ("videoReference" | "imageReference" | "audioReference" | "textReference")[] // 混合参考
+    | string[] // 混合参考，可携带 :数量 上限
   )[];
   associationSkills?: string; // 关联技能，多个技能用逗号分隔
   audio: "optional" | false | true; // 音频配置
   durationResolutionMap: { duration: number[]; resolution: string[] }[];
 }
 const modeOptions = ref<VideoModel>({} as VideoModel);
+const showAudioControl = computed(() => modeOptions.value.audio === true || modeOptions.value.audio === "optional");
+const audioControlTooltip = computed(() => {
+  if (modeOptions.value.audio === true) return "当前模型固定生成声音";
+  return selectedAudio.value ? "生成声音已开启" : "生成声音已关闭";
+});
+const resolutionOptions = computed(() => {
+  const values = modeOptions.value.durationResolutionMap?.[0]?.resolution || [];
+  return values.map((value) => ({ label: formatResolutionOption(value), value }));
+});
+const durationOptions = computed(() => {
+  const values = modeOptions.value.durationResolutionMap?.[0]?.duration || [];
+  return values.map((value) => ({ label: `${value} 秒`, value }));
+});
+
+function formatResolutionOption(value: string) {
+  const match = String(value || "").match(/(\d+)\s*[x*×]\s*(\d+)/i);
+  if (!match) return value;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  return `${Math.min(width, height)}p · ${width}×${height}`;
+}
+
+function toggleAudio() {
+  if (modeOptions.value.audio !== "optional") return;
+  selectedAudio.value = !selectedAudio.value;
+}
+
 const modeList = computed(() => {
   const modeLabelMap: Record<string, string> = {
     singleImage: "单图",
@@ -411,6 +792,7 @@ const modeList = computed(() => {
     endFrameOptional: "尾帧可选",
     startFrameOptional: "首帧可选",
     text: "文本生视频",
+    multiImage: "多图参考",
     videoReference: "视频",
     imageReference: "图片",
     audioReference: "音频",
@@ -421,7 +803,13 @@ const modeList = computed(() => {
         if (Array.isArray(mode)) {
           return {
             value: JSON.stringify(mode),
-            label: mode.map((m) => modeLabelMap[m] || m).join(" + ") + "参考",
+            label:
+              mode
+                .map((m) => {
+                  const token = parseReferenceToken(m);
+                  return `${modeLabelMap[token.type] || token.type}${token.count ? `×${token.count}` : ""}`;
+                })
+                .join(" + ") + "参考",
           };
         }
         // 普通字符串
@@ -438,26 +826,45 @@ const selectMode = ref<string>();
 
 const isMixedMode = computed(() => {
   const mode = parseMode(selectMode.value || "");
-  return Array.isArray(mode);
+  return Array.isArray(mode) || mode === "multiImage";
+});
+
+const mixedReferenceLimit = computed(() => {
+  const mode = parseMode(selectMode.value || "");
+  if (mode === "multiImage") {
+    return projectConfig.value.modeCapabilities?.find((item: { type?: string }) => item.type === "imageReference")?.count;
+  }
+  if (!Array.isArray(mode)) return undefined;
+  return mode.map(parseReferenceToken).find((item) => item.type === "imageReference")?.count;
 });
 
 const mixedClipMediaTypes = computed<ClipMediaType[]>(() => {
   const mode = parseMode(selectMode.value || "");
+  if (mode === "multiImage") return ["image"];
   if (!Array.isArray(mode)) return [];
   const map: Record<string, ClipMediaType> = {
     audioReference: "audio",
     imageReference: "image",
     videoReference: "video",
   };
-  return mode.filter((m) => m in map).map((m) => map[m]);
+  return mode
+    .map((m) => parseReferenceToken(m).type)
+    .filter((m) => m in map)
+    .map((m) => map[m]);
 });
+
+function parseReferenceToken(value: string) {
+  const [type, countText] = value.split(":");
+  const count = Number(countText);
+  return { type, count: Number.isFinite(count) && count > 0 ? count : undefined };
+}
 
 function parseMode(value: string): VideoMode | null {
   if (!value) return null;
   try {
     const parsed = JSON.parse(value);
     if (Array.isArray(parsed)) {
-      return parsed as ReferenceType[];
+      return parsed.map(String);
     }
   } catch {
     return value as Exclude<VideoMode, ReferenceType[]>;
@@ -465,9 +872,34 @@ function parseMode(value: string): VideoMode | null {
   return value as Exclude<VideoMode, ReferenceType[]>;
 }
 
+function serializeMode(mode: string | string[]) {
+  return Array.isArray(mode) ? JSON.stringify(mode) : String(mode);
+}
+
+function resolvePreferredMode(modes: Array<string | string[]>, preferredMode: string) {
+  const values = modes.map(serializeMode);
+  if (!values.length) return undefined;
+  if (values.includes(preferredMode)) return preferredMode;
+
+  const preferred = parseMode(preferredMode);
+  if (Array.isArray(preferred)) {
+    const preferredTypes = new Set(preferred.map((item) => parseReferenceToken(item).type));
+    const compatible = modes.find((mode) => {
+      if (!Array.isArray(mode)) return false;
+      const candidateTypes = new Set(mode.map((item) => parseReferenceToken(item).type));
+      return [...preferredTypes].every((type) => candidateTypes.has(type));
+    });
+    if (compatible) return serializeMode(compatible);
+  }
+
+  return values[0];
+}
+
 interface TrackMedia {
   src: string;
   id?: number;
+  name?: string;
+  type?: string;
   prompt?: string;
   fileType: "image" | "video" | "audio";
   sources?: "assets" | "storyboard";
@@ -482,10 +914,137 @@ interface TrackItem {
   medias: TrackMedia[];
   videoList: VideoItem[];
   duration: number;
+  title?: string;
+  segmentTitle?: string;
+  sceneTitle?: string;
+  storyboardId?: number;
+  imagePrompt?: string;
+  videoDesc?: string;
+  promptSource?: string;
+  segmentRows?: Array<{
+    serial: string;
+    description: string;
+    duration: number;
+    scale: string;
+    cameraMovement: string;
+    dialogue: string;
+    sound: string;
+  }>;
+  storyboard?: TrackMedia & { state?: string };
+  availableMedias?: TrackMedia[];
+  referenceAssets?: TrackMedia[];
+  excludesStoryboard?: boolean;
+  readiness?: {
+    ready: boolean;
+    referenceCount: number;
+    referenceLimit?: number | null;
+    messages: string[];
+  };
+}
+interface SceneGroup {
+  key: string;
+  title: string;
+  duration: number;
+  entries: Array<{ track: TrackItem; index: number }>;
 }
 const trackList = ref<TrackItem[]>([]);
 const activeTrackIndex = ref(0);
+const activeTrack = computed(() => trackList.value[activeTrackIndex.value] || null);
+const projectConfig = ref<Record<string, any>>({});
 const trackSelectedVideoMap = ref<Record<number, number>>({});
+
+function inferenceAssetTypeLabel(media: TrackMedia) {
+  const type = String(media.type || "").toLowerCase();
+  if (type === "role" || type === "character") return "角色";
+  if (type === "scene") return "场景";
+  if (type === "props" || type === "prop" || type === "tool") return "道具";
+  if (media.fileType === "video") return "视频";
+  if (media.fileType === "audio") return "音频";
+  return "图片";
+}
+
+const preInferenceText = computed(() => {
+  const track = activeTrack.value;
+  if (!track) return "";
+
+  const referenceMap = (track.medias || [])
+    .map((media, index) => `@图${index + 1}：${media.name || "未命名资产"}（${inferenceAssetTypeLabel(media)}）`)
+    .join("\n");
+  const videoDescription = track.segmentRows?.length
+    ? track.segmentRows
+        .map(
+          (row) =>
+            `${row.serial}. ${row.description}；${row.duration}s；${row.scale || "未标注"}；${row.cameraMovement || "未标注"}；台词：${displaySegmentField(row.dialogue, "台词")}；音效：${displaySegmentField(row.sound, "音效")}`,
+        )
+        .join("\n")
+    : String(track.videoDesc || "").trim();
+
+  return [
+    `片段：${track.segmentTitle || track.title || `#${activeTrackIndex.value + 1}`}`,
+    `时长：${track.duration || 0} 秒`,
+    referenceMap ? `[参考资产]\n${referenceMap}` : "",
+    videoDescription ? `[视频描述]\n${videoDescription}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+});
+
+function displaySceneTitle(value?: string) {
+  const title = String(value || "")
+    .split(/[｜|]/)[0]
+    .trim();
+  return title || "未标注场次";
+}
+
+const sceneGroups = computed<SceneGroup[]>(() => {
+  const groups = new Map<string, SceneGroup>();
+  trackList.value.forEach((track, index) => {
+    const rawTitle = String(track.sceneTitle || "").trim();
+    const key = rawTitle || "__unassigned__";
+    const group = groups.get(key) || {
+      key,
+      title: displaySceneTitle(rawTitle),
+      duration: 0,
+      entries: [],
+    };
+    group.duration += Number(track.duration) || 0;
+    group.entries.push({ track, index });
+    groups.set(key, group);
+  });
+  return Array.from(groups.values());
+});
+
+const activeSceneIndex = computed(() =>
+  Math.max(
+    0,
+    sceneGroups.value.findIndex((scene) => scene.entries.some((entry) => entry.index === activeTrackIndex.value)),
+  ),
+);
+const activeSceneGroup = computed(() => sceneGroups.value[activeSceneIndex.value] || null);
+const activeScenePromptError = computed(() => {
+  const key = activeSceneGroup.value?.key;
+  return key ? scenePromptErrorMap.value[key] || "" : "";
+});
+const shouldShowStoryboardPreview = computed(() => !isMixedMode.value && !activeTrack.value?.excludesStoryboard);
+
+function selectScene(scene: SceneGroup) {
+  if (!scene.entries.some((entry) => entry.index === activeTrackIndex.value)) {
+    activeTrackIndex.value = scene.entries[0]?.index ?? 0;
+  }
+}
+
+function isSceneChecked(scene: SceneGroup) {
+  return scene.entries.length > 0 && scene.entries.every((entry) => checkedTrackIds.value.includes(entry.track.id));
+}
+
+function isScenePartiallyChecked(scene: SceneGroup) {
+  const selected = scene.entries.filter((entry) => checkedTrackIds.value.includes(entry.track.id)).length;
+  return selected > 0 && selected < scene.entries.length;
+}
+
+function toggleSceneCheck(scene: SceneGroup, checked: boolean) {
+  scene.entries.forEach((entry) => toggleCheck(entry.track.id, checked));
+}
 
 async function addTrack() {
   const { data } = await axios.post("/production/workbench/addTrack", {
@@ -554,14 +1113,9 @@ const pendingIndex = ref(-1);
 function buildUploadBox(value: string): UploadItem[] {
   const currentMode = parseMode(value);
   if (!currentMode) return [];
-  const referenceUploadMap: Record<Exclude<ReferenceType, "textReference">, UploadItem> = {
-    videoReference: { fileType: "video", type: "videoReference", sources: "storyboard", label: "参考视频" },
-    imageReference: { fileType: "image", type: "imageReference", sources: "storyboard", label: "参考图片" },
-    audioReference: { fileType: "audio", type: "audioReference", sources: "storyboard", label: "参考音频" },
-  };
-
-  const modeUploadMap: Record<Exclude<VideoMode, ReferenceType[]>, UploadItem[]> = {
+  const modeUploadMap: Record<Exclude<VideoMode, string[]>, UploadItem[]> = {
     singleImage: [{ fileType: "image", type: "imageReference", sources: "storyboard", label: "参考图片" }],
+    multiImage: [],
     startEndRequired: [
       { fileType: "image", type: "startImage", sources: "storyboard", label: "首帧" },
       { fileType: "image", type: "endImage", sources: "storyboard", label: "末帧" },
@@ -578,9 +1132,7 @@ function buildUploadBox(value: string): UploadItem[] {
   };
 
   if (Array.isArray(currentMode)) {
-    return currentMode
-      .filter((item): item is Exclude<ReferenceType, "textReference"> => item !== "textReference")
-      .map((item) => ({ ...referenceUploadMap[item] }));
+    return [];
   }
 
   return (modeUploadMap[currentMode] || []).map((item) => ({ ...item }));
@@ -617,34 +1169,29 @@ function handleSelectSource(index: number) {
 }
 
 async function handleMixedAdd() {
-  const dlg = DialogPlugin.confirm({
-    header: $t("workbench.generate.selectSource"),
-    confirmBtn: $t("workbench.generate.confirm"),
-    cancelBtn: $t("workbench.generate.cancel"),
-    onConfirm: async () => {
-      dlg.destroy();
-      const assets = await assetsCheck({ types: ["role", "tool", "scene", "clip"], clipMediaTypes: mixedClipMediaTypes.value, multiple: true });
-      if (!assets.length) return;
-      userEditedUploadBox.value = true;
-      for (const asset of assets) {
-        const fileType = getFileTypeByExt(asset.src);
-        uploadBox.value.push({
-          fileType,
-          type: refTypeMap[fileType] as Type,
-          sources: "assets",
-          src: asset.src,
-          id: asset.id,
-          prompt: asset.prompt,
-          label: "",
-        });
-      }
-    },
-    onCancel: () => {
-      dlg.destroy();
-      pendingIndex.value = -1;
-      storyboardDialogVisible.value = true;
-    },
+  const assets = await assetsCheck({
+    types: ["role", "tool", "scene", "clip"],
+    clipMediaTypes: mixedClipMediaTypes.value,
+    multiple: true,
   });
+  if (!assets.length) return;
+  userEditedUploadBox.value = true;
+  const remaining = mixedReferenceLimit.value ? Math.max(0, mixedReferenceLimit.value - uploadBox.value.length) : assets.length;
+  for (const asset of assets.slice(0, remaining)) {
+    const fileType = getFileTypeByExt(asset.src);
+    uploadBox.value.push({
+      fileType,
+      type: refTypeMap[fileType] as Type,
+      sources: "assets",
+      src: asset.src,
+      id: asset.id,
+      prompt: asset.prompt,
+      label: "",
+    });
+  }
+  if (assets.length > remaining) {
+    window.$message.warning(`当前模型最多支持 ${mixedReferenceLimit.value} 张参考图`);
+  }
 }
 
 const refTypeMap: Record<string, ReferenceType> = {
@@ -666,16 +1213,7 @@ function pickStoryboard(sb: StoryboardItem) {
   storyboardDialogVisible.value = false;
   userEditedUploadBox.value = true;
   if (isMixedMode.value) {
-    const fileType = getFileTypeByExt(sb.src);
-    uploadBox.value.push({
-      fileType,
-      type: refTypeMap[fileType] as Type,
-      sources: "storyboard",
-      src: sb.src,
-      id: sb.id,
-      prompt: sb.prompt ?? undefined,
-      label: "",
-    });
+    window.$message.warning("图片多参考模式仅使用资产参考图，不使用故事板图");
     return;
   }
   const item = uploadBox.value[pendingIndex.value];
@@ -733,17 +1271,14 @@ watch(selectModel, (val) => {
   if (!val) {
     modeOptions.value = {} as VideoModel;
     selectMode.value = undefined;
+    selectedAudio.value = false;
     return;
   }
   axios.post("/modelSelect/getModelDetail", { modelId: val }).then(({ data }) => {
     modeOptions.value = data;
-    // 重置 mode 为第一个可选项
-    if (data.mode?.length) {
-      const firstMode = data.mode[0];
-      selectMode.value = Array.isArray(firstMode) ? JSON.stringify(firstMode) : firstMode;
-    } else {
-      selectMode.value = undefined;
-    }
+    selectedAudio.value = data.audio === true || data.audio === "optional";
+    const preferredMode = projectConfig.value.mode || selectMode.value || project.value?.mode || "";
+    selectMode.value = resolvePreferredMode(data.mode || [], String(preferredMode));
     // 重置分辨率和时长为第一个可选项
     const drMap = data.durationResolutionMap;
     if (Array.isArray(drMap) && drMap.length > 0) {
@@ -765,6 +1300,7 @@ watch(selectMode, (val) => {
   if (!val) return (uploadBox.value = []);
   userEditedUploadBox.value = false;
   uploadBox.value = buildUploadBox(val);
+  syncMediasToUploadBox();
 });
 
 watch(
@@ -782,6 +1318,10 @@ watch(
 
 const checkedTrackIds = ref<number[]>([]);
 const checkAll = ref(false);
+const selectedSceneCount = computed(
+  () => sceneGroups.value.filter((scene) => scene.entries.some((entry) => checkedTrackIds.value.includes(entry.track.id))).length,
+);
+const selectedSegmentCount = computed(() => checkedTrackIds.value.length);
 
 function handleCheckAll(val: boolean) {
   const allTrackIds = trackList.value.map((track) => track.id).filter((id): id is number => id != null);
@@ -819,36 +1359,17 @@ watch(
   { deep: true },
 );
 
-function batchGenText() {
-  trackList.value
-    .filter((track) => checkedTrackIds.value.includes(track.id))
-    .forEach(async (track) => {
-      const trackId = track.id;
-      if (trackId == null || genTextLoadingMap.value[trackId]) return;
-      const info = track.medias
-        .filter((m) => m.prompt)
-        .map((m) => {
-          return {
-            id: m.id,
-            sources: m.sources ? m.sources : "storyboard",
-          };
-        });
-      genTextLoadingMap.value[trackId] = true;
-      try {
-        const { data } = await axios.post("/production/workbench/generateVideoPrompt", {
-          projectId: project.value?.id,
-          trackId,
-          info: info,
-          model: selectModel.value,
-        });
-        const targetTrack = trackList.value.find((item) => item.id === trackId);
-        if (targetTrack) {
-          targetTrack.prompt = data;
-        }
-      } finally {
-        genTextLoadingMap.value[trackId] = false;
-      }
-    });
+async function batchGenText() {
+  if (!sceneGroups.value.length) {
+    window.$message.warning("当前没有可推理的视频场次");
+    return;
+  }
+  for (const scene of sceneGroups.value) {
+    await generateScenePrompts(
+      scene,
+      scene.entries.map((entry) => entry.track.id),
+    );
+  }
 }
 
 function batchGenVideo() {
@@ -865,7 +1386,9 @@ function batchGenVideo() {
           if (trackId == null || generatingMap.value[trackId]) return;
           generatingMap.value[trackId] = true;
           try {
-            const uploadData = modeTemplate.map((_, i) => track.medias[i]).filter((item) => item && Boolean(item.src));
+            const uploadData = isMixedMode.value
+              ? track.medias.slice(0, mixedReferenceLimit.value || track.medias.length).filter((item) => Boolean(item.src))
+              : modeTemplate.map((_, i) => track.medias[i]).filter((item) => item && Boolean(item.src));
             const payload = {
               projectId: project.value?.id,
               duration: clampDuration(track.duration || selectedDuration.value),
@@ -902,43 +1425,52 @@ type ImportVideoItem = { trackId: number; videoId: number; src: string; duration
 const emit = defineEmits<{
   importVideo: [videoList: ImportVideoItem[]];
 }>();
-// function importVideo() {
-//   if (checkedTrackIds.value.length === 0) {
-//     return window.$message.warning($t("workbench.generate.selectTrackFirst"));
-//   }
-//   const videoList: ImportVideoItem[] = trackList.value
-//     .filter((track) => track.id != null && checkedTrackIds.value.includes(track.id))
-//     .map((track) => {
-//       const trackId = track.id!;
-//       const selectedVid = trackSelectedVideoMap.value[trackId] ?? track.selectVideoId;
-//       if (!selectedVid) return null;
-//       const video = historyVideo.value.find((v) => v.id === selectedVid && v.videoTrackId === trackId);
-//       if (!video || video.state === "生成中" || video.state === "生成失败" || video.id == null) {
-//         return null;
-//       }
-//       const duration = Number(video.duration ?? video.time ?? selectedDuration.value);
-//       return { trackId, videoId: video.id, src: video.src, duration: Number.isFinite(duration) && duration > 0 ? duration : selectedDuration.value };
-//     })
-//     .filter((i): i is ImportVideoItem => i !== null);
-//   if (videoList.length === 0) {
-//     return window.$message.warning($t("workbench.generate.noSelectedVideo"));
-//   }
-//   emit("importVideo", videoList);
-// }
+function importVideo() {
+  if (checkedTrackIds.value.length === 0) {
+    return window.$message.warning($t("workbench.generate.selectTrackFirst"));
+  }
+  const videoList: ImportVideoItem[] = trackList.value
+    .filter((track) => track.id != null && checkedTrackIds.value.includes(track.id))
+    .map((track) => {
+      const trackId = track.id!;
+      const selectedVid = trackSelectedVideoMap.value[trackId] ?? track.selectVideoId;
+      if (!selectedVid) return null;
+      const video = historyVideo.value.find((item) => item.id === selectedVid && item.videoTrackId === trackId);
+      if (!video || !isVideoPlayable(video) || video.id == null) return null;
+      const duration = Number(video.duration ?? video.time ?? track.duration ?? selectedDuration.value);
+      return {
+        trackId,
+        videoId: video.id,
+        src: video.src,
+        duration: Number.isFinite(duration) && duration > 0 ? duration : selectedDuration.value,
+      };
+    })
+    .filter((item): item is ImportVideoItem => item !== null);
+  if (videoList.length === 0) {
+    return window.$message.warning($t("workbench.generate.noSelectedVideo"));
+  }
+  emit("importVideo", videoList);
+}
 
 async function getGenerateData() {
+  if (!project.value?.id || !episodesId.value) return;
   const { data } = await axios.post("/production/workbench/getGenerateData", {
     projectId: project.value?.id,
     scriptId: episodesId.value ?? 0,
   });
-  trackList.value = data.trackList;
+  projectConfig.value = data.projectConfig || {};
+  trackList.value = Array.isArray(data.trackList) ? data.trackList : [];
+  if (data.projectConfig?.mode) {
+    selectMode.value = String(data.projectConfig.mode);
+  }
+  if (activeTrackIndex.value >= trackList.value.length) activeTrackIndex.value = 0;
   trackSelectedVideoMap.value = {};
   for (const track of trackList.value) {
     if (track.id != null && track.selectVideoId != null) {
       trackSelectedVideoMap.value[track.id] = track.selectVideoId;
     }
   }
-  storyboardList.value = data.storyboardList;
+  storyboardList.value = Array.isArray(data.storyboardList) ? data.storyboardList : [];
   syncMediasToUploadBox();
   getVideoList();
 }
@@ -947,6 +1479,19 @@ function syncMediasToUploadBox() {
   const track = trackList.value[activeTrackIndex.value];
   if (!track) return;
   const medias = track.medias;
+  if (isMixedMode.value) {
+    userEditedUploadBox.value = false;
+    uploadBox.value = medias.map((media) => ({
+      fileType: media.fileType,
+      type: refTypeMap[media.fileType] as Type,
+      sources: media.sources ?? "assets",
+      src: media.src,
+      id: media.id,
+      prompt: media.prompt,
+      label: media.name || "",
+    }));
+    return;
+  }
   uploadBox.value = uploadBox.value.map((item, i) => {
     const media = medias[i];
     if (media?.src) {
@@ -960,31 +1505,26 @@ function restoreActiveTrackSelection() {
   const track = trackList.value[activeTrackIndex.value];
   if (!track?.id) {
     selectVideoId.value = null;
-    videoUrl.value = "";
     return;
   }
 
   const selectedId = trackSelectedVideoMap.value[track.id] ?? track.selectVideoId ?? null;
   selectVideoId.value = selectedId;
-
-  if (selectedId == null) {
-    videoUrl.value = "";
-    return;
-  }
-
-  const selectedVideo = historyVideo.value.find((v) => v.videoTrackId === track.id && v.id === selectedId);
-  if (selectedVideo && selectedVideo.state !== "生成中" && selectedVideo.state !== "生成失败") {
-    videoUrl.value = selectedVideo.src;
-    return;
-  }
-
-  videoUrl.value = "";
 }
 
+watch(
+  [() => project.value?.id, () => episodesId.value],
+  ([projectId, scriptId]) => {
+    if (!projectId || !scriptId) return;
+    selectModel.value = project.value?.videoModel || "";
+    selectMode.value = project.value?.mode || "";
+    getGenerateData();
+  },
+  { immediate: true },
+);
+
 onMounted(() => {
-  selectModel.value = project.value?.videoModel || "";
-  selectMode.value = project.value?.mode || "";
-  getGenerateData();
+  loadVideoPromptTemplates();
 });
 
 const hasGeneratedVideo = computed(() => {
@@ -1020,9 +1560,11 @@ watch(
 
 onUnmounted(() => {
   stopPoll();
+  modalVideoRef.value?.pause();
 });
 
 async function getVideoList() {
+  if (!project.value?.id || !episodesId.value) return;
   const { data } = await axios.post("/production/workbench/getVideoList", {
     projectId: project.value?.id,
     scriptId: episodesId.value ?? 0,
@@ -1048,13 +1590,15 @@ watch(activeTrackIndex, () => {
   syncMediasToUploadBox();
   restoreActiveTrackSelection();
 });
-function handleResolutionChange(res: string) {
-  selectedResolution.value = res;
-}
-
 function handleDurationChange(dur: number) {
   selectedDuration.value = dur;
   userSelectedDuration.value = true;
+}
+
+function handleDurationSelect(value: unknown) {
+  const duration = Number(value);
+  if (!Number.isFinite(duration)) return;
+  handleDurationChange(duration);
 }
 //删除视频
 function handleDeleteVideo(value: HistoryVideoItem) {
@@ -1098,13 +1642,141 @@ async function downloadVideo(value: HistoryVideoItem) {
   display: flex;
   flex-direction: column;
   height: calc(100vh - 120px);
-  gap: 16px;
+  gap: 12px;
+  .sceneNavigator {
+    flex: 0 0 auto;
+    padding: 10px 12px 12px;
+    border: 1px solid var(--td-component-border);
+    border-radius: 6px;
+    background: var(--td-bg-color-container);
+    .sceneToolbar {
+      gap: 16px;
+      margin-bottom: 9px;
+      .sceneToolbarTitle {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        min-width: 0;
+        strong {
+          flex: 0 0 auto;
+          font-size: 13px;
+        }
+        span {
+          overflow: hidden;
+          color: var(--td-text-color-secondary);
+          font-size: 11px;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+      }
+      .sceneToolbarActions {
+        flex: 0 0 auto;
+        gap: 8px;
+      }
+      .selectedCount {
+        color: var(--td-text-color-secondary);
+        font-size: 11px;
+      }
+    }
+    .sceneGroups {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 10px;
+    }
+    .sceneGroup {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: center;
+      gap: 5px 8px;
+      min-width: 0;
+      min-height: 62px;
+      padding: 8px 10px;
+      border: 1px solid var(--td-component-border);
+      border-left: 3px solid var(--td-component-border);
+      border-radius: 4px;
+      cursor: pointer;
+      &:hover {
+        border-color: var(--td-brand-color);
+      }
+      &.active {
+        border-color: var(--td-brand-color);
+        border-left-color: var(--td-brand-color);
+        background: var(--td-brand-color-light);
+      }
+      .sceneGroupCheck {
+        grid-row: 1 / span 2;
+      }
+    }
+    .sceneGroupHeader {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 6px;
+      strong {
+        font-size: 11px;
+      }
+      span {
+        overflow: hidden;
+        color: var(--td-text-color-secondary);
+        font-size: 11px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      small {
+        color: var(--td-text-color-placeholder);
+        font-size: 10px;
+      }
+    }
+    .sceneGroupSegments {
+      grid-column: 2;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 8px;
+      span {
+        color: var(--td-text-color-secondary);
+        font-size: 9px;
+        white-space: nowrap;
+      }
+    }
+    .activeSceneSegments {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 9px;
+      padding-top: 9px;
+      border-top: 1px solid var(--td-component-border);
+      .activeSceneSegmentsLabel {
+        flex: 0 0 auto;
+        margin-right: 2px;
+        color: var(--td-text-color-secondary);
+        font-size: 10px;
+      }
+      button {
+        min-height: 28px;
+        padding: 4px 9px;
+        color: var(--td-text-color-secondary);
+        font-size: 10px;
+        border: 1px solid var(--td-component-border);
+        border-radius: 4px;
+        background: var(--td-bg-color-container);
+        cursor: pointer;
+        &:hover,
+        &.active {
+          color: var(--td-brand-color);
+          border-color: var(--td-brand-color);
+          background: var(--td-brand-color-light);
+        }
+      }
+    }
+  }
   .data {
     width: 100%;
-    height: 75%;
+    flex: 1;
+    height: auto;
     gap: 10px;
     min-height: 0;
     .videoToImage {
+      position: relative;
       background: var(--td-bg-color-secondarycontainer);
       width: 100%;
       height: 100%;
@@ -1114,13 +1786,132 @@ async function downloadVideo(value: HistoryVideoItem) {
       min-height: 0;
       border-radius: 8px;
       overflow: hidden;
-      .previewVideo {
-        width: 100%;
-      }
       .emptyVideo {
         width: 100%;
         height: 100%;
         color: var(--td-text-color-placeholder);
+      }
+      .taskBrief {
+        width: 100%;
+        height: 100%;
+        padding: 18px;
+        overflow-y: auto;
+        color: var(--td-text-color-primary);
+        background: var(--td-bg-color-container);
+      }
+      .taskBriefHeader {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+        h3 {
+          margin: 4px 0 0;
+          font-size: 15px;
+          line-height: 1.45;
+        }
+      }
+      .taskKicker {
+        color: var(--td-text-color-secondary);
+        font-size: 12px;
+      }
+      .storyboardPreview {
+        position: relative;
+        width: 100%;
+        overflow: hidden;
+        border: 1px solid var(--td-component-border);
+        border-radius: 6px;
+        background: #111;
+        img {
+          display: block;
+          width: 100%;
+          max-height: 230px;
+          object-fit: contain;
+        }
+        span {
+          position: absolute;
+          right: 8px;
+          bottom: 8px;
+          padding: 4px 7px;
+          color: #fff;
+          font-size: 11px;
+          background: rgba(0, 0, 0, 0.68);
+          border-radius: 4px;
+        }
+      }
+      .taskStats {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin: 12px 0;
+        div {
+          padding: 9px 10px;
+          border: 1px solid var(--td-component-border);
+          border-radius: 6px;
+        }
+        span,
+        strong {
+          display: block;
+        }
+        span {
+          color: var(--td-text-color-secondary);
+          font-size: 11px;
+        }
+        strong {
+          margin-top: 4px;
+          overflow: hidden;
+          font-size: 12px;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+      }
+      .segmentTable {
+        overflow: hidden;
+        border: 1px solid var(--td-component-border);
+        border-radius: 6px;
+      }
+      .segmentRow {
+        display: grid;
+        grid-template-columns: 36px minmax(180px, 1.25fr) minmax(150px, 0.9fr) 42px minmax(90px, 0.4fr);
+        border-top: 1px solid var(--td-component-border);
+        &:first-child {
+          border-top: 0;
+        }
+        > span,
+        > .dialogueCell {
+          padding: 7px 8px;
+          font-size: 11px;
+          line-height: 1.45;
+        }
+        .dialogueCell {
+          p {
+            margin: 0;
+            overflow-wrap: anywhere;
+            + p {
+              margin-top: 4px;
+              color: var(--td-text-color-secondary);
+            }
+          }
+          b {
+            margin-right: 5px;
+            color: var(--td-text-color-secondary);
+            font-weight: 500;
+          }
+        }
+      }
+      .segmentRowHeader {
+        color: var(--td-text-color-secondary);
+        background: var(--td-bg-color-secondarycontainer);
+        font-weight: 600;
+      }
+      .taskNotice {
+        margin-top: 10px;
+        padding: 8px 10px;
+        color: var(--td-warning-color-7);
+        font-size: 11px;
+        line-height: 1.5;
+        background: var(--td-warning-color-1);
+        border-radius: 5px;
       }
     }
     .configurationParameters {
@@ -1140,14 +1931,64 @@ async function downloadVideo(value: HistoryVideoItem) {
         .title {
           font-weight: bold;
         }
+        .promptActions {
+          gap: 8px;
+          min-width: 0;
+        }
+        .videoPromptTemplateSelect {
+          width: 210px;
+        }
         padding-top: 10px;
         padding-bottom: 10px;
       }
+      .promptError {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        margin-bottom: 8px;
+        padding: 8px 10px;
+        border: 1px solid var(--td-error-color-3);
+        border-radius: 6px;
+        color: var(--td-error-color);
+        background: var(--td-error-color-1);
+        font-size: 12px;
+        line-height: 1.5;
+        word-break: break-word;
+      }
+      .promptStack {
+        display: grid;
+        gap: 10px;
+      }
+      .promptSectionHeader {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 22px;
+        margin-bottom: 5px;
+        font-size: 12px;
+        span {
+          color: var(--td-text-color-primary);
+          font-weight: 600;
+        }
+        small {
+          color: var(--td-text-color-placeholder);
+          font-size: 11px;
+          &.inferred {
+            color: var(--td-success-color);
+          }
+        }
+      }
       .promptInput {
         border: 1px solid var(--td-component-border);
-        border-radius: 8px;
-        max-height: 200px;
-        overflow: auto;
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .promptInputSource {
+        height: 132px;
+        background: var(--td-bg-color-secondarycontainer);
+      }
+      .promptInputResult {
+        height: 162px;
       }
       .modeOpt {
         width: 100%;
@@ -1227,17 +2068,24 @@ async function downloadVideo(value: HistoryVideoItem) {
         border-bottom: 1px solid var(--td-component-border);
         .left {
           flex: 1;
+          flex-wrap: wrap;
           gap: 8px;
           .mode {
             width: 180px;
           }
-          .status {
-            .btn {
-              cursor: pointer;
-              &:hover {
-                background-color: var(--td-bg-color-secondarycontainer);
-              }
+          .audio {
+            width: 32px;
+            min-width: 32px;
+            padding: 0;
+            &.fixed {
+              cursor: default;
             }
+          }
+          .resolutionSelect {
+            width: 156px;
+          }
+          .durationSelect {
+            width: 84px;
           }
         }
       }
@@ -1287,6 +2135,18 @@ async function downloadVideo(value: HistoryVideoItem) {
               height: 100%;
               object-fit: cover;
               pointer-events: none;
+            }
+            .playOverlay {
+              position: absolute;
+              inset: 0;
+              color: #fff;
+              background: rgba(0, 0, 0, 0.16);
+              opacity: 0;
+              pointer-events: none;
+              transition: opacity 0.2s;
+            }
+            &:hover .playOverlay {
+              opacity: 1;
             }
             .loadingOverlay {
               position: absolute;
@@ -1369,168 +2229,157 @@ async function downloadVideo(value: HistoryVideoItem) {
       }
     }
   }
-  .videoTrack {
-    width: 100%;
-    height: 25%;
-    margin-top: 10px;
-    border: 1px solid var(--td-component-border);
-    padding: 20px;
-    overflow: hidden;
-    border-radius: 8px;
+}
+
+.videoPreviewDialog {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid #2a2a2f;
+  border-radius: 6px;
+  color: #fff;
+  background: #0f0f12;
+  &:fullscreen {
     display: flex;
     flex-direction: column;
-    .trackMenu {
-      margin-bottom: 10px;
-      .selectedCount {
-        font-size: 12px;
-        color: var(--td-text-color-secondary);
-        margin-left: 8px;
-      }
-      .right {
-        gap: 8px;
-      }
-    }
-    .itemBox {
+    justify-content: center;
+    border: 0;
+    border-radius: 0;
+    background: #000;
+    .videoPreviewStage {
       flex: 1;
-      min-height: 0;
-      width: 100%;
-      display: flex;
-      gap: 12px;
-      overflow-x: auto;
-      .item {
-        background-color: #fff;
-        border-radius: 8px;
-        flex-shrink: 0;
-        width: 200px;
-        height: 100%;
-        border: 1px solid var(--td-component-border);
-        overflow: hidden;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        position: relative;
-        &.active {
-          border-color: var(--td-brand-color);
-          border-width: 2px;
-          box-shadow: 0 0 0 3px rgba(var(--td-brand-color-rgb, 0, 82, 217), 0.25);
-          background: linear-gradient(180deg, rgba(var(--td-brand-color-rgb, 0, 82, 217), 0.05) 0%, transparent 100%);
-        }
-        &:hover {
-          filter: brightness(90%);
-        }
-        .indexTag {
-          position: absolute;
-          bottom: 4px;
-          left: 4px;
-          z-index: 1;
-        }
-        .selectTag {
-          position: absolute;
-          bottom: 4px;
-          right: 4px;
-          z-index: 1;
-        }
-        .thumbGroup {
-          width: 100%;
-          height: 100%;
-          display: flex;
-          .thumb {
-            flex: 1;
-            min-width: 0;
-            height: 100%;
-            object-fit: cover;
-          }
-          .placeholder {
-            background: var(--td-bg-color-secondarycontainer);
-            color: var(--td-text-color-placeholder);
-            font-size: 12px;
-          }
-        }
-        .emptyTrack {
-          color: var(--td-text-color-placeholder);
-          font-size: 12px;
-        }
-        .trackCheck {
-          position: absolute;
-          top: 4px;
-          left: 4px;
-          z-index: 1;
-        }
-        .deleteBtn {
-          position: absolute;
-          top: 4px;
-          right: 4px;
-          width: 20px;
-          height: 20px;
-          border-radius: 50%;
-          background: rgba(0, 0, 0, 0.5);
-          color: #fff;
-          display: none;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-          &:hover {
-            background: rgba(0, 0, 0, 0.8);
-          }
-        }
-        &:hover .deleteBtn {
-          display: flex;
-        }
-      }
-      .addItem {
-        border: 4px dashed var(--td-component-border);
-        cursor: pointer;
-      }
+      height: auto;
+      max-height: none;
     }
   }
 }
-</style>
-<style lang="scss">
-.resolutionDurationPicker {
-  min-width: 240px;
-  .pickerSection {
-    margin-bottom: 16px;
 
-    &:last-child {
-      margin-bottom: 0;
-    }
+.videoPreviewStage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: min(68vh, 630px);
+  min-height: 320px;
+  overflow: hidden;
+  background: #08080a;
+  cursor: pointer;
+  video {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+}
 
-    .pickerLabel {
-      font-size: 13px;
-      font-weight: 600;
-      color: #1a1a1a;
-      margin-bottom: 10px;
-    }
+.modalCenterPlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  padding: 0;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.62);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+  transition:
+    background 0.16s,
+    transform 0.16s;
+  &:hover {
+    background: rgba(0, 0, 0, 0.82);
+    transform: translate(-50%, -50%) scale(1.04);
+  }
+}
 
-    .pickerOptions {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
+.modalVideoError {
+  position: absolute;
+  inset: 0;
+  gap: 8px;
+  color: #fff;
+  font-size: 13px;
+  background: rgba(0, 0, 0, 0.78);
+}
 
-      .pickerOption {
-        padding: 6px 0;
-        border-radius: 8px;
-        border: 1.5px solid #e8e8e8;
-        font-size: 13px;
-        color: #333;
-        cursor: pointer;
-        transition: all 0.15s;
-        user-select: none;
-        text-align: center;
-        background: #fff;
+.videoControlBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 54px;
+  padding: 8px 12px;
+  border-top: 1px solid #29292e;
+  background: #151519;
+}
 
-        &:hover {
-          border-color: #999;
-        }
+.mediaIconButton {
+  display: flex;
+  flex: 0 0 36px;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  color: #fff;
+  border: 1px solid #3b3b42;
+  border-radius: 4px;
+  background: #222228;
+  cursor: pointer;
+  transition:
+    border-color 0.16s,
+    background 0.16s;
+  &:hover {
+    border-color: #fff;
+    background: #303038;
+  }
+}
 
-        &.active {
-          border-color: #1a1a1a;
-          color: #1a1a1a;
-          font-weight: 500;
-        }
-      }
-    }
+.mediaTime,
+.mediaResolution {
+  flex: 0 0 auto;
+  color: #d8d8dd;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.mediaResolution {
+  min-width: 118px;
+  text-align: right;
+}
+
+.mediaProgress,
+.mediaVolume {
+  height: 20px;
+  margin: 0;
+  accent-color: #fff;
+  cursor: pointer;
+}
+
+.mediaProgress {
+  flex: 1 1 auto;
+  min-width: 120px;
+}
+
+.mediaVolume {
+  flex: 0 0 92px;
+  width: 92px;
+}
+
+@media (max-width: 900px) {
+  .videoPreviewStage {
+    min-height: 220px;
+  }
+  .mediaVolume,
+  .mediaResolution {
+    display: none;
+  }
+  .mediaTime {
+    font-size: 11px;
   }
 }
 </style>

@@ -1,11 +1,92 @@
 import { Knex } from "knex";
 import { v4 as uuid } from "uuid";
-import { getEmbedding } from "@/utils/agent/embedding";
+import fs from "fs";
+import path from "path";
+import compileVendorCode from "@/utils/compileVendorCode";
+import { VM } from "vm2";
+import { CONTENT_SAFETY_SETTING_KEY, DEFAULT_CONTENT_SAFETY_CONSTRAINT } from "@/constants/contentSafety";
+import getPath from "@/utils/getPath";
 
 interface TableSchema {
   name: string;
   builder: (table: Knex.CreateTableBuilder) => void;
   initData?: (knex: Knex) => Promise<void>;
+}
+
+interface BundledVendor {
+  id: string;
+  author?: string;
+  description?: string;
+  name?: string;
+  icon?: string;
+  inputs?: unknown[];
+  inputValues?: Record<string, unknown>;
+  models?: unknown[];
+}
+
+interface BundledVendorEntry {
+  source: string;
+  vendor: BundledVendor;
+}
+
+function parseJsonArray(value?: string | null): unknown[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseJsonObject(value?: string | null): Record<string, unknown> {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function readCodeString(value?: string): string {
+  if (!value) return "";
+  try {
+    return JSON.parse(`"${value}"`);
+  } catch {
+    return value.replace(/\\n/g, "\n").replace(/\\"/g, '"');
+  }
+}
+
+function extractVendorMeta(code?: string | null): Partial<BundledVendor> {
+  if (!code) return {};
+  return {
+    author: readCodeString(code.match(/author:\s*"((?:\\.|[^"\\])*)"/s)?.[1]),
+    name: readCodeString(code.match(/name:\s*"((?:\\.|[^"\\])*)"/s)?.[1]),
+    description: readCodeString(code.match(/description:\s*"((?:\\.|[^"\\])*)"/s)?.[1]),
+  };
+}
+
+function loadBundledVendors(): Map<string, BundledVendorEntry> {
+  const vendorDir = getPath("vendor");
+  const entries = new Map<string, BundledVendorEntry>();
+  if (!fs.existsSync(vendorDir)) return entries;
+
+  for (const file of fs.readdirSync(vendorDir)) {
+    if (!file.endsWith(".ts")) continue;
+    const source = fs.readFileSync(path.join(vendorDir, file), "utf8");
+    try {
+      const code = compileVendorCode(source);
+      const sandboxExports: { vendor?: BundledVendor } = {};
+      new VM({ timeout: 1000, sandbox: { exports: sandboxExports }, eval: false, wasm: false }).run(code);
+      if (sandboxExports.vendor?.id) {
+        entries.set(sandboxExports.vendor.id, { source, vendor: sandboxExports.vendor });
+      }
+    } catch (error) {
+      console.warn(`[初始化数据库] 无法读取内置供应商 ${file}:`, error instanceof Error ? error.message : error);
+    }
+  }
+  return entries;
 }
 
 export default async (knex: Knex, forceInit: boolean = false): Promise<void> => {
@@ -90,9 +171,9 @@ export default async (knex: Knex, forceInit: boolean = false): Promise<void> => 
             model: "",
             modelName: "",
             vendorId: null,
-            key: "storyboardAgent",
-            name: "分镜Agent",
-            desc: "专业分镜拆解，支持Seedance首尾帧和巨日禄融生视频两种平台模式，建议使用具备较强逻辑推理和创作能力的模型",
+            key: "productionAgent",
+            name: "生产Agent",
+            desc: "用于导演规划、资产生成、分镜拆解和生产工作台编排，建议使用具备较强逻辑推理和创作能力的模型",
             disabled: false,
           },
           {
@@ -166,6 +247,10 @@ export default async (knex: Knex, forceInit: boolean = false): Promise<void> => 
           {
             key: "switchAiDevTool",
             value: "0",
+          },
+          {
+            key: CONTENT_SAFETY_SETTING_KEY,
+            value: DEFAULT_CONTENT_SAFETY_CONSTRAINT,
           },
         ]);
       },
@@ -388,6 +473,10 @@ export default async (knex: Knex, forceInit: boolean = false): Promise<void> => 
         table.integer("scriptId");
         table.integer("projectId");
         table.integer("videoTrackId");
+        table.text("model");
+        table.text("providerTaskId");
+        table.text("providerTaskData");
+        table.integer("createTime");
         table.primary(["id"]);
         table.unique(["id"]);
       },
@@ -854,8 +943,7 @@ export default async (knex: Knex, forceInit: boolean = false): Promise<void> => 
         ];
         await Promise.all(
           list.map(async (item) => {
-            const embedding = await getEmbedding(item.description);
-            item.embedding = JSON.stringify(embedding);
+            item.embedding = "[]";
           }),
         );
         await knex("o_skillList").insert(list);
@@ -930,76 +1018,6 @@ export default async (knex: Knex, forceInit: boolean = false): Promise<void> => 
         ]);
       },
     },
-    // 分镜Shot表
-    {
-      name: "o_storyboard_shot",
-      builder: (table) => {
-        table.increments("id").primary();
-        table.integer("projectId").notNullable();
-        table.integer("scriptId").defaultTo(0);
-        table.integer("episodeNumber").defaultTo(1);
-        table.integer("shotNumber").defaultTo(1);
-        table.text("content").defaultTo("");
-        table.string("cameraMovement").defaultTo("");
-        table.string("scale").defaultTo("");
-        table.text("narrativePurpose").defaultTo("");
-        table.float("duration").defaultTo(5);
-        table.text("dialogue").defaultTo("");
-        table.text("sound").defaultTo("");
-        table.string("platformMode").defaultTo("generic");
-        table.integer("createTime");
-        table.integer("updateTime");
-      },
-    },
-    // Character Bible表
-    {
-      name: "o_character_bible",
-      builder: (table) => {
-        table.increments("id").primary();
-        table.integer("projectId").notNullable().unique();
-        table.text("coreTheme").defaultTo("");
-        table.text("characters").defaultTo("[]");
-        table.text("wantNeedArc").defaultTo("");
-        table.text("visualMotifs").defaultTo("");
-        table.text("storyStructure").defaultTo("");
-        table.integer("createTime");
-        table.integer("updateTime");
-      },
-    },
-    // 导演定调表
-    {
-      name: "o_director_alignment",
-      builder: (table) => {
-        table.increments("id").primary();
-        table.integer("projectId").notNullable().unique();
-        table.text("emotion").defaultTo("");
-        table.text("genre").defaultTo("");
-        table.text("action").defaultTo("");
-        table.text("subject").defaultTo("");
-        table.text("form").defaultTo("");
-        table.text("socialPerspective").defaultTo("");
-        table.text("colorPlan").defaultTo("");
-        table.text("soundDesign").defaultTo("");
-        table.integer("createTime");
-        table.integer("updateTime");
-      },
-    },
-    // 资产提示词表
-    {
-      name: "o_asset_prompt",
-      builder: (table) => {
-        table.increments("id").primary();
-        table.integer("projectId").notNullable();
-        table.string("series").defaultTo("C");
-        table.string("assetNumber").defaultTo("");
-        table.string("assetName").defaultTo("");
-        table.string("platform").defaultTo("generic");
-        table.text("prompt").defaultTo("");
-        table.text("antiDistortion").defaultTo("");
-        table.integer("createTime");
-        table.integer("updateTime");
-      },
-    },
     //记忆表（message=原始消息, summary=压缩摘要）
     {
       name: "memories",
@@ -1035,6 +1053,82 @@ export default async (knex: Knex, forceInit: boolean = false): Promise<void> => 
         await t.initData(knex);
         console.log("[初始化数据库] 表数据初始化:", t.name);
       }
+    }
+  }
+
+  const vendorTableExists = await knex.schema.hasTable("o_vendorConfig");
+  if (vendorTableExists) {
+    const columns = await knex.raw('PRAGMA table_info("o_vendorConfig")');
+    const columnList = Array.isArray(columns) ? columns : columns?.[0] ?? [];
+    const existingColumns = new Set(columnList.map((col: any) => col.name));
+    const vendorColumns: Array<{ name: string; type: string }> = [
+      { name: "author", type: "text" },
+      { name: "description", type: "text" },
+      { name: "name", type: "text" },
+      { name: "icon", type: "text" },
+      { name: "inputs", type: "text" },
+      { name: "createTime", type: "integer" },
+    ];
+
+    for (const column of vendorColumns) {
+      if (!existingColumns.has(column.name)) {
+        await knex.schema.alterTable("o_vendorConfig", (table) => {
+          if (column.type === "integer") {
+            table.integer(column.name);
+          } else {
+            table.text(column.name);
+          }
+        });
+        console.log("[初始化数据库] 已补充供应商表字段:", column.name);
+      }
+    }
+
+    const bundledVendors = loadBundledVendors();
+    const vendorRows = await knex("o_vendorConfig").select("id", "code", "author", "description", "name", "icon", "inputs", "inputValues", "models", "createTime");
+    for (const row of vendorRows) {
+      const bundled = bundledVendors.get(row.id);
+      const codeMeta = extractVendorMeta(row.code || bundled?.source);
+      const fallback = bundled?.vendor ?? codeMeta;
+      if (!fallback.name && !fallback.author && !fallback.description) continue;
+
+      const storedInputs = parseJsonArray(row.inputs);
+      const storedModels = parseJsonArray(row.models);
+      const storedInputValues = parseJsonObject(row.inputValues);
+      const bundledInputValues = bundled?.vendor.inputValues ?? {};
+
+      await knex("o_vendorConfig")
+        .where("id", row.id)
+        .update({
+          author: row.author || fallback.author || "",
+          description: row.description || fallback.description || "",
+          name: row.name || fallback.name || row.id,
+          icon: row.icon || fallback.icon || "",
+          inputs: JSON.stringify(storedInputs.length ? storedInputs : (bundled?.vendor.inputs ?? [])),
+          inputValues: JSON.stringify({ ...bundledInputValues, ...storedInputValues }),
+          models: JSON.stringify(storedModels.length ? storedModels : (bundled?.vendor.models ?? [])),
+          code: row.code || bundled?.source || "",
+          createTime: row.createTime || Date.now(),
+        });
+      if (!row.name || !row.author || !row.code) {
+        console.log("[初始化数据库] 已修复供应商资料:", row.id);
+      }
+    }
+  }
+
+  const videoTableExists = await knex.schema.hasTable("o_video");
+  if (videoTableExists) {
+    const videoColumns: Array<{ name: string; type: "text" | "integer" }> = [
+      { name: "model", type: "text" },
+      { name: "providerTaskId", type: "text" },
+      { name: "providerTaskData", type: "text" },
+      { name: "createTime", type: "integer" },
+    ];
+    for (const column of videoColumns) {
+      if (await knex.schema.hasColumn("o_video", column.name)) continue;
+      await knex.schema.alterTable("o_video", (table) => {
+        column.type === "integer" ? table.integer(column.name) : table.text(column.name);
+      });
+      console.log("[初始化数据库] 已补充视频任务字段:", column.name);
     }
   }
 };

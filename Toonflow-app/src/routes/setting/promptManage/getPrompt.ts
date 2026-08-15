@@ -1,6 +1,7 @@
 import express from "express";
 import u from "@/utils";
-import { success, error } from "@/lib/responseFormat";
+import { success } from "@/lib/responseFormat";
+import { isUserPromptId } from "@/utils/promptTemplate";
 
 const router = express.Router();
 
@@ -11,6 +12,7 @@ export default router.post("/", async (req, res) => {
       return {
         ...item,
         data: item.useData ? item.useData : item.data,
+        source: isUserPromptId(item.id) ? "user" : "official",
       };
     }),
   );

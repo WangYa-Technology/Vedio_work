@@ -8,7 +8,6 @@ uploads
 *.md
 LICENSE
 NOTICES.txt
-electron-builder.yml
 backup
 env
 docs

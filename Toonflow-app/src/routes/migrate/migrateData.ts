@@ -21,14 +21,7 @@ export default router.post(
         try {
             let db2: knex.Knex | null = null;
             //读取旧数据库路径
-            let db2Path: string;
-            if (typeof process.versions?.electron !== "undefined") {
-                const { app } = require("electron");
-                const userDataDir: string = app.getPath("userData");
-                db2Path = path.join(userDataDir, "db2.sqlite");
-            } else {
-                db2Path = path.join(process.cwd(), "db2.sqlite");
-            }
+            const db2Path = path.join(process.cwd(), "db2.sqlite");
             const dbDir = path.dirname(db2Path);
             // 确保数据库目录存在
             if (!fs.existsSync(dbDir)) {

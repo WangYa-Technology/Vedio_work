@@ -56,7 +56,7 @@
       "fileManagement": "Управление файлами",
       "otherConfig": "Другие настройки",
       "requestConfig": "URL запросов",
-      "about": "Проверить обновления",
+      "about": "О приложении",
       "logoutConfig": "Выйти",
       "skillsSkillsManagement": "НавыкиУправление навыками"
     },
@@ -280,7 +280,6 @@
       "restoreDefault": "По умолчанию",
       "regexPlaceholder": "Введите регулярное выражение",
       "showTitleBar": "показать строку заголовка",
-      "isElectron": "Переключиться в режим рабочего стола",
       "canvasScroll": "Прокрутка холста",
       "canvasIsDisabled": "Масштабирование холста",
       "agentCanvasScalingMethod": "Неограниченное использование колеса холста на рабочей странице",
@@ -1337,14 +1336,6 @@
     "editFailed": "Модификация не удалась",
     "submit": "представлять на рассмотрение"
   },
-  "components.storyboardImageCheck.camera": "Камера",
-  "components.storyboardImageCheck.dialogTitle": "Выбрать изображение раскадровки",
-  "components.storyboardImageCheck.preview": "Предпросмотр",
-  "components.storyboardImageCheck.src": "Предпросмотр изображения",
-  "components.storyboardImageCheck.title": "Заголовок",
-  "components.storyboardImageCheck.duration": "Длительность",
-  "components.storyboardImageCheck.lines": "Реплики",
-  "components.storyboardImageCheck.createTime": "Дата создания",
   "workbench.script.extractAssets": "Извлечь ресурсы",
   "promptManage": {
     "prompt": "подсказать слово"

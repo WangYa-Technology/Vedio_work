@@ -15,7 +15,7 @@ export default router.post(
   }),
   async (req, res) => {
     const { projectId, episodesId,agentType, type = "all" } = req.body;
-    const isolationKey = `${projectId}:${agentType}${episodesId ? `:${episodesId}` : ""}`;
+    const isolationKey = `${projectId}:${agentType}${episodesId !== undefined ? `:${episodesId}` : ""}`;
 
     if (type === "all") {
       await u.db("memories").where({ isolationKey }).del();

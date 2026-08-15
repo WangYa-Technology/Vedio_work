@@ -169,6 +169,28 @@
           <t-form-item :label="$t('workbench.cornerScape.resolution')">
             <t-select v-model="editForm.resolution" :placeholder="$t('workbench.cornerScape.resolutionPh')" :options="resolutionOptions" />
           </t-form-item>
+          <t-form-item label="推理模版">
+            <div class="promptReasoningBar">
+              <div class="promptReasoningSelect">
+                <t-select
+                  v-model="selectedReasoningTemplateId"
+                  :loading="reasoningTemplateLoading"
+                  :options="reasoningTemplateOptions"
+                  clearable
+                  @focus="loadReasoningTemplates"
+                  placeholder="选择推理模版" />
+              </div>
+              <t-button
+                theme="default"
+                variant="outline"
+                :loading="reasoningRunning"
+                :disabled="!selectedReasoningTemplateId || currentItem.promptState == '生成中'"
+                @click="runReasoningTemplate">
+                <template #icon><t-icon name="play" /></template>
+                推理
+              </t-button>
+            </div>
+          </t-form-item>
           <t-form-item :label="$t('workbench.cornerScape.promptLabel')">
             <t-loading style="width: 100%" :loading="currentItem.promptState == '生成中'">
               <t-textarea
@@ -178,6 +200,10 @@
                 :disabled="polishing"
                 @blur="savePromptOnBlur" />
             </t-loading>
+            <div v-if="reasoningPreview" class="promptReasoningPreview">
+              <div class="promptReasoningPreview__head">推理结果</div>
+              <t-textarea :value="reasoningPreview" readonly :autosize="{ minRows: 4, maxRows: 10 }" />
+            </div>
           </t-form-item>
           <t-form-item>
             <div class="drawerActions">
@@ -190,8 +216,12 @@
                 <template #icon><t-icon name="edit" /></template>
                 {{ $t("workbench.cornerScape.aiPolish") }}
               </t-button>
-              <t-button theme="primary" @click="regenerateItem" :disabled="currentItem.state == '生成中' ? true : false">
-                <template #icon><t-icon name="refresh" /></template>
+              <t-button
+                theme="primary"
+                :loading="regenerating"
+                @click="regenerateItem"
+                :disabled="currentItem.state == '生成中' || regenerating">
+                <template v-if="!regenerating" #icon><t-icon name="refresh" /></template>
                 {{ $t("workbench.cornerScape.regenerate") }}
               </t-button>
             </div>
@@ -228,6 +258,15 @@ interface DataItem {
   promptErrorReason: string;
 }
 
+interface ReasoningTemplateItem {
+  id: number;
+  name: string;
+  type: string;
+  data: string;
+  group?: string;
+  source?: string;
+}
+
 const checkboxValue = ref<string[]>([]);
 const { project } = storeToRefs(projectStore());
 const selectValue = ref(project.value?.imageModel ?? "");
@@ -237,6 +276,17 @@ const resolutionOptions = [
   { label: "2K", value: "2K" },
   { label: "4K", value: "4K" },
 ];
+const reasoningTemplates = ref<ReasoningTemplateItem[]>([]);
+const reasoningTemplateLoading = ref(false);
+const selectedReasoningTemplateId = ref<number | undefined>(undefined);
+const reasoningPreview = ref("");
+const reasoningRunning = ref(false);
+const reasoningTemplateOptions = computed(() =>
+  reasoningTemplates.value.map((item) => ({
+    label: `${item.name}${item.group ? ` · ${item.group}` : ""}`,
+    value: item.id,
+  })),
+);
 const options = ref([
   { labelKey: "workbench.cornerScape.filterRole", value: "role" },
   { labelKey: "workbench.cornerScape.filterScene", value: "scene" },
@@ -262,6 +312,7 @@ function createAbortController() {
 }
 
 onMounted(() => {
+  loadReasoningTemplates();
   getFilteredData();
 });
 
@@ -333,10 +384,92 @@ function clearSelection() {
   selectedIds.value = [];
 }
 
+const selectedReasoningTemplate = computed(() => reasoningTemplates.value.find((item) => item.id === selectedReasoningTemplateId.value) ?? null);
+
+function buildReasoningContext() {
+  const item = currentItem.value;
+  const lines = [
+    `名称：${editForm.name || item?.name || ""}`,
+    `类型：${editForm.type || item?.type || ""}`,
+    `描述：${editForm.describe || item?.describe || ""}`,
+    `当前提示词：${editForm.prompt || item?.prompt || ""}`,
+  ].filter((line) => line.replace(/：\s*$/, "").trim());
+  const imageLine = item?.filePath ? `@图1 ${item.name || "当前图片"}` : "无图片";
+  return {
+    text: lines.join("\n"),
+    images: imageLine,
+    imageName: item?.name || "当前图片",
+  };
+}
+
+function renderReasoningOutput(template: string) {
+  const context = buildReasoningContext();
+  let output = String(template || "");
+  output = output
+    .replace(/\{\{(?:输入文本|文本|测试文本|输入内容|提示词)\}\}/g, context.text || "【输入内容】")
+    .replace(/\{\{(?:图片列表|参考图|输入图片|图片输入)\}\}/g, context.images)
+    .replace(/\{\{图片(\d+)\}\}/g, (_, index) => {
+      const imageIndex = Number(index);
+      return imageIndex === 1 ? context.images : `【图片${index}】`;
+    })
+    .replace(/\{\{名称\}\}/g, currentItem.value?.name || editForm.name || "")
+    .replace(/\{\{类型\}\}/g, currentItem.value?.type || editForm.type || "")
+    .replace(/\{\{描述\}\}/g, editForm.describe || currentItem.value?.describe || "")
+    .replace(/\{\{当前提示词\}\}/g, editForm.prompt || currentItem.value?.prompt || "");
+  return output.trim();
+}
+
+async function runReasoningTemplate() {
+  if (!currentItem.value) return;
+  if (!selectedReasoningTemplate.value) {
+    window.$message.warning("请选择推理模版");
+    return;
+  }
+  reasoningRunning.value = true;
+  try {
+    const output = renderReasoningOutput(selectedReasoningTemplate.value.data);
+    reasoningPreview.value = output;
+    editForm.prompt = output;
+    window.$message.success("推理完成，结果已写入提示词");
+  } catch (error: any) {
+    reasoningPreview.value = "";
+    window.$message.error(error?.message || "推理失败");
+  } finally {
+    reasoningRunning.value = false;
+  }
+}
+
+async function loadReasoningTemplates() {
+  reasoningTemplateLoading.value = true;
+  try {
+    const { data } = await axios.post("/setting/promptManage/getPrompt");
+    const templates = Array.isArray(data) ? data : [];
+    reasoningTemplates.value = templates
+      .filter((item: any) => item.type === "imagePromptGeneration")
+      .map((item: any) => ({
+        id: Number(item.id),
+        name: item.name || "未命名模版",
+        type: item.type || "",
+        data: item.data || "",
+        group: item.group || "",
+        source: item.source || "",
+      }));
+    if (!reasoningTemplates.value.some((item) => item.id === selectedReasoningTemplateId.value)) {
+      selectedReasoningTemplateId.value = reasoningTemplates.value[0]?.id;
+    }
+  } catch (error) {
+    console.error("加载推理模版失败:", error);
+    reasoningTemplates.value = [];
+  } finally {
+    reasoningTemplateLoading.value = false;
+  }
+}
+
 // Drawer
 const drawerVisible = ref(false);
 const currentItem = ref<DataItem | null>(null);
 const selectedHistoryId = ref<number | null>(null);
+const regenerating = ref(false);
 
 async function toggleHistorySelect(id: number) {
   selectedHistoryId.value = selectedHistoryId.value === id ? null : id;
@@ -376,6 +509,7 @@ const editForm = reactive({
 
 async function openDrawer(item: DataItem) {
   selectedHistoryId.value = null;
+  reasoningPreview.value = "";
   // 先用当前数据打开抽屉
   editForm.assetsId = item.id;
   editForm.name = item.name || "";
@@ -414,7 +548,7 @@ function setItemState(id: number, state: string) {
   if (currentItem.value?.id === id) currentItem.value.state = state;
 }
 
-function regenerateItem() {
+async function regenerateItem() {
   if (!currentItem.value) return;
   if (!selectValue.value) {
     window.$message.warning($t("workbench.cornerScape.msg.selectModel"));
@@ -430,10 +564,10 @@ function regenerateItem() {
   }
   const item = currentItem.value;
   setItemState(item.id, "生成中");
-  drawerVisible.value = false;
   const controller = createAbortController();
-  axios
-    .post(
+  regenerating.value = true;
+  try {
+    await axios.post(
       "/assetsGenerate/generateAssets",
       {
         type: item.type ?? "props",
@@ -447,16 +581,16 @@ function regenerateItem() {
         concurrentCount: 1,
       },
       { signal: controller.signal },
-    )
-    .then(async () => {
-      window.$message.success($t("workbench.cornerScape.msg.genSuccess", { name: item.name }));
-      await getFilteredData();
-    })
-    .catch((e: any) => {
-      if (e.name === "CanceledError" || e.code === "ERR_CANCELED") return;
-      window.$message.error(e.message ?? $t("workbench.cornerScape.msg.genFailed", { name: item.name }));
-      setItemState(item.id, "生成失败");
-    });
+    );
+    window.$message.success($t("workbench.cornerScape.msg.genSuccess", { name: item.name }));
+    await getFilteredData();
+  } catch (e: any) {
+    if (e.name === "CanceledError" || e.code === "ERR_CANCELED") return;
+    window.$message.error(e.message ?? $t("workbench.cornerScape.msg.genFailed", { name: item.name }));
+    setItemState(item.id, "生成失败");
+  } finally {
+    regenerating.value = false;
+  }
 }
 
 // 提示词失焦保存
@@ -996,6 +1130,49 @@ watch(generatingData, (val) => {
   }
   &.selected {
     border-color: var(--td-brand-color);
+  }
+}
+
+.promptReasoningBar {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 10px;
+  .promptReasoningSelect {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    span {
+      color: var(--td-text-color-secondary);
+      font-size: 12px;
+      line-height: 1.2;
+    }
+    :deep(.t-select) {
+      width: 100%;
+    }
+  }
+  :deep(.t-button) {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+}
+
+.promptReasoningPreview {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  .promptReasoningPreview__head {
+    color: var(--td-text-color-secondary);
+    font-size: 12px;
+    line-height: 1.2;
+  }
+  :deep(.t-textarea__inner) {
+    min-height: 120px;
+    resize: vertical;
   }
 }
 

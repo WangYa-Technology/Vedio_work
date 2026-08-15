@@ -56,7 +56,7 @@
       "fileManagement": "ファイル管理",
       "otherConfig": "その他の設定",
       "requestConfig": "リクエストURL",
-      "about": "アップデートの確認",
+      "about": "アプリについて",
       "logoutConfig": "ログアウト",
       "skillsSkillsManagement": "スキルスキル管理"
     },
@@ -281,7 +281,6 @@
       "restoreDefault": "デフォルトに戻す",
       "regexPlaceholder": "正規表現を入力してください",
       "showTitleBar": "タイトルバーを表示する",
-      "isElectron": "デスクトップモードに切り替える",
       "canvasScroll": "キャンバススクロール",
       "canvasIsDisabled": "キャンバスのズーム",
       "agentCanvasScalingMethod": "制作ページでの無制限のキャンバス ホイール操作",
@@ -1337,14 +1336,6 @@
     "editFailed": "変更に失敗しました",
     "submit": "提出する"
   },
-  "components.storyboardImageCheck.camera": "カメラ",
-  "components.storyboardImageCheck.dialogTitle": "絵コンテ画像を選択",
-  "components.storyboardImageCheck.preview": "プレビュー",
-  "components.storyboardImageCheck.src": "プレビュー画像",
-  "components.storyboardImageCheck.title": "タイトル",
-  "components.storyboardImageCheck.duration": "時間",
-  "components.storyboardImageCheck.lines": "セリフ",
-  "components.storyboardImageCheck.createTime": "作成日時",
   "workbench.script.extractAssets": "アセットを抽出",
   "promptManage": {
     "prompt": "即効性のある言葉"

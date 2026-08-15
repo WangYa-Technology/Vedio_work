@@ -4,9 +4,7 @@
       <t-menu class="settingMenu" v-model:value="activeMenu" :style="{ height: '70vh' }">
         <t-menu-item v-for="item in menuItems" :key="item.key" :value="item.key">
           <template #icon>
-            <t-badge :count="needUpdate && item.key === 'about' ? 1 : 0" dot>
-              <component :is="item.icon" class="icon" />
-            </t-badge>
+            <component :is="item.icon" class="icon" />
           </template>
           {{ $t(item.label) }}
         </t-menu-item>
@@ -20,14 +18,13 @@
           <loginConfig v-if="activeMenu === 'loginConfig'" />
           <agentConfog v-if="activeMenu === 'agentConfog'" />
           <promptManage v-if="activeMenu === 'promptManage'" />
+          <contentSafety v-if="activeMenu === 'contentSafety'" />
           <otherConfig v-if="activeMenu === 'otherConfig'" />
           <dbConfig v-if="activeMenu === 'dbConfig'" />
           <about v-if="activeMenu === 'about'" />
           <logoutConfig v-if="activeMenu === 'logoutConfig'" />
           <memoryConfig v-if="activeMenu === 'memoryConfig'" />
-          <fileManagement v-if="activeMenu === 'fileManagement'" />
           <skillManagement v-if="activeMenu === 'skillManagement'" />
-          <devConfig v-if="activeMenu === 'devConfig'" />
         </div>
       </div>
     </div>
@@ -36,7 +33,7 @@
 
 <script setup lang="ts">
 import settingStore from "@/stores/setting";
-const { showSetting, activeMenu, needUpdate } = storeToRefs(settingStore());
+const { showSetting, activeMenu } = storeToRefs(settingStore());
 
 import languageConfig from "./components/languageConfig.vue";
 import requestConfig from "./components/requestConfig.vue";
@@ -48,24 +45,22 @@ import about from "./components/about.vue";
 import logoutConfig from "./components/logoutConfig.vue";
 import vendorConfig from "./components/vendorConfig.vue";
 import memoryConfig from "./components/memoryConfig.vue";
-import fileManagement from "./components/fileManagement.vue";
 import skillManagement from "./components/skillManagement.vue";
-import devConfig from "./components/devConfig.vue";
 import promptManage from "./components/promptManage.vue";
+import contentSafety from "./components/contentSafety.vue";
 
 const menuItems = [
   { key: "language", label: "settings.menu.language", icon: "i-translate" },
   { key: "vendorConfig", label: "settings.menu.vendorConfig", icon: "i-computer" },
   { key: "agentConfog", label: "settings.menu.agentConfig", icon: "i-color-filter" },
   { key: "promptManage", label: "settings.menu.promptManage", icon: "i-tips" },
+  { key: "contentSafety", label: "settings.menu.contentSafety", icon: "i-lock" },
   { key: "skillManagement", label: "settings.menu.skillsSkillsManagement", icon: "i-ring" },
   { key: "memoryConfig", label: "settings.menu.memoryConfig", icon: "i-memory-card-one" },
   { key: "loginConfig", label: "settings.menu.loginConfig", icon: "i-lock" },
   { key: "dbConfig", label: "settings.menu.dbConfig", icon: "i-data" },
-  { key: "fileManagement", label: "settings.menu.fileManagement", icon: "i-hard-disk" },
   { key: "otherConfig", label: "settings.menu.otherConfig", icon: "i-application-menu" },
   { key: "requestConfig", label: "settings.menu.requestConfig", icon: "i-api" },
-  { key: "devConfig", label: "settings.menu.devConfig", icon: "i-flask" },
   { key: "about", label: "settings.menu.about", icon: "i-info" },
   { key: "logoutConfig", label: "settings.menu.logoutConfig", icon: "i-logout" },
 ];

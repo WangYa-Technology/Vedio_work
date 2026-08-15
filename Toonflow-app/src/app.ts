@@ -120,7 +120,7 @@ export default async function startServe(randomPort: Boolean = false) {
 
   const port = randomPort ? 0 : 10588;
   return await new Promise((resolve) => {
-    server.listen(port, async () => {
+    server.listen(port, "0.0.0.0", async () => {
       const address = server.address();
       const realPort = typeof address === "string" ? address : address?.port;
       console.log(`[服务启动成功]: http://localhost:${realPort}`);
@@ -148,5 +148,4 @@ export function closeServe(): Promise<void> {
   });
 }
 
-const isElectron = typeof process.versions?.electron !== "undefined";
-if (!isElectron) startServe();
+startServe();

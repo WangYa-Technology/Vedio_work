@@ -40,16 +40,6 @@
         "fetchModelFailed": "获取模型数据失败:"
       },
       "goSetting": "去设置中添加模型"
-    },
-    "storyboardImageCheck": {
-      "camera": "镜头",
-      "dialogTitle": "选择分镜图",
-      "preview": "预览",
-      "src": "预览图",
-      "title": "标题",
-      "duration": "时长",
-      "lines": "台词",
-      "createTime": "创建时间"
     }
   },
   "settings": {
@@ -59,6 +49,7 @@
       "vendorConfig": "模型服务",
       "agentConfig": "Agent配置",
       "promptManage": "提示词管理",
+      "contentSafety": "内容安全约束",
       "skillManagement": "Skills技能管理",
       "memoryConfig": "Agent记忆配置",
       "loginConfig": "登录配置",
@@ -67,7 +58,7 @@
       "otherConfig": "其他配置",
       "requestConfig": "请求地址",
       "devConfig": "开发者选项",
-      "about": "检查更新",
+      "about": "关于",
       "logoutConfig": "退出登录",
       "skillsSkillsManagement": "Skills技能管理"
     },
@@ -366,6 +357,13 @@
       "isInteracting": "生产页无限画布拖拽性能优化",
       "closeIsInteracting": "关闭",
       "openIsInteracting": "开启"
+    },
+    "contentSafety": {
+      "desc": "此约束会自动附加到剧本、分镜 Agent 及其子 Agent 的系统提示词中，用于把高风险伤害描写改写为非血腥的紧张表达。留空表示不额外增加自定义约束。",
+      "constraint": "内容安全约束",
+      "restoreDefault": "恢复默认",
+      "placeholder": "请输入需要自动带入 Agent 的内容安全改写规则",
+      "save": "保存约束"
     },
     "request": {
       "warning": "如非特殊情况，不需要修改或者配置",
@@ -1544,5 +1542,12 @@
   "workbench.production.node.storyboard.videoDescPlaceholder": "请输入视频描述",
   "workbench.production.node.storyboard.videoDesc": "视频描述",
   "workbench.production.node.assets.confirmDeleteBody": "确认是否删除该资产",
-  "workbench.production.node.assets.removeFailed": "删除资产失败"
+  "workbench.production.node.assets.removeFailed": "删除资产失败",
+  "workbench.production.shots": "分镜列表",
+  "workbench.production.selectPlaceholder": "请选择剧集",
+  "workbench.production.getFlowData": "刷新工作区",
+  "workbench.production.episode": "第",
+  "workbench.production.noPrompt": "暂无镜头内容",
+  "workbench.production.noShots": "暂无分镜数据",
+  "workbench.production.productionAgent": "生产 Agent"
 }

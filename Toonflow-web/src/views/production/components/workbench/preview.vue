@@ -1,781 +1,802 @@
 <template>
-  <div class="previewContainer">
-    <div class="mainContent">
-      <!-- 左侧预览区域 -->
-      <div class="previewArea">
-        <div class="videoWrapper">
-          <img v-if="currentShot?.filePath" :src="currentShot.filePath" :alt="currentShot.description" class="previewImage" />
-          <div v-else class="placeholderImage">
-            <i-pic theme="outline" size="48" fill="#999" />
-            <span>{{ $t("workbench.production.preview.noImage") }}</span>
-          </div>
+  <div class="shotWorkspace">
+    <section class="shotListPanel">
+      <div class="panelHeader">
+        <div>
+          <h2>分镜列表</h2>
+          <span class="panelHint">选择分镜查看对应的完整分镜表内容</span>
         </div>
-
-        <div class="playerControls">
-          <div class="controlButtons">
-            <t-button theme="default" variant="text" size="small" shape="circle" @click="prevShot" :disabled="isFirstShot">
-              <template #icon><i-go-start theme="outline" size="18" /></template>
-            </t-button>
-            <t-button theme="primary" variant="text" size="medium" shape="circle" @click="togglePlay">
-              <template #icon>
-                <component :is="isPlaying ? 'i-pause' : 'i-play'" theme="outline" size="22" />
-              </template>
-            </t-button>
-            <t-button theme="default" variant="text" size="small" shape="circle" @click="nextShot" :disabled="isLastShot">
-              <template #icon><i-go-end theme="outline" size="18" /></template>
-            </t-button>
-          </div>
-          <div class="progressArea">
-            <span class="timeLabel">{{ formatTime(currentElapsed) }}</span>
-            <div class="progressBarWrapper" ref="progressBarRef" @mousedown="onProgressMouseDown">
-              <div class="progressTrack">
-                <div
-                  v-for="(shot, index) in shotList"
-                  :key="'seg-' + shot.id"
-                  class="progressSegment"
-                  :class="{ active: index === currentShotIndex, completed: index < currentShotIndex }"
-                  :style="{ width: getSegmentWidth(index) + '%', left: getSegmentLeft(index) + '%' }"
-                  @click.stop="jumpToShot(index)" />
-                <div
-                  v-for="(_, index) in shotList.slice(0, -1)"
-                  :key="'div-' + index"
-                  class="segmentDivider"
-                  :style="{ left: getSegmentLeft(index + 1) + '%' }" />
-                <div class="progressFill" :style="{ width: totalProgress + '%' }" />
-                <div class="progressHandle" :style="{ left: totalProgress + '%' }" />
-              </div>
-            </div>
-            <span class="timeLabel">{{ formatTime(totalDuration) }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="infoPanel">
-        <div class="infoSection">
-          <div class="sectionTitle">
-            <span class="titleIndicator" />
-            {{ $t("workbench.production.preview.storyboardDesc") }}
-          </div>
-          <div class="sectionContent">
-            【{{ $t("workbench.production.preview.serialNumber") }} {{ currentShotIndex + 1 }}】{{
-              currentShot?.description || $t("workbench.production.preview.noDescription")
-            }}
-          </div>
-        </div>
-
-        <div class="infoSection">
-          <div class="sectionTitle">
-            <span class="titleIndicator" />
-            {{ $t("workbench.production.preview.duration") }}
-          </div>
-          <div class="sectionContent">
-            {{
-              currentShot?.duration != null
-                ? currentShot.duration + " " + $t("workbench.production.preview.seconds")
-                : "3 " + $t("workbench.production.preview.seconds")
-            }}
-          </div>
-        </div>
-
-        <div class="infoSection">
-          <div class="sectionTitle">
-            <span class="titleIndicator" />
-            {{ $t("workbench.production.preview.relatedAssets") }}
-          </div>
-          <div class="characterList">
-            <div v-for="(char, index) in currentCharacters" :key="index" class="characterItem">
-              <t-image :src="char.avatar" fit="cover" class="characterAvatar" :style="{ width: '80px', height: '80px', borderRadius: '8px' }" />
-              <t-tag>
-                {{ char.name }}（{{
-                  char.type == "role"
-                    ? $t("workbench.production.preview.role")
-                    : char.type == "tool"
-                      ? $t("workbench.production.preview.prop")
-                      : $t("workbench.production.preview.scene")
-                }}）
-              </t-tag>
-            </div>
-            <div v-if="!currentCharacters.length" class="noCharacter">
-              <t-tag theme="default" variant="light">{{ $t("workbench.production.preview.noCharacters") }}</t-tag>
-            </div>
-          </div>
-        </div>
-        <div class="infoSection">
-          <div class="sectionTitle">
-            <span class="titleIndicator" />
-            {{ $t("workbench.production.preview.imagePrompt") }}
-          </div>
-          <div class="shootingTips">
-            <template v-for="item in promptTips" :key="item.label">
-              <div v-if="item.value" class="tipItem">
-                <span class="tipLabel">{{ item.label }}：</span>
-                <span class="tipValue">{{ item.value }}</span>
-              </div>
-            </template>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="shotListArea">
-      <div class="shotListHeader">
-        <div class="headerLeft">
-          <t-checkbox v-model="selectAll" @change="handleSelectAll">{{ $t("workbench.production.preview.selectAll") }}</t-checkbox>
+        <div class="panelActions">
+          <t-checkbox v-model="selectAll" @change="handleSelectAll">全选</t-checkbox>
           <t-button theme="default" variant="text" size="small" @click="confirmRestoreSort">
             <template #icon><i-undo theme="outline" size="16" /></template>
-            {{ $t("workbench.production.preview.restoreSort") }}
+            恢复排序
+          </t-button>
+          <t-button theme="default" variant="text" size="small" @click="exportImage">
+            <template #icon><i-download theme="outline" size="16" /></template>
+            导出
           </t-button>
         </div>
-        <t-button theme="default" variant="text" size="small" class="exportBtn" @click="exportImage">
-          <template #icon><i-download theme="outline" size="16" /></template>
-          {{ $t("workbench.production.preview.exportImage") }}
-        </t-button>
       </div>
-      <div class="shotListWrapper" ref="shotListWrapperRef">
+
+      <div v-if="shotList.length" ref="shotListWrapperRef" class="shotListWrapper">
         <VueDraggable
           v-model="shotList"
           :animation="150"
-          ghostClass="shotGhost"
-          dragClass="shotDrag"
+          ghost-class="shotGhost"
+          drag-class="shotDrag"
           :scroll="shotListWrapperRef"
-          :scrollSensitivity="80"
-          :scrollSpeed="10"
-          :forceFallback="true"
-          target=".shotList"
+          :scroll-sensitivity="80"
+          :scroll-speed="10"
+          :force-fallback="true"
           @start="isDragging = true"
           @end="onDragEnd">
           <TransitionGroup type="transition" tag="div" :name="!isDragging ? 'shot-flip' : undefined" class="shotList">
-            <div
+            <article
               v-for="(shot, index) in shotList"
               :key="shot.id"
-              class="shotItem"
+              class="shotRow"
               :class="{ active: currentShotIndex === index }"
               @click="selectShot(index)">
               <t-checkbox v-model="shot.selected" class="shotCheckbox" @click.stop />
-              <div class="shotImageWrapper">
-                <img v-if="shot.filePath" :src="shot.filePath" :alt="shot.description" class="shotImage" />
-                <div v-else class="shotPlaceholder">
-                  <i-pic theme="outline" size="24" fill="#999" />
+              <div class="shotRowIndex">{{ shot.shotNumber ?? index + 1 }}</div>
+              <div class="shotRowBody">
+                <div class="shotRowTitle">{{ getShotTitle(shot, index) }}</div>
+                <div class="shotRowMeta">
+                  <t-tag v-if="shot.duration != null" size="small" variant="outline">{{ shot.duration }} 秒</t-tag>
+                  <t-tag v-if="shot.scale" size="small" variant="light">{{ shot.scale }}</t-tag>
+                  <t-tag v-if="shot.cameraMovement" size="small" variant="light">{{ shot.cameraMovement }}</t-tag>
+                  <t-tag v-if="shot.state" size="small" :theme="stateTheme(shot.state)">{{ shot.state }}</t-tag>
                 </div>
-                <t-tag class="shotNumber" size="small" variant="dark">#{{ shot.id }}</t-tag>
+                <div v-if="shot.content || shot.description || shot.videoDesc" class="shotRowSummary">
+                  {{ shot.content || shot.description || shot.videoDesc }}
+                </div>
               </div>
-            </div>
+            </article>
           </TransitionGroup>
         </VueDraggable>
       </div>
-    </div>
+      <t-empty v-else class="emptyShots" description="暂无分镜数据" />
+    </section>
+
+    <section v-if="currentShot" class="shotDetailPanel">
+      <div class="detailHeader">
+        <div>
+          <span class="detailKicker">分镜 {{ currentShot.shotNumber ?? currentShotIndex + 1 }}</span>
+          <h2>{{ getShotTitle(currentShot, currentShotIndex) }}</h2>
+        </div>
+        <t-tag v-if="currentShot.state" :theme="stateTheme(currentShot.state)">{{ currentShot.state }}</t-tag>
+      </div>
+
+      <div class="detailStoryboard" v-if="currentShot.storyboard?.src">
+        <img :src="currentShot.storyboard.src" alt="分镜图" />
+        <div>
+          <span>分镜预览图</span>
+          <strong>{{ currentShot.excludesStoryboard ? "仅用于核对，不提交给视频模型" : "将作为视频参考" }}</strong>
+        </div>
+      </div>
+
+      <div class="detailMeta">
+        <div class="metaItem"><span>时长</span><strong>{{ currentShot.duration ?? "—" }}{{ currentShot.duration != null ? " 秒" : "" }}</strong></div>
+        <div class="metaItem"><span>景别</span><strong>{{ currentShot.scale || "—" }}</strong></div>
+        <div class="metaItem"><span>运镜</span><strong>{{ currentShot.cameraMovement || "—" }}</strong></div>
+        <div class="metaItem"><span>轨道</span><strong>{{ currentShot.track || currentShot.trackId || "—" }}</strong></div>
+      </div>
+
+      <div class="detailScroll">
+        <div class="modelReadyBar">
+          <div><span>视频模型</span><strong>{{ projectConfig.modelName || "未配置" }}</strong></div>
+          <div><span>画面规格</span><strong>{{ preferredResolution }} · {{ currentShot.duration || "—" }}s</strong></div>
+          <div><span>提交状态</span><strong>{{ currentShot.readiness?.ready ? "参数已就绪" : "待补充" }}</strong></div>
+        </div>
+        <div v-if="currentShot.segmentRows?.length" class="shotBreakdown">
+          <div class="shotBreakdownTitle">片段内镜头</div>
+          <div class="shotBreakdownRow" v-for="row in currentShot.segmentRows" :key="row.serial">
+            <span>{{ row.serial }}</span>
+            <span>{{ row.description }}</span>
+            <span>{{ row.duration }}s</span>
+            <span>{{ row.scale || "—" }} / {{ row.cameraMovement || "—" }}</span>
+          </div>
+        </div>
+        <div v-if="currentShot.referenceAssets?.length" class="referenceSection">
+          <div class="detailLabel">自动对应的参考资产（{{ currentShot.referenceAssets.length }}）</div>
+          <div class="referenceGrid">
+            <div v-for="asset in currentShot.referenceAssets" :key="asset.id" class="referenceItem" :class="{ missing: !asset.src }">
+              <img v-if="asset.src" :src="asset.src" :alt="asset.name" />
+              <div v-else class="referenceMissing">无图</div>
+              <span>{{ asset.name }}</span>
+              <small>{{ assetTypeLabel(asset.type) }}</small>
+            </div>
+          </div>
+        </div>
+        <DetailSection label="画面描述" :value="currentShot.content || currentShot.description || currentShot.videoDesc" />
+        <DetailSection label="叙事目的" :value="currentShot.narrativePurpose" />
+        <DetailSection label="台词" :value="currentShot.dialogue" />
+        <DetailSection label="音效" :value="currentShot.sound" />
+        <DetailSection label="图片提示词" :value="currentShot.imagePrompt" />
+        <DetailSection label="片段视频描述" :value="currentShot.videoDesc" />
+        <DetailSection label="提交给模型的视频提示词" :value="currentShot.videoPrompt || currentShot.prompt" />
+        <DetailSection label="参考资产" :value="formatAssetNames(currentShot)" />
+        <DetailSection v-if="currentShot.readiness?.messages?.length" label="参数检查" :value="currentShot.readiness.messages.join('；')" tone="danger" />
+        <DetailSection v-if="currentShot.reason" label="失败原因" :value="currentShot.reason" tone="danger" />
+      </div>
+    </section>
+    <t-empty v-else class="detailEmpty" description="选择左侧分镜查看详细内容" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onUnmounted, type Ref } from "vue";
+import { computed, nextTick, ref, watch, type Ref } from "vue";
 import { VueDraggable } from "vue-draggable-plus";
 import { DialogPlugin } from "tdesign-vue-next";
 import axios from "@/utils/axios";
-
-interface ShotCharacter {
-  name: string;
-  type: string;
-  avatar?: string;
-}
+import projectStore from "@/stores/project";
 
 interface Shot {
-  id: string;
-  camera?: number;
-  createTime?: number;
+  id: string | number;
+  shotNumber?: number | string;
+  title?: string;
+  content?: string;
   description?: string;
   duration?: number;
   filePath?: string;
-  frameMode?: number;
-  mode: string;
-  model: string;
   prompt?: string;
-  resolution?: string;
-  scriptId?: number;
-  sound?: number;
-  title?: string;
+  imagePrompt?: string;
+  videoPrompt?: string;
+  videoDesc?: string;
+  narrativePurpose?: string;
+  dialogue?: string;
+  sound?: string;
+  scale?: string;
+  cameraMovement?: string;
+  track?: string;
+  trackId?: number;
+  associateAssetsIds?: Array<number | string>;
+  characters?: Array<{ name?: string; type?: string; avatar?: string }>;
+  state?: string;
+  reason?: string;
   selected?: boolean;
-  characters?: ShotCharacter[];
+  excludesStoryboard?: boolean;
+  storyboard?: { src?: string; state?: string };
+  referenceAssets?: Array<{ id: number; name: string; type: string; src?: string }>;
+  readiness?: { ready: boolean; messages: string[]; referenceCount?: number };
+  segmentRows?: Array<{ serial: string; description: string; duration: number; scale: string; cameraMovement: string; dialogue: string; sound: string }>;
 }
-const episodesId = inject<Ref<number>>("episodesId");
 
-// 模拟分镜数据
+const episodesId = inject<Ref<number>>("episodesId");
+const { project } = storeToRefs(projectStore());
 const shotList = ref<Shot[]>([]);
-onMounted(() => {
-  getShotList();
-});
-//查询分镜数据
-async function getShotList() {
-  const { data } = await axios.post("/production/getStoryboardData", {
-    scriptId: episodesId!.value,
-  });
-  shotList.value = data;
-}
-const currentShot = computed(() => shotList.value[currentShotIndex.value] || null);
-const currentCharacters = computed(() => currentShot.value?.characters || []);
 const currentShotIndex = ref(0);
 const selectAll = ref(false);
-const shotListWrapperRef = ref<HTMLElement>();
-const progressBarRef = ref<HTMLElement>();
 const isDragging = ref(false);
+const shotListWrapperRef = ref<HTMLElement>();
+const initialOrder = ref<Array<string | number>>([]);
+const projectConfig = ref<Record<string, any>>({});
 
-// 播放状态
-const isPlaying = ref(false);
-const currentElapsed = ref(0);
-let playTimer: ReturnType<typeof setInterval> | null = null;
-const TICK_INTERVAL = 50;
-
-const initialOrder = shotList.value.map((shot) => shot.id);
-
-// ===== 计算属性 =====
-
-const currentShotDuration = computed(() => currentShot.value?.duration ?? 3);
-const isFirstShot = computed(() => currentShotIndex.value === 0);
-const isLastShot = computed(() => currentShotIndex.value === shotList.value.length - 1);
-
-const totalDuration = computed(() => shotList.value.reduce((sum, s) => sum + (s.duration ?? 3), 0));
-
-const totalProgress = computed(() => {
-  const elapsed = getCumulativeDuration(currentShotIndex.value) + currentElapsed.value;
-  return Math.min((elapsed / totalDuration.value) * 100, 100);
-});
-
-const promptTips = computed(() => [
-  { label: $t("workbench.production.preview.sceneDescription"), value: currentShot.value?.description },
-  // { label: "运镜方式", value: currentShot.value?.camera != null ? String(currentShot.value.camera) : undefined },
-  { label: $t("workbench.production.preview.promptLabel"), value: currentShot.value?.prompt },
-]);
-
-// ===== 工具函数 =====
-
-const getDuration = (index: number) => shotList.value[index]?.duration ?? 3;
-
-const getCumulativeDuration = (index: number) => {
-  let sum = 0;
-  for (let i = 0; i < index; i++) sum += getDuration(i);
-  return sum;
-};
-
-const getSegmentWidth = (index: number) => (getDuration(index) / totalDuration.value) * 100;
-const getSegmentLeft = (index: number) => (getCumulativeDuration(index) / totalDuration.value) * 100;
-
-const formatTime = (seconds: number) => {
-  const s = Math.floor(seconds);
-  return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
-};
-
-// ===== 播放控制 =====
-
-const stopPlay = () => {
-  if (playTimer) {
-    clearInterval(playTimer);
-    playTimer = null;
-  }
-  isPlaying.value = false;
-};
-
-const startPlay = () => {
-  if (playTimer) return;
-  isPlaying.value = true;
-  playTimer = setInterval(() => {
-    currentElapsed.value += TICK_INTERVAL / 1000;
-    if (currentElapsed.value >= currentShotDuration.value) {
-      if (!isLastShot.value) {
-        currentElapsed.value = 0;
-        currentShotIndex.value++;
-        scrollToCurrentShot();
-      } else {
-        currentElapsed.value = currentShotDuration.value;
-        stopPlay();
-      }
-    }
-  }, TICK_INTERVAL);
-};
-
-const togglePlay = () => {
-  if (isPlaying.value) return stopPlay();
-  if (isLastShot.value && currentElapsed.value >= currentShotDuration.value) {
-    currentShotIndex.value = 0;
-    currentElapsed.value = 0;
-  }
-  startPlay();
-};
-
-onUnmounted(stopPlay);
-
-// ===== 导航 =====
-
-const goToShot = (index: number, shouldStopPlay = true) => {
-  if (shouldStopPlay) stopPlay();
-  currentShotIndex.value = index;
-  currentElapsed.value = 0;
-  scrollToCurrentShot();
-};
-
-const prevShot = () => {
-  if (!isFirstShot.value) goToShot(currentShotIndex.value - 1);
-};
-const nextShot = () => {
-  if (!isLastShot.value) goToShot(currentShotIndex.value + 1);
-};
-const jumpToShot = (index: number) => goToShot(index);
-const selectShot = (index: number) => goToShot(index);
-
-// ===== 进度条拖拽 =====
-
-const onProgressMouseDown = (e: MouseEvent) => {
-  const bar = progressBarRef.value;
-  if (!bar) return;
-  stopPlay();
-
-  const seekTo = (event: MouseEvent) => {
-    const rect = bar.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
-    const targetTime = ratio * totalDuration.value;
-
-    let cumulative = 0;
-    for (let i = 0; i < shotList.value.length; i++) {
-      const dur = getDuration(i);
-      if (cumulative + dur > targetTime) {
-        currentShotIndex.value = i;
-        currentElapsed.value = targetTime - cumulative;
-        scrollToCurrentShot();
-        return;
-      }
-      cumulative += dur;
-    }
-    currentShotIndex.value = shotList.value.length - 1;
-    currentElapsed.value = getDuration(shotList.value.length - 1);
-  };
-
-  seekTo(e);
-
-  const onMouseUp = () => {
-    document.removeEventListener("mousemove", seekTo);
-    document.removeEventListener("mouseup", onMouseUp);
-  };
-  document.addEventListener("mousemove", seekTo);
-  document.addEventListener("mouseup", onMouseUp);
-};
-
-// ===== 列表操作 =====
-
-const scrollToCurrentShot = () => {
-  nextTick(() => {
-    const items = shotListWrapperRef.value?.querySelectorAll(".shotItem");
-    (items?.[currentShotIndex.value] as HTMLElement)?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
-  });
-};
-
-const handleSelectAll = (checked: boolean | string[]) => {
-  const isChecked = Array.isArray(checked) ? checked.length > 0 : checked;
-  shotList.value.forEach((shot) => (shot.selected = isChecked));
-};
-
-const confirmRestoreSort = () => {
-  const dialog = DialogPlugin.confirm({
-    header: $t("workbench.production.preview.restoreSort"),
-    body: $t("workbench.production.preview.restoreSortConfirm"),
-    onConfirm: () => {
-      shotList.value.sort((a, b) => initialOrder.indexOf(a.id) - initialOrder.indexOf(b.id));
-      dialog.destroy();
-    },
-    onClose: () => dialog.destroy(),
-  });
-};
+const currentShot = computed(() => shotList.value[currentShotIndex.value] || null);
+const preferredResolution = computed(() => projectConfig.value.durationResolutionMap?.[0]?.resolution?.[0] || projectConfig.value.videoRatio || "—");
 
 watch(
-  () => shotList.value.map((s) => s.selected),
-  (selections) => {
-    selectAll.value = selections.length > 0 && selections.every(Boolean);
+  [() => project.value?.id, () => episodesId?.value],
+  ([projectId, episodeId]) => {
+    if (projectId && episodeId) getShotList();
+  },
+  { immediate: true },
+);
+
+async function getShotList() {
+  try {
+    const { data } = await axios.post("/production/workbench/getGenerateData", {
+      scriptId: episodesId?.value,
+      projectId: project.value?.id != null ? Number(project.value.id) : undefined,
+    });
+    projectConfig.value = data?.projectConfig || {};
+    const rows = Array.isArray(data?.trackList) ? data.trackList : [];
+    shotList.value = rows.map((item: any, index: number) => ({
+      id: item.id ?? index,
+      shotNumber: item.shotNumber ?? index + 1,
+      title: item.title || item.segmentTitle || `片段 ${index + 1}`,
+      content: item.summary || item.videoDesc || "",
+      duration: item.duration,
+      imagePrompt: item.imagePrompt || "",
+      videoDesc: item.videoDesc || "",
+      videoPrompt: item.prompt || "",
+      dialogue: item.dialogue || "",
+      sound: item.sound || "",
+      state: item.state ?? item.status ?? "未生成",
+      reason: item.reason || "",
+      trackId: item.id,
+      segmentRows: item.segmentRows || [],
+      storyboard: item.storyboard,
+      referenceAssets: item.referenceAssets || [],
+      associateAssetsIds: (item.referenceAssets || []).map((asset: any) => asset.id),
+      excludesStoryboard: item.excludesStoryboard,
+      readiness: item.readiness,
+      selected: false,
+    }));
+    initialOrder.value = shotList.value.map((shot) => shot.id);
+    currentShotIndex.value = 0;
+  } catch (error) {
+    console.error("加载分镜列表失败:", error);
+    shotList.value = [];
+  }
+}
+
+function getShotTitle(shot: Shot, index: number) {
+  return shot.title || `第 ${shot.shotNumber ?? index + 1} 镜`;
+}
+
+function stateTheme(state?: string) {
+  if (state === "已完成") return "success";
+  if (state === "生成中") return "warning";
+  if (state === "生成失败") return "danger";
+  return "default";
+}
+
+function formatAssets(ids?: Array<number | string>) {
+  return ids?.length ? ids.map((id) => `#${id}`).join("、") : "暂无绑定参考资产";
+}
+
+function formatAssetNames(shot: Shot) {
+  if (shot.referenceAssets?.length) return shot.referenceAssets.map((item) => `${item.name}（${assetTypeLabel(item.type)}）`).join("、");
+  if (shot.associateAssetsIds?.length) return formatAssets(shot.associateAssetsIds);
+  if (shot.characters?.length) {
+    return shot.characters.map((item) => item.name || item.type).filter(Boolean).join("、");
+  }
+  return "暂无绑定参考资产";
+}
+
+function assetTypeLabel(type?: string) {
+  if (type === "role") return "角色";
+  if (type === "scene") return "场景";
+  if (type === "tool") return "道具";
+  return "资产";
+}
+
+function selectShot(index: number) {
+  currentShotIndex.value = index;
+  nextTick(() => {
+    const item = shotListWrapperRef.value?.querySelectorAll(".shotRow")?.[index] as HTMLElement | undefined;
+    item?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  });
+}
+
+function handleSelectAll(checked: boolean | string[]) {
+  const value = Array.isArray(checked) ? checked.length > 0 : checked;
+  shotList.value.forEach((shot) => (shot.selected = value));
+}
+
+watch(
+  () => shotList.value.map((shot) => shot.selected),
+  (values) => {
+    selectAll.value = values.length > 0 && values.every(Boolean);
   },
   { deep: true },
 );
 
-const onDragEnd = () => nextTick(() => (isDragging.value = false));
+function confirmRestoreSort() {
+  const dialog = DialogPlugin.confirm({
+    header: "恢复排序",
+    body: "确定恢复分镜表原始顺序吗？",
+    onConfirm: () => {
+      shotList.value.sort((a, b) => initialOrder.value.indexOf(a.id) - initialOrder.value.indexOf(b.id));
+      currentShotIndex.value = 0;
+      dialog.destroy();
+    },
+    onClose: () => dialog.destroy(),
+  });
+}
 
-function exportImage() {
-  //拿到选中的数据
-  const selectedShots = shotList.value.filter((shot) => shot.selected).map((shot) => ({ id: shot.id }));
-  if (selectedShots.length <= 0) {
-    DialogPlugin.alert({
-      header: $t("workbench.production.preview.tip"),
-      body: $t("workbench.production.preview.selectAtLeastOne"),
-    });
+function onDragEnd() {
+  isDragging.value = false;
+  const activeId = currentShot.value?.id;
+  if (activeId != null) {
+    const nextIndex = shotList.value.findIndex((shot) => shot.id === activeId);
+    if (nextIndex >= 0) currentShotIndex.value = nextIndex;
+  }
+}
+
+function drawWrappedText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number, maxLines: number) {
+  const chars = Array.from(text);
+  let line = "";
+  let lineCount = 0;
+  for (const char of chars) {
+    const next = line + char;
+    if (ctx.measureText(next).width <= maxWidth) {
+      line = next;
+      continue;
+    }
+    ctx.fillText(line, x, y + lineCount * lineHeight);
+    lineCount += 1;
+    if (lineCount >= maxLines) return;
+    line = char;
+  }
+  if (line && lineCount < maxLines) ctx.fillText(line, x, y + lineCount * lineHeight);
+}
+
+async function exportImage() {
+  const selectedShots = shotList.value.filter((shot) => shot.selected);
+  if (!selectedShots.length) {
+    DialogPlugin.alert({ header: "提示", body: "请至少选择一个分镜" });
     return;
   }
-  axios
-    .post("/production/exportImage", {
-      shotId: selectedShots,
-    })
-    .then((response) => {
-      const { data } = response;
-      const link = document.createElement("a");
-      link.href = data.url;
-      link.download = $t("workbench.production.preview.exportFilename");
-      link.click();
-    })
-    .catch((error) => {
-      console.error("导出图片失败:", error);
+  try {
+    const width = 1600;
+    const headerHeight = 120;
+    const cardHeight = 330;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = headerHeight + selectedShots.length * cardHeight + 40;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("浏览器不支持图片导出");
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#111111";
+    ctx.font = "700 42px sans-serif";
+    ctx.fillText(`${project.value?.name || "项目"} · 分镜清单`, 48, 66);
+    ctx.fillStyle = "#777777";
+    ctx.font = "22px sans-serif";
+    ctx.fillText(`共 ${selectedShots.length} 个片段`, 48, 100);
+
+    selectedShots.forEach((shot, index) => {
+      const top = headerHeight + index * cardHeight;
+      ctx.fillStyle = index % 2 === 0 ? "#f6f6f6" : "#ffffff";
+      ctx.fillRect(32, top, width - 64, cardHeight - 16);
+      ctx.fillStyle = "#111111";
+      ctx.font = "700 28px sans-serif";
+      ctx.fillText(`#${shot.shotNumber ?? index + 1}  ${getShotTitle(shot, index)}`, 64, top + 52);
+      ctx.fillStyle = "#555555";
+      ctx.font = "22px sans-serif";
+      ctx.fillText(`时长 ${shot.duration ?? "—"}s  ·  状态 ${shot.state || "未生成"}`, 64, top + 92);
+      ctx.fillStyle = "#222222";
+      ctx.font = "24px sans-serif";
+      drawWrappedText(ctx, shot.content || shot.description || shot.videoDesc || "暂无画面描述", 64, top + 142, width - 128, 36, 4);
+      ctx.fillStyle = "#666666";
+      ctx.font = "20px sans-serif";
+      drawWrappedText(ctx, `参考资产：${formatAssetNames(shot)}`, 64, top + 292, width - 128, 28, 1);
     });
+
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((value) => value ? resolve(value) : reject(new Error("图片生成失败")), "image/png");
+    });
+    const url = URL.createObjectURL(blob);
+    try {
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `storyboard-${Date.now()}.png`;
+      link.click();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  } catch (error) {
+    console.error("导出分镜失败:", error);
+    window.$message.error((error as Error).message || "导出分镜失败");
+  }
 }
 </script>
 
+<script lang="ts">
+import { defineComponent, h } from "vue";
+
+export default defineComponent({
+  components: {
+    DetailSection: defineComponent({
+      props: {
+        label: { type: String, required: true },
+        value: { type: String, default: "" },
+        tone: { type: String, default: "" },
+      },
+      setup(props) {
+        return () =>
+          h("div", { class: ["detailSection", props.tone ? `tone-${props.tone}` : ""] }, [
+            h("div", { class: "detailLabel" }, props.label),
+            h("div", { class: "detailValue" }, props.value || "暂无内容"),
+          ]);
+      },
+    }),
+  },
+});
+</script>
+
 <style lang="scss" scoped>
-%flex-center {
+.shotWorkspace {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.9fr) minmax(480px, 1.5fr);
+  gap: 18px;
+  height: calc(100vh - 110px);
+  min-height: 520px;
+}
+
+.shotListPanel,
+.shotDetailPanel,
+.detailEmpty {
+  min-height: 0;
+  border: 1px solid #e7e7e7;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.shotListPanel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panelHeader,
+.detailHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px;
+  border-bottom: 1px solid #eeeeee;
+}
+
+h2 {
+  margin: 0;
+  color: #202020;
+  font-size: 18px;
+}
+
+.panelHint,
+.detailKicker {
+  display: block;
+  margin-top: 5px;
+  color: #8a8a8a;
+  font-size: 12px;
+}
+
+.panelActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.shotListWrapper {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.shotList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.shotRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #ececec;
+  border-radius: 9px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+
+  &:hover,
+  &.active {
+    border-color: var(--td-brand-color-10-10);
+    background: var(--td-brand-color-1);
+  }
+}
+
+.shotCheckbox {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.shotRowIndex {
+  flex: 0 0 28px;
+  color: var(--td-brand-color-10-10);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 24px;
+  text-align: center;
+  border-radius: 5px;
+  background: var(--td-brand-color-1);
+}
+
+.shotRowBody {
+  min-width: 0;
+  flex: 1;
+}
+
+.shotRowTitle {
+  color: #292929;
+  font-size: 14px;
+  line-height: 1.5;
+  font-weight: 600;
+}
+
+.shotRowMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.shotRowSummary {
+  display: -webkit-box;
+  margin-top: 7px;
+  overflow: hidden;
+  color: #777;
+  font-size: 12px;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.emptyShots,
+.detailEmpty {
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.previewContainer {
+.shotDetailPanel {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 120px);
-  gap: 16px;
+  overflow: hidden;
+}
 
-  .mainContent {
-    display: flex;
-    flex: 1;
-    gap: 24px;
-    min-height: 0;
+.detailHeader h2 {
+  margin-top: 5px;
+}
 
-    .previewArea {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      background: #f5f5f5;
-      border-radius: 12px;
-      overflow: hidden;
-      border: 1px solid #e8e8e8;
+.detailStoryboard {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  padding: 14px 20px;
+  border-bottom: 1px solid #eeeeee;
 
-      .videoWrapper {
-        width: 100%;
-        flex: 1;
-        @extend %flex-center;
-        min-height: 0;
-
-        .previewImage {
-          max-width: 100%;
-          max-height: 100%;
-          object-fit: contain;
-        }
-
-        .placeholderImage {
-          @extend %flex-center;
-          flex-direction: column;
-          gap: 12px;
-          color: #999;
-          font-size: 14px;
-        }
-      }
-
-      .playerControls {
-        width: 100%;
-        flex-shrink: 0;
-        padding: 10px 16px 12px;
-        background: rgba(255, 255, 255, 0.95);
-        border-top: 1px solid #e8e8e8;
-
-        .controlButtons {
-          @extend %flex-center;
-          gap: 8px;
-          margin-bottom: 8px;
-        }
-
-        .progressArea {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-
-          .timeLabel {
-            font-size: 12px;
-            color: #999;
-            font-variant-numeric: tabular-nums;
-            min-width: 40px;
-            text-align: center;
-            user-select: none;
-          }
-
-          .progressBarWrapper {
-            flex: 1;
-            height: 20px;
-            display: flex;
-            align-items: center;
-            cursor: pointer;
-
-            .progressTrack {
-              width: 100%;
-              height: 6px;
-              background: #e8e8e8;
-              border-radius: 3px;
-              position: relative;
-
-              .progressSegment {
-                position: absolute;
-                top: 0;
-                height: 100%;
-                border-radius: 3px;
-                transition: background 0.2s;
-                z-index: 1;
-                &.completed {
-                  background: rgba(102, 126, 234, 0.15);
-                }
-                &.active {
-                  background: var(--td-brand-color-10-5) !important;
-                }
-                &:hover {
-                  background: var(--td-brand-color-10-3);
-                }
-              }
-
-              .segmentDivider {
-                position: absolute;
-                top: -2px;
-                width: 1.5px;
-                height: calc(100% + 4px);
-                background: #ccc;
-                z-index: 3;
-                transform: translateX(-50%);
-                pointer-events: none;
-              }
-
-              .progressFill {
-                position: absolute;
-                top: 0;
-                left: 0;
-                height: 100%;
-                background: var(--td-brand-color-10);
-                border-radius: 3px;
-                z-index: 2;
-                transition: width 0.05s linear;
-                pointer-events: none;
-              }
-
-              .progressHandle {
-                position: absolute;
-                top: 50%;
-                width: 14px;
-                height: 14px;
-                background: #fff;
-                border: 2px solid var(--td-brand-color-10-10);
-                border-radius: 50%;
-                transform: translate(-50%, -50%);
-                z-index: 4;
-                box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
-                transition:
-                  left 0.05s linear,
-                  transform 0.15s;
-                pointer-events: none;
-                &:hover {
-                  transform: translate(-50%, -50%) scale(1.2);
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-
-    .infoPanel {
-      width: 380px;
-      flex-shrink: 0;
-      overflow-y: auto;
-      padding-right: 8px;
-
-      &::-webkit-scrollbar {
-        width: 4px;
-      }
-      &::-webkit-scrollbar-thumb {
-        background: #ddd;
-        border-radius: 2px;
-      }
-
-      .infoSection {
-        margin-bottom: 20px;
-        padding-bottom: 16px;
-        border-bottom: 1px solid #f0f0f0;
-        &:last-child {
-          border-bottom: none;
-        }
-
-        .sectionTitle {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 14px;
-          font-weight: 600;
-          color: #333;
-          margin-bottom: 12px;
-
-          .titleIndicator {
-            width: 3px;
-            height: 14px;
-            background: var(--td-brand-color-10);
-            border-radius: 2px;
-          }
-        }
-
-        .sectionContent {
-          font-size: 14px;
-          color: #666;
-          line-height: 1.6;
-        }
-
-        .characterList {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 12px;
-
-          .characterItem {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 8px;
-
-            .characterAvatar {
-              border: 2px solid #e8e8e8;
-            }
-          }
-
-          .noCharacter {
-            padding: 8px 0;
-          }
-        }
-
-        .characterDesc {
-          margin-top: 12px;
-          font-size: 13px;
-          color: #999;
-          line-height: 1.5;
-        }
-
-        .shootingTips {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-
-          .tipItem {
-            font-size: 13px;
-            color: #666;
-            line-height: 1.6;
-            .tipLabel {
-              color: #333;
-              font-weight: 500;
-            }
-          }
-        }
-      }
-    }
+  img {
+    width: 180px;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    border-radius: 5px;
+    background: #f3f3f3;
   }
 
-  .shotListArea {
-    flex-shrink: 0;
-    border-top: 1px solid #e8e8e8;
-    padding-top: 12px;
+  span,
+  strong {
+    display: block;
+  }
 
-    .shotListHeader {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 12px;
-      padding: 0 4px;
+  span {
+    color: #888;
+    font-size: 12px;
+  }
 
-      .headerLeft {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
+  strong {
+    margin-top: 6px;
+    color: #333;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+}
 
-      .exportBtn {
-        color: var(--td-brand-color-10-10);
-      }
-    }
+.detailMeta {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #eeeeee;
+  background: #fafafa;
+}
 
-    .shotListWrapper {
-      overflow-x: auto;
-      &::-webkit-scrollbar {
-        height: 6px;
-      }
-      &::-webkit-scrollbar-thumb {
-        background: #ddd;
-        border-radius: 3px;
-      }
+.metaItem {
+  min-width: 0;
 
-      .shotList {
-        display: flex;
+  span,
+  strong {
+    display: block;
+  }
 
-        .shotItem {
-          flex-shrink: 0;
-          width: 160px;
-          margin-right: 12px;
-          cursor: pointer;
-          border-radius: 12px;
-          overflow: hidden;
-          border: 2px solid transparent;
-          background: #fff;
-          position: relative;
+  span {
+    color: #999;
+    font-size: 12px;
+  }
 
-          &:hover,
-          &.active {
-            border-color: var(--td-brand-color-10-10);
-          }
+  strong {
+    margin-top: 5px;
+    overflow: hidden;
+    color: #333;
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
 
-          .shotCheckbox {
-            position: absolute;
-            top: 8px;
-            left: 8px;
-            z-index: 2;
-          }
+.detailScroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 20px;
+}
 
-          .shotImageWrapper {
-            position: relative;
-            width: 100%;
-            height: 100px;
-            background: #f5f5f5;
+.modelReadyBar {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 0.8fr;
+  gap: 8px;
+  margin-bottom: 16px;
 
-            .shotImage {
-              width: 100%;
-              height: 100%;
-              object-fit: cover;
-            }
+  div {
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid #e9e9e9;
+    border-radius: 6px;
+    background: #fafafa;
+  }
 
-            .shotPlaceholder {
-              width: 100%;
-              height: 100%;
-              @extend %flex-center;
-            }
+  span,
+  strong {
+    display: block;
+  }
 
-            .shotNumber {
-              position: absolute;
-              bottom: 6px;
-              right: 6px;
-            }
-          }
-        }
-      }
-    }
+  span {
+    color: #999;
+    font-size: 11px;
+  }
+
+  strong {
+    margin-top: 4px;
+    overflow: hidden;
+    color: #333;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.shotBreakdown {
+  margin-bottom: 16px;
+  overflow: hidden;
+  border: 1px solid #e8e8e8;
+  border-radius: 6px;
+}
+
+.shotBreakdownTitle {
+  padding: 9px 10px;
+  color: #555;
+  font-size: 12px;
+  font-weight: 600;
+  background: #fafafa;
+}
+
+.shotBreakdownRow {
+  display: grid;
+  grid-template-columns: 42px minmax(180px, 1fr) 48px minmax(110px, 0.35fr);
+  border-top: 1px solid #eeeeee;
+
+  span {
+    padding: 8px;
+    color: #666;
+    font-size: 11px;
+    line-height: 1.5;
+  }
+}
+
+.referenceSection {
+  margin-bottom: 18px;
+}
+
+.referenceGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 8px;
+}
+
+.referenceItem {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #e8e8e8;
+  border-radius: 5px;
+  background: #fff;
+
+  img,
+  .referenceMissing {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    object-fit: cover;
+    color: #aaa;
+    font-size: 11px;
+    background: #f4f4f4;
+  }
+
+  span,
+  small {
+    display: block;
+    padding: 0 7px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  span {
+    margin-top: 6px;
+    color: #333;
+    font-size: 11px;
+  }
+
+  small {
+    padding-bottom: 6px;
+    color: #999;
+    font-size: 10px;
+  }
+
+  &.missing {
+    border-color: var(--td-warning-color-4);
+  }
+}
+
+.detailSection {
+  padding: 0 0 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #f0f0f0;
+
+  &:last-child {
+    margin-bottom: 0;
+    border-bottom: 0;
+  }
+}
+
+.detailLabel {
+  margin-bottom: 7px;
+  color: #555;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.detailValue {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #666;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.tone-danger .detailLabel,
+.tone-danger .detailValue {
+  color: var(--td-error-color-6);
+}
+
+@media (max-width: 900px) {
+  .shotWorkspace {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .shotListPanel {
+    min-height: 360px;
+  }
+
+  .shotDetailPanel,
+  .detailEmpty {
+    min-height: 480px;
   }
 }
 </style>
 
-<!-- Sortable.js 动态添加的 class 不受 scoped 影响，需要全局样式 -->
 <style lang="scss">
 .shotGhost {
-  opacity: 0.5;
-  background: #c8ebfb;
+  opacity: 0.55;
   border: 2px dashed var(--td-brand-color-10-10) !important;
 }
 
 .shotDrag {
   opacity: 0.9;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.25);
 }
 
 .shot-flip-move {
-  transition: transform 0.5s cubic-bezier(0.55, 0, 0.1, 1);
+  transition: transform 0.35s ease;
 }
 </style>

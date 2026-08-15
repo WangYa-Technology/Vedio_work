@@ -19,7 +19,7 @@
               v-model="item.enable"
               :customValue="[1, 0]"
               @click.stop
-              @change="(val: number) => onChange(item, val)"
+              @change="(val) => onChange(item, Number(val))"
               style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); z-index: 10"></t-switch>
           </t-menu-item>
         </t-menu>
@@ -36,7 +36,7 @@
             <span class="author">@{{ currentVendor.author }}</span>
           </div>
           <t-form-item>
-            <MdPreview v-model="currentVendor.description" :theme="'light'" />
+            <MdPreview v-model="currentVendor.description" :theme="themeSetting.mode === 'dark' ? 'dark' : 'light'" />
           </t-form-item>
           <t-form-item v-for="input in requiredInputs" :key="input.key" :name="input.key">
             <template #label>
@@ -82,7 +82,10 @@
           </div>
           <t-card v-for="(item, index) in vendorModels" :key="index" class="modelCard">
             <div class="topInfo jb ac">
-              <span class="modelCardName">{{ item.name }}</span>
+              <div class="modelCardNameWrap">
+                <t-avatar v-if="getProviderLogoByModel(item.modelName)" size="24px" shape="round" :image="getProviderLogoByModel(item.modelName)!" />
+                <span class="modelCardName">{{ item.name }}</span>
+              </div>
               <div class="actionBtns">
                 <t-button size="small" variant="text" :loading="!!testingModels[item.modelName]" @click="handleTestModel(item)">
                   <template #icon><i-lightning theme="outline" /></template>
@@ -100,6 +103,7 @@
             </div>
             <div class="tags">
               <t-tag theme="primary">{{ $t(getTypeLabel(item.type)) }}</t-tag>
+              <t-tag v-if="item.type === 'text' && item.think" variant="light">{{ $t("settings.vendor.think") }}</t-tag>
               <template v-for="(mode, mIdx) in (item as any).mode" :key="mIdx">
                 <t-tag v-if="!Array.isArray(mode)" variant="light">{{ $t(getModeLabel(mode, item.type)) }}</t-tag>
                 <t-tag v-else variant="light" v-for="(m, mmIdx) in mode" :key="mmIdx">
@@ -322,8 +326,12 @@ import { CodeEditor } from "monaco-editor-vue3";
 import { DialogPlugin } from "tdesign-vue-next";
 import axios from "@/utils/axios";
 import VENDOR_CODE_TEMPLATE from "@/lib/vendorTemplate.ts?raw";
+import settingStore from "@/stores/setting";
+import providersLogo from "@/utils/ai/providersLogo";
 import type { UploadFile } from "tdesign-vue-next";
 import { LoadingPlugin } from "tdesign-vue-next";
+
+const { themeSetting } = storeToRefs(settingStore());
 
 // ── 类型 ──
 interface TextModel {
@@ -390,7 +398,7 @@ const TYPE_LABEL_MAP: Record<string, string> = {
 const MODE_LABEL_MAP: Record<string, string> = {
   singleImage: "settings.vendor.singleImage",
   multiImage: "settings.vendor.multiImage",
-  // multiReference: "settings.vendor.multiReference",
+  multiReference: "settings.vendor.multiReference",
   // gridImage: "settings.vendor.gridImage",
   startEndRequired: "settings.vendor.startEndRequired",
   endFrameOptional: "settings.vendor.endFrameOptional",
@@ -407,7 +415,32 @@ function getTypeLabel(type: string) {
 
 function getModeLabel(mode: string, type: string) {
   if (mode === "text") return type === "image" ? "settings.vendor.textToImage" : "settings.vendor.textToVideo";
+  const countedReference = String(mode).match(/^(videoReference|imageReference|audioReference|textReference):(\d+)$/);
+  if (countedReference) {
+    const label = MODE_LABEL_MAP[countedReference[1]];
+    return label ? `${$t(label)} ×${countedReference[2]}` : mode;
+  }
   return MODE_LABEL_MAP[mode] || mode;
+}
+
+const modelProviderRules: Array<{ pattern: RegExp; provider: keyof typeof providersLogo }> = [
+  { pattern: /gpt|o1|o3|o4|openai/i, provider: "openai" },
+  { pattern: /claude|anthropic/i, provider: "anthropic" },
+  { pattern: /deepseek/i, provider: "deepSeek" },
+  { pattern: /gemini|veo/i, provider: "gemini" },
+  { pattern: /qwen|qwq|tongyi|通义|wanx|万相|wan/i, provider: "qwen" },
+  { pattern: /glm|zhipu|智谱/i, provider: "zhipu" },
+  { pattern: /doubao|seedream|seedance|volc/i, provider: "volcengine" },
+  { pattern: /kling|可灵/i, provider: "kling" },
+  { pattern: /vidu/i, provider: "vidu" },
+  { pattern: /runninghub/i, provider: "runninghub" },
+  { pattern: /grok|xai|grsai/i, provider: "grsai" },
+];
+
+function getProviderLogoByModel(modelName?: string) {
+  if (!modelName) return null;
+  const matchedRule = modelProviderRules.find((rule) => rule.pattern.test(modelName));
+  return matchedRule ? providersLogo[matchedRule.provider] : null;
 }
 
 const editorOptions = {
@@ -442,8 +475,8 @@ const videoModeOptions = [
 ];
 const otherOptions = [
   { label: "settings.vendor.textRef", value: "textReference" },
-  { label: "settings.vendor.imageRef", value: "videoReference" },
-  { label: "settings.vendor.videoRef", value: "imageReference" },
+  { label: "settings.vendor.imageRef", value: "imageReference" },
+  { label: "settings.vendor.videoRef", value: "videoReference" },
   { label: "settings.vendor.audioRef", value: "audioReference" },
 ];
 
@@ -1185,12 +1218,13 @@ function handleFileChange(e: Event) {
   .modelList {
     width: 300px;
     height: 90%;
+    display: flex;
+    flex-direction: column;
     min-height: 0;
     .listContent {
       flex: 1;
       min-height: 0;
       overflow: auto;
-      height: 100%;
     }
 
     .listFooter {
@@ -1210,12 +1244,18 @@ function handleFileChange(e: Event) {
       height: 95%;
       padding-right: 10px;
       overflow-y: auto;
+
       .modelCard {
         width: 100%;
         margin-top: 10px;
         .topInfo {
           margin-left: 4px;
           margin-right: 4px;
+          .modelCardNameWrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
           .modelCardName {
             font-size: 15px;
             font-weight: 900;

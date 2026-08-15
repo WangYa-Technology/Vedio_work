@@ -14,7 +14,8 @@ export default router.post(
       adaptationStrategy: z.string(),
       script: z.array(
         z.object({
-          id: z.number(),
+          id: z.number().optional(),
+          name: z.string().optional(),
           content: z.string(),
         }),
       ),

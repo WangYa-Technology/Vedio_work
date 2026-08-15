@@ -63,8 +63,6 @@
 import modelSelect from "@/components/modelSelect.vue";
 import providersLogo from "@/utils/ai/providersLogo";
 import axios from "@/utils/axios";
-import settingStore from "@/stores/setting";
-const { isElectron } = storeToRefs(settingStore());
 
 interface ModelType {
   id: number;
@@ -154,11 +152,7 @@ function confirmConfig() {
 }
 //跳转官方网站
 async function jumpToWebsite() {
-  if (isElectron.value) {
-    await fetch(`toonflow://openurlwithbrowser?url=https://api.toonflow.net`);
-  } else {
-    window.open("https://api.toonflow.net", "_blank");
-  }
+  window.open("https://api.toonflow.net", "_blank", "noopener,noreferrer");
 }
 const loading = ref(false);
 
@@ -167,7 +161,11 @@ function getAgentDeploy() {
   axios
     .post("/setting/agentDeploy/getAgentDeploy")
     .then((res) => {
-      modelData.value = res.data.map((item: any) => {
+      // v1.1.8 groups ordinary and advanced agent settings in an object,
+      // while older servers return the ordinary settings array directly.
+      const items = Array.isArray(res.data) ? res.data : (res.data?.qrdinaryData ?? res.data?.ordinaryData ?? []);
+      if (!Array.isArray(items)) throw new Error("Agent 配置数据格式不正确");
+      modelData.value = items.map((item: any) => {
         return {
           id: item.id,
           model: item.model,

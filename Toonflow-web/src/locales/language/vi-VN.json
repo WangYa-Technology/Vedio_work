@@ -55,7 +55,7 @@
       "fileManagement": "Quản lý tệp",
       "otherConfig": "Cấu hình khác",
       "requestConfig": "Địa chỉ yêu cầu (API)",
-      "about": "Kiểm tra cập nhật",
+      "about": "Giới thiệu",
       "logoutConfig": "Đăng xuất",
       "skillsSkillsManagement": "Kỹ năngQuản lý kỹ năng"
     },
@@ -1329,14 +1329,6 @@
     "editFailed": "Sửa đổi không thành công",
     "submit": "nộp"
   },
-  "components.storyboardImageCheck.camera": "Máy quay",
-  "components.storyboardImageCheck.dialogTitle": "Chọn hình storyboard",
-  "components.storyboardImageCheck.preview": "Xem trước",
-  "components.storyboardImageCheck.src": "Ảnh xem trước",
-  "components.storyboardImageCheck.title": "Tiêu đề",
-  "components.storyboardImageCheck.duration": "Thời lượng",
-  "components.storyboardImageCheck.lines": "Lời thoại",
-  "components.storyboardImageCheck.createTime": "Thời gian tạo",
   "workbench.script.extractAssets": "Trích xuất tài sản",
   "promptManage": {
     "prompt": "lời nhắc"

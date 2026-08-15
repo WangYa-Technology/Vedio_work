@@ -22,7 +22,7 @@
           </t-chat-list>
           <t-chat-sender
             class="inputBox"
-            :disabled="status === 'pending' || status === 'streaming'"
+            :disabled="status === 'pending' || status === 'streaming' || loadingProjectData || !activeProjectId"
             v-model="inputValue"
             :loading="status === 'pending' || status === 'streaming'"
             placeholder="$t('workbench.scriptAgent.inputPlaceholder')"
@@ -81,10 +81,6 @@
               <div class="ac" v-else-if="currentTable == 2">
                 <t-button @click="editMdPreview">{{ $t("workbench.scriptAgent.edit") }}</t-button>
               </div>
-              <div class="ac" style="gap: 6px" v-else-if="currentTable == 4">
-                <t-button @click="editStoryboardScript">{{ $t("workbench.scriptAgent.edit") }}</t-button>
-                <t-button variant="outline" @click="exportStoryboardScript" :disabled="!storyboardScriptContent">{{ $t("workbench.scriptAgent.exportStoryboardScript") }}</t-button>
-              </div>
             </template>
             <!-- <t-tab-panel :value="1" :label="$t('workbench.scriptAgent.chapterEvents')">
               <pre>{{ planData.event }}</pre>
@@ -126,12 +122,6 @@
                     </div>
                   </div>
                 </div>
-              </div>
-            </t-tab-panel>
-            <t-tab-panel :value="4" :label="$t('workbench.scriptAgent.storyboardScript')">
-              <div class="panelContent">
-                <t-empty v-if="!storyboardScriptContent" :title="$t('workbench.scriptAgent.storyboardScriptPlaceholder')" />
-                <MdPreview v-else :modelValue="storyboardScriptContent" />
               </div>
             </t-tab-panel>
           </t-tabs>
@@ -183,11 +173,19 @@ import projectStore from "@/stores/project";
 const { project } = storeToRefs(projectStore());
 import editMdPreivew from "@/components/editMdPreivew.vue";
 import scriptAgentStore from "@/stores/scriptAgent";
-const { connected, messages, status, planData } = storeToRefs(scriptAgentStore());
-import storyboardAgentStore from "@/stores/storyboardAgent";
-const { shots: storyboardShots } = storeToRefs(storyboardAgentStore());
+const scriptAgent = scriptAgentStore();
+const { connected, messages, status, planData } = storeToRefs(scriptAgent);
 const currentTable = ref(1);
 const inputValue = ref("");
+const activeProjectId = computed<number | null>(() => {
+  const id = Number(project.value?.id);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+});
+const loadingProjectData = ref(false);
+const projectLoadVersion = ref(0);
+const planRequestVersion = ref(0);
+const forceGenerateVisible = ref(false);
+const novelData = ref<any[]>([]);
 const toolbars: ToolbarNames[] = [
   "bold",
   "underline",
@@ -226,21 +224,44 @@ const defMsg: ChatMessagesData[] = [
   },
 ];
 
-onMounted(() => {
-  if (messages.value.length <= 0) messages.value = [...defMsg, ...messages.value];
-  getPlanData();
-  getNovel();
-  loadStoryboardScript();
+function resetProjectView() {
+  planData.value = { storySkeleton: "", adaptationStrategy: "", script: [] };
+  novelData.value = [];
+  forceGenerateVisible.value = false;
+  messages.value = [...defMsg];
+}
 
-  if (messages.value.length <= 1) getHistory();
-});
-const agentWorkDataId = ref<number>();
-async function getPlanData() {
-  const { data } = await axios.post("/scriptAgent/getPlanData", { projectId: project.value?.id, agentType: "scriptAgent" });
-  planData.value.storySkeleton = data.data.storySkeleton;
-  planData.value.adaptationStrategy = data.data.adaptationStrategy;
-  planData.value.script = data.data.script || [];
-  agentWorkDataId.value = data.id;
+function normalizePlanResponse(response: any) {
+  const payload = response?.data ?? response ?? {};
+  const value = payload?.data ?? payload;
+  return {
+    storySkeleton: typeof value?.storySkeleton === "string" ? value.storySkeleton : "",
+    adaptationStrategy: typeof value?.adaptationStrategy === "string" ? value.adaptationStrategy : "",
+    script: Array.isArray(value?.script)
+      ? value.script
+          .filter((item: any) => item && typeof item.name === "string" && item.name.trim())
+          .map((item: any) => ({
+            ...(Number.isSafeInteger(Number(item.id)) ? { id: Number(item.id) } : {}),
+            name: item.name,
+            content: typeof item.content === "string" ? item.content : "",
+          }))
+      : [],
+  };
+}
+
+async function getPlanData(projectId = activeProjectId.value) {
+  if (!projectId) return;
+  const requestVersion = ++planRequestVersion.value;
+  try {
+    const response = await axios.post("/scriptAgent/getPlanData", { projectId, agentType: "scriptAgent" });
+    if (requestVersion !== planRequestVersion.value || activeProjectId.value !== projectId) return;
+    planData.value = normalizePlanResponse(response);
+  } catch (error: any) {
+    if (requestVersion === planRequestVersion.value && activeProjectId.value === projectId) {
+      console.error("加载脚本 Agent 工作区失败:", error);
+      window.$message.error(error?.message || "脚本 Agent 工作区加载失败");
+    }
+  }
 }
 
 //快捷发送
@@ -251,11 +272,10 @@ const handleActions = {
 };
 
 function handleSend(text: string) {
-  scriptAgentStore().chat(text);
-  inputValue.value = "";
+  if (activeProjectId.value && scriptAgent.chat(text)) inputValue.value = "";
 }
 function handleStop() {
-  scriptAgentStore().stopGenerate();
+  scriptAgent.stopGenerate();
 }
 
 const memoryTypeLabel: Record<string, string> = {
@@ -263,7 +283,7 @@ const memoryTypeLabel: Record<string, string> = {
   summary: $t("workbench.scriptAgent.memoryType.summary"),
   all: $t("workbench.scriptAgent.memoryType.all"),
 };
-function handleClearMemory(type: "message" | "summary" | "all" | "reconnect") {
+function handleClearMemory(type: "message" | "summary" | "all") {
   const dialog = DialogPlugin.confirm({
     header: $t("workbench.scriptAgent.msg.clearConfirm"),
     body: $t("workbench.scriptAgent.msg.clearBody", { type: memoryTypeLabel[type] }),
@@ -271,50 +291,55 @@ function handleClearMemory(type: "message" | "summary" | "all" | "reconnect") {
     cancelBtn: $t("workbench.scriptAgent.msg.cancel"),
     theme: "warning",
     onConfirm: async () => {
-      await axios.post(`/agents/clearMemory`, { projectId: project.value?.id, agentType: "scriptAgent", type });
+      const projectId = activeProjectId.value;
+      if (!projectId) return;
+      await axios.post(`/agents/clearMemory`, { projectId, agentType: "scriptAgent", type });
       window.$message.success($t("workbench.scriptAgent.msg.memoryCleared", { type: memoryTypeLabel[type] }));
       dialog.destroy();
-      getHistory();
+      await getHistory(projectId, projectLoadVersion.value);
     },
   });
 }
 function handleReconnect() {
-   const dialog = DialogPlugin.confirm({
+  const dialog = DialogPlugin.confirm({
     header: $t("workbench.scriptAgent.msg.reconnect"),
     body: $t("workbench.scriptAgent.msg.notReconnect"),
     confirmBtn: $t("workbench.scriptAgent.msg.keepReconnect"),
     cancelBtn: $t("workbench.scriptAgent.msg.cancel"),
     theme: "warning",
     onConfirm: async () => {
-      storyboardAgentStore().reconnect();
+      scriptAgent.reconnect();
       dialog.destroy();
     },
   });
 }
 
 const loadingHistory = ref(false);
-async function getHistory() {
+async function getHistory(projectId: number, loadVersion: number) {
   loadingHistory.value = true;
-  const { data } = await axios.post(`/agents/getMemory`, {
-    projectId: project.value?.id,
-    agentType: "scriptAgent",
-  });
-  messages.value = [...defMsg, ...data];
-  loadingHistory.value = false;
+  try {
+    const { data } = await axios.post(`/agents/getMemory`, {
+      projectId,
+      agentType: "scriptAgent",
+    });
+    if (loadVersion !== projectLoadVersion.value || activeProjectId.value !== projectId) return;
+    messages.value = [...defMsg, ...(Array.isArray(data) ? data : [])];
+  } catch (error) {
+    console.error("加载脚本 Agent 历史失败:", error);
+  } finally {
+    if (loadVersion === projectLoadVersion.value) loadingHistory.value = false;
+  }
 }
 
-// 强制生成蒙层
-const forceGenerateVisible = ref(false);
-const novelData = ref([]);
-
-function getNovel() {
-  axios.post("/novel/getNovelData", { projectId: project.value?.id }).then(({ data }: any) => {
-    novelData.value = data;
-    const hasUnfinished = (novelData.value as any[]).some((item: any) => item.eventState === 0);
-    if (hasUnfinished && !forceGenerateVisible.value) {
-      forceGenerateVisible.value = true;
-    }
-  });
+async function getNovel(projectId: number, loadVersion: number) {
+  try {
+    const { data } = await axios.post("/novel/getNovelData", { projectId });
+    if (loadVersion !== projectLoadVersion.value || activeProjectId.value !== projectId) return;
+    novelData.value = Array.isArray(data) ? data : [];
+    forceGenerateVisible.value = novelData.value.some((item: any) => item.eventState === 0);
+  } catch (error) {
+    console.error("加载小说数据失败:", error);
+  }
 }
 
 const dialogVisible = ref(false);
@@ -345,8 +370,9 @@ function editScript(index: number) {
 
 async function saveScript() {
   if (scriptEditIndex.value < 0) return;
-  planData.value.script[scriptEditIndex.value] = { ...scriptEditData.value };
-  await scriptAgentStore().setPlanData();
+  const current = planData.value.script[scriptEditIndex.value];
+  planData.value.script[scriptEditIndex.value] = { ...current, ...scriptEditData.value };
+  await scriptAgent.setPlanData();
   await getPlanData();
   window.$message.success($t("workbench.scriptAgent.msg.scriptUpdated"));
   scriptEditVisible.value = false;
@@ -366,99 +392,59 @@ async function delScript(index: number) {
       } else {
         planData.value.script.splice(index, 1);
       }
-      await scriptAgentStore().setPlanData();
+      await scriptAgent.setPlanData();
       await getPlanData();
       window.$message.success($t("workbench.scriptAgent.msg.scriptDeleted"));
       dialog.destroy();
     },
   });
 }
-function onConfirm(value: string) {
-  if (currentTable.value == 4) {
-    // Save storyboard script to storyboardAgent workbench data
-    axios
-      .post("/storyboard/setStoryboardWorkbenchData", {
-        projectId: project.value?.id,
-        data: { storyboardScript: value },
-      })
-      .then(() => {
-        storyboardScriptRaw.value = value;
-        window.$message.success($t("workbench.scriptAgent.msg.updated"));
-      })
-      .catch(() => {
-        window.$message.error($t("workbench.scriptAgent.msg.error"));
-      });
+async function onConfirm(value: string) {
+  const projectId = activeProjectId.value;
+  if (!projectId) return;
+  try {
+    if (currentTable.value == 1) planData.value.storySkeleton = value;
+    if (currentTable.value == 2) planData.value.adaptationStrategy = value;
+    await scriptAgent.setPlanData();
+    await getPlanData(projectId);
+    window.$message.success($t("workbench.scriptAgent.msg.updated"));
+  } catch {
+    window.$message.error($t("workbench.scriptAgent.msg.error"));
+  }
+}
+
+async function refreshProjectData(projectId: number | null) {
+  const loadVersion = ++projectLoadVersion.value;
+  ++planRequestVersion.value;
+  loadingProjectData.value = Boolean(projectId);
+  loadingHistory.value = Boolean(projectId);
+  resetProjectView();
+
+  if (!projectId || !scriptAgent.updateContext(projectId)) {
+    scriptAgent.disconnect();
+    loadingProjectData.value = false;
+    loadingHistory.value = false;
     return;
   }
-  axios
-    .post("/scriptAgent/updateData", {
-      id: agentWorkDataId.value,
-      data: {
-        storySkeleton: currentTable.value == 1 ? value : planData.value.storySkeleton,
-        adaptationStrategy: currentTable.value == 2 ? value : planData.value.adaptationStrategy,
-        script: planData.value.script,
-      },
-    })
-    .then(() => {
-      window.$message.success($t("workbench.scriptAgent.msg.updated"));
-      getPlanData();
-    })
-    .catch(() => {
-      window.$message.error($t("workbench.scriptAgent.msg.error"));
-    });
+
+  await Promise.allSettled([
+    getPlanData(projectId),
+    getHistory(projectId, loadVersion),
+    getNovel(projectId, loadVersion),
+  ]);
+  if (loadVersion === projectLoadVersion.value && activeProjectId.value === projectId) {
+    loadingProjectData.value = false;
+  }
 }
 
-// 分镜脚本
-const storyboardScriptRaw = ref("");
+watch(activeProjectId, (projectId) => void refreshProjectData(projectId), { immediate: true });
 
-const storyboardScriptContent = computed(() => {
-  if (storyboardScriptRaw.value) return storyboardScriptRaw.value;
-  // Build from storyboard shots if available
-  if (!storyboardShots.value?.length) return "";
-  return storyboardShots.value
-    .map((shot: any, i: number) => {
-      const lines = [`### 镜头 ${i + 1}`];
-      if (shot.content) lines.push(shot.content);
-      if (shot.cameraMovement) lines.push(`**运镜**: ${shot.cameraMovement}`);
-      if (shot.scale) lines.push(`**景别**: ${shot.scale}`);
-      if (shot.duration) lines.push(`**时长**: ${shot.duration}s`);
-      if (shot.dialogue) lines.push(`**台词**: ${shot.dialogue}`);
-      if (shot.sound) lines.push(`**音效**: ${shot.sound}`);
-      return lines.join("\n");
-    })
-    .join("\n\n---\n\n");
+onUnmounted(() => {
+  ++projectLoadVersion.value;
+  ++planRequestVersion.value;
+  scriptAgent.disconnect();
 });
 
-async function loadStoryboardScript() {
-  if (!project.value?.id) return;
-  try {
-    const { data } = await axios.post("/storyboard/getStoryboardWorkbenchData", { projectId: project.value.id });
-    if (data.data?.storyboardScript) {
-      storyboardScriptRaw.value = data.data.storyboardScript;
-    }
-  } catch {}
-  // Also fetch shots for fallback display
-  try {
-    await storyboardAgentStore().fetchStoryboardData(Number(project.value.id));
-  } catch {}
-}
-
-function editStoryboardScript() {
-  editContent.value = storyboardScriptContent.value;
-  dialogVisible.value = true;
-}
-
-function exportStoryboardScript() {
-  const content = storyboardScriptContent.value;
-  if (!content) return;
-  const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `分镜脚本_${project.value?.name || "export"}.md`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 </script>
 
 <style lang="scss" scoped>

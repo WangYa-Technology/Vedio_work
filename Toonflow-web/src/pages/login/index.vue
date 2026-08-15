@@ -1,11 +1,11 @@
 <template>
-  <div class="loginPage" :style="{ height: isElectron ? 'calc(100vh - 32px)' : '100vh' }">
+  <div class="loginPage" style="height: 100vh">
     <div class="formBox">
       <!-- 设置弹窗 -->
       <t-dialog v-model:visible="showSettingModal" :header="$t('login.settings')" @confirm="handleSaveSetting" :width="400">
         <t-form label-width="80px" labelAlign="top">
           <t-form-item :label="$t('login.requestAddress')">
-            <t-input v-model="tempBaseUrl" placeholder="http://localhost:10588" />
+            <t-input v-model="tempBaseUrl" placeholder="http://127.0.0.1:10588" />
           </t-form-item>
         </t-form>
       </t-dialog>
@@ -62,7 +62,7 @@ const handleChangeLang = (data) => {
 };
 
 const store = settingStore();
-const { baseUrl, isElectron } = storeToRefs(store);
+const { baseUrl } = storeToRefs(store);
 
 const showSettingModal = ref(false);
 const tempBaseUrl = ref(baseUrl.value);

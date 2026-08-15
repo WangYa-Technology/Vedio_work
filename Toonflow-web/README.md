@@ -1,6 +1,6 @@
 <p align="center">
   <strong>中文</strong> | 
-  <a href="./docs/README.en.md">English</a>
+  Web-only architecture
 </p>
 
 <div align="center">
@@ -39,7 +39,7 @@
 
 > **本仓库仅包含前端源代码，适用于开发者进行二次开发或定制。**
 >
-> 🎉 **如果您是普通用户，想要直接使用 Toonflow，请前往主仓库下载完整客户端：**
+> 🎉 **运行时由 `Toonflow-app` 的服务端托管本项目构建出的网页包：**
 >
 > | 平台                                                                                                         | 链接                                                                            |
 > | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
@@ -48,9 +48,8 @@
 >
 > 主仓库包含：
 >
-> - ✅ 完整的桌面客户端
 > - ✅ 后端服务
-> - ✅ 开箱即用的安装包
+> - ✅ 唯一运行时网页包（`data/web`）
 > - ✅ 详细的使用教程
 
 ---
@@ -386,7 +385,7 @@ VITE_WS_URL=ws://127.0.0.1:10588
 
 ### Q: 我只想使用 Toonflow，不需要开发，怎么办？
 
-**A:** 请前往主仓库下载完整客户端：
+**A:** 启动主仓库的 Web 服务后，在浏览器访问 `http://127.0.0.1:10588`：
 
 - **GitHub**：👉 [Toonflow-app](https://github.com/HBAI-Ltd/Toonflow-app)
 - **Gitee**：👉 [Toonflow-app](https://gitee.com/HBAI-Ltd/Toonflow-app)
@@ -397,7 +396,7 @@ VITE_WS_URL=ws://127.0.0.1:10588
 
 | 仓库             | 说明                             | GitHub                                             | Gitee                                            |
 | ---------------- | -------------------------------- | -------------------------------------------------- | ------------------------------------------------ |
-| **Toonflow-app** | 完整客户端（推荐普通用户）       | [GitHub](https://github.com/HBAI-Ltd/Toonflow-app) | [Gitee](https://gitee.com/HBAI-Ltd/Toonflow-app) |
+| **Toonflow-app** | 后端服务与唯一运行时网页包       | [GitHub](https://github.com/HBAI-Ltd/Toonflow-app) | [Gitee](https://gitee.com/HBAI-Ltd/Toonflow-app) |
 | **Toonflow-web** | 前端源代码（本仓库，适合开发者） | [GitHub](https://github.com/HBAI-Ltd/Toonflow-web) | [Gitee](https://gitee.com/HBAI-Ltd/Toonflow-web) |
 
 ---

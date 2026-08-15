@@ -91,7 +91,11 @@ export default (toolCpnfig: ToolConfig) => {
       execute: async ({ ids }) => {
         console.log("[tools] get_script_content", "[tools] get_script_content", ids);
         const thinking = msg.thinking(`正在获取脚本内容...`);
-        const data = await u.db("o_script").whereIn("id", ids).select("content", "name");
+        const data = await u
+          .db("o_script")
+          .where("projectId", resTool.data.projectId)
+          .whereIn("id", ids)
+          .select("content", "name");
         const text = data && data.length ? data.map((d) => `<scriptItem name="${d.name}">${d.content}</scriptItem>`).join("\n") : "";
         thinking.appendText(`获取到脚本内容:\n` + text);
         thinking.updateTitle(`获取脚本内容完成`);

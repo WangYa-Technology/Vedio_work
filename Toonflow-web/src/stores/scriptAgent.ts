@@ -1,5 +1,4 @@
 import axios from "@/utils/axios";
-import projectStore from "@/stores/project";
 import settingStore from "@/stores/setting";
 import { useChat } from "@/utils/useChat";
 
@@ -9,21 +8,41 @@ interface PlanData {
   script: { id?: number; name: string; content: string }[];
 }
 
+function createEmptyPlanData(): PlanData {
+  return {
+    storySkeleton: "",
+    adaptationStrategy: "",
+    script: [],
+  };
+}
+
+function clonePlanData(data: PlanData): PlanData {
+  return {
+    storySkeleton: data.storySkeleton || "",
+    adaptationStrategy: data.adaptationStrategy || "",
+    script: data.script.map((item) => ({
+      ...(item.id !== undefined ? { id: item.id } : {}),
+      name: item.name,
+      content: item.content || "",
+    })),
+  };
+}
+
 export default defineStore(
   "scriptAgent",
   () => {
-    const planData = ref<PlanData>({
-      storySkeleton: "",
-      adaptationStrategy: "",
-      script: [],
+    const planData = ref<PlanData>(createEmptyPlanData());
+    const currentProjectId = ref<number | null>(null);
+    const contextVersion = ref(0);
+    let saveQueue: Promise<void> = Promise.resolve();
+    const chatAuth = reactive({
+      isolationKey: "",
+      projectId: undefined as number | undefined,
     });
 
-    const { connected, messages, chat, stopGenerate, socket, status } = useChat({
+    const { connected, messages, chat, stopGenerate, socket, status, connect, reconnect, disconnect, clearMessages } = useChat({
       url: `${settingStore().baseUrl}/socket/scriptAgent`,
-      auth: {
-        isolationKey: `${projectStore().project?.id}:scriptAgent`,
-        projectId: projectStore().project?.id,
-      },
+      auth: chatAuth,
       manageLifecycle: false,
       xmlTags: [
         { tag: "storySkeleton", keepInMessage: false },
@@ -51,11 +70,15 @@ export default defineStore(
             }
           }
         }
-        if (status === "complete") {
-          setPlanData();
+        if (status === "complete" && currentProjectId.value !== null) {
+          const projectId = currentProjectId.value;
+          const version = contextVersion.value;
+          void setPlanData(planData.value, projectId, version).catch((error) => {
+            console.error("[scriptAgent] 工作区数据保存失败:", error);
+          });
         }
       },
-      autoConnect: true,
+      autoConnect: false,
     });
     // 注册 getPlanData 事件（无需依赖组件生命周期）
     watch(
@@ -70,11 +93,69 @@ export default defineStore(
       { immediate: true },
     );
 
-    async function setPlanData() {
-      await axios.post("/scriptAgent/setPlanData", { projectId: projectStore().project?.id, agentType: "scriptAgent", data: planData.value });
+    function setPlanData(
+      source: PlanData = planData.value,
+      projectId: number | null = currentProjectId.value,
+      version = contextVersion.value,
+    ) {
+      if (projectId === null || version !== contextVersion.value || projectId !== currentProjectId.value) {
+        return Promise.resolve();
+      }
+
+      const snapshot = clonePlanData(source);
+      const task = saveQueue.then(async () => {
+        // A project switch can happen while an earlier save is in flight. Never
+        // send a queued snapshot under the new project's context.
+        if (version !== contextVersion.value || projectId !== currentProjectId.value) return;
+        await axios.post("/scriptAgent/setPlanData", {
+          projectId,
+          agentType: "scriptAgent",
+          data: snapshot,
+        });
+      });
+      saveQueue = task.catch((error) => {
+        console.error("[scriptAgent] 工作区数据保存失败:", error);
+      });
+      return task;
     }
 
-    return { connected, messages, chat, stopGenerate, socket, status, planData, setPlanData };
+    function updateContext(projectId: number) {
+      const normalizedProjectId = Number(projectId);
+      if (!Number.isSafeInteger(normalizedProjectId) || normalizedProjectId <= 0) return false;
+      const changed = currentProjectId.value !== normalizedProjectId;
+      if (changed && socket.value) disconnect();
+
+      currentProjectId.value = normalizedProjectId;
+      chatAuth.isolationKey = `${normalizedProjectId}:scriptAgent`;
+      chatAuth.projectId = normalizedProjectId;
+      if (socket.value) {
+        socket.value.auth = { token: localStorage.getItem("token"), ...chatAuth };
+      }
+
+      if (changed) {
+        contextVersion.value += 1;
+        planData.value = createEmptyPlanData();
+        clearMessages();
+      }
+
+      if (!connected.value) connect();
+      return true;
+    }
+
+    return {
+      connected,
+      messages,
+      chat,
+      stopGenerate,
+      socket,
+      status,
+      planData,
+      currentProjectId,
+      setPlanData,
+      updateContext,
+      reconnect,
+      disconnect,
+    };
   },
   { persist: false },
 );

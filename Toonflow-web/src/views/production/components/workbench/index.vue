@@ -7,7 +7,8 @@
     v-model:visible="visible"
     attach="body"
     placement="center"
-    mode="full-screen"
+    mode="modal"
+    width="92vw"
     dialogClassName="noFooter"
     class="fullscreenDialog">
     <div class="closure">
@@ -17,32 +18,37 @@
       <t-tooltip :content="$t('workbench.production.wb.quickPreview')" placement="bottom" theme="light" destroyOnClose :showArrow="false">
         <div class="item fc c" :class="{ active: activeMenu === 'preview' }" @click="changeMenu('preview')">
           <i-blackboard class="icon" />
+          <span class="title">{{ $t("workbench.production.wb.quickPreview") }}</span>
         </div>
       </t-tooltip>
       <t-tooltip :content="$t('workbench.production.wb.videoGeneration')" placement="bottom" theme="light" destroyOnClose :showArrow="false">
         <div class="item fc c" :class="{ active: activeMenu === 'generate' }" @click="changeMenu('generate')">
           <i-playback-progress class="icon" />
+          <span class="title">{{ $t("workbench.production.wb.videoGeneration") }}</span>
         </div>
       </t-tooltip>
       <t-tooltip :content="$t('workbench.production.wb.videoEditing')" placement="bottom" theme="light" destroyOnClose :showArrow="false">
         <div class="item fc c" :class="{ active: activeMenu === 'editVideo' }" @click="changeMenu('editVideo')">
           <i-editing class="icon" />
+          <span class="title">{{ $t("workbench.production.wb.videoEditing") }}</span>
         </div>
       </t-tooltip>
     </div>
     <div class="content">
       <preview v-if="activeMenu === 'preview'" />
       <generate v-if="activeMenu === 'generate'" @importVideo="handleBatchDownload" v-model="extractLines" />
-      <editVideo
-        v-if="activeMenu === 'editVideo'"
-        :initial-tracks="mockTracks"
-        :initial-video-items="initialVideoItems"
-        :initial-media-items="mockMediaItems"
-        :initial-audio-items="mockAudioItems"
-        :initial-image-items="mockImageItems"
-        :canvas-width="canvasWidth"
-        :canvas-height="canvasHeight"
-        ref="editVideoRef" />
+      <KeepAlive>
+        <editVideo
+          v-if="activeMenu === 'editVideo'"
+          :initial-tracks="editorTracks"
+          :initial-video-items="initialVideoItems"
+          :initial-media-items="mediaItems"
+          :initial-audio-items="audioItems"
+          :initial-image-items="imageItems"
+          :canvas-width="canvasWidth"
+          :canvas-height="canvasHeight"
+          ref="editVideoRef" />
+      </KeepAlive>
     </div>
     <div v-if="importLoading" class="importLoadingMask">
       <div class="importLoadingContent">
@@ -58,9 +64,15 @@ import preview from "./preview.vue";
 import generate from "./generate.vue";
 import editVideo from "./editVideo/index.vue";
 import { generateId, type Track } from "vue-clip-track";
+import type { Ref } from "vue";
 import type { MediaItem, AudioItem } from "./editVideo/utils/mediaData";
 import projectStore from "@/stores/project";
+import productionAgentStore from "@/stores/productionAgent";
 const { project } = storeToRefs(projectStore());
+const { currentScriptId } = storeToRefs(productionAgentStore());
+
+// 预览和分镜台组件通过 inject 获取当前集数，由工作台统一提供剧集上下文。
+provide("episodesId", currentScriptId as unknown as Ref<number>);
 
 const visible = defineModel("visible", {
   type: Boolean,
@@ -86,19 +98,19 @@ onMounted(() => {
   }
 });
 
-// ============ 演示数据（可替换为在线资源地址） ============
+// ============ 剪辑台素材 ============
 
 /** 资源库 - 分镜视频 */
 const initialVideoItems = ref<MediaItem[]>([]);
 
 /** 资源库 - 视频素材 */
-const mockMediaItems = ref<MediaItem[]>([]);
+const mediaItems = ref<MediaItem[]>([]);
 
 /** 资源库 - 音频素材 */
-const mockAudioItems = ref<AudioItem[]>([]);
+const audioItems = ref<AudioItem[]>([]);
 
 /** 资源库 - 图片素材 */
-const mockImageItems = ref<MediaItem[]>([]);
+const imageItems = ref<MediaItem[]>([]);
 
 const extractLines = ref(false);
 const importLoading = ref(false);
@@ -113,6 +125,7 @@ type ImportVideoItem = {
   src: string;
   duration: number;
 };
+const editVideoRef = ref<{ importVideos: (items: ImportVideoItem[]) => Promise<void> }>();
 
 function getMediaType(src?: string): MediaType {
   if (!src) return "unknown";
@@ -149,7 +162,7 @@ function editFootage() {
         url: item.filePath,
         selected: item.selected || false,
       }));
-      mockMediaItems.value = videoList.map((item: any) => ({
+      mediaItems.value = videoList.map((item: any) => ({
         id: `video-${item.id}`,
         type: "video",
         name: item.name,
@@ -159,7 +172,7 @@ function editFootage() {
         url: item.filePath,
         loading: true,
       }));
-      mockAudioItems.value = audioList.map((item: any) => ({
+      audioItems.value = audioList.map((item: any) => ({
         id: `audio-${item.id}`,
         type: "audio",
         name: item.name,
@@ -167,7 +180,7 @@ function editFootage() {
         url: item.filePath,
         loading: true,
       }));
-      mockImageItems.value = imageList.map((item: any) => ({
+      imageItems.value = imageList.map((item: any) => ({
         id: `image-${item.id}`,
         type: "image",
         name: item.name,
@@ -180,7 +193,7 @@ function editFootage() {
     });
 }
 
-function createDemoTracks(): Track[] {
+function createInitialTracks(): Track[] {
   const createTrack = (type: Track["type"], name: string, order: number, isMain: boolean = false): Track => ({
     id: generateId("track-"),
     type,
@@ -199,10 +212,24 @@ function createDemoTracks(): Track[] {
   ];
 }
 
-const mockTracks = createDemoTracks();
+const editorTracks = createInitialTracks();
 
 //导入到剪辑台
-function handleBatchDownload(value: ImportVideoItem[]) {}
+async function handleBatchDownload(value: ImportVideoItem[]) {
+  if (!value.length || importLoading.value) return;
+  importLoading.value = true;
+  try {
+    activeMenu.value = "editVideo";
+    await nextTick();
+    await editVideoRef.value?.importVideos(value);
+    editFootage();
+    window.$message.success(`已导入 ${value.length} 个视频片段到剪辑台`);
+  } catch (error: any) {
+    window.$message.error(error?.message || "导入剪辑台失败");
+  } finally {
+    importLoading.value = false;
+  }
+}
 </script>
 
 <style lang="scss" scoped>
@@ -210,7 +237,8 @@ function handleBatchDownload(value: ImportVideoItem[]) {}
   :deep(.t-dialog__body) {
     display: flex;
     flex-direction: column;
-    height: 100%;
+    height: 88vh;
+    min-height: 620px;
     overflow: hidden;
     position: relative;
   }
@@ -246,14 +274,16 @@ function handleBatchDownload(value: ImportVideoItem[]) {}
     .item {
       margin-right: 4px;
       cursor: pointer;
-      width: 50px;
-      height: 50px;
+      width: 86px;
+      min-height: 58px;
+      padding: 4px 6px;
       .icon {
         font-size: 24px;
       }
       .title {
         font-size: 10px;
         white-space: nowrap;
+        line-height: 14px;
       }
       &:hover {
         background-color: #ecedef;

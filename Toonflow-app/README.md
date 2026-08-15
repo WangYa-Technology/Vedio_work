@@ -14,12 +14,7 @@
 
 <p align="center">
   <strong>简体中文</strong> | 
-  <a href="./docs/README.zhtw.md">繁體中文</a> | 
-  <a href="./docs/README.en.md">English</a> | 
-  <a href="./docs/README.th.md">ไทย</a> | 
-  <a href="./docs/README.vi.md">Tiếng Việt</a> | 
-  <a href="./docs/README.ja.md">日本語</a> | 
-  <a href="./docs/README.ru.md">Русский</a>
+  Web-only architecture
 </p>
 
 <div align="center">
@@ -367,25 +362,15 @@ pm2 monit             # 监控面板
 
 3. **启动开发环境**
 
-   本项目包含 **后端 API 服务** 和 **前端页面** 两部分，请根据需要选择启动方式：
-
-   - **方式一：仅启动后端服务**
+   本项目只保留 **后端 API 服务** 和 `data/web` 中的网页端：
 
      ```bash
      yarn dev
      ```
 
-     > ⚠️ 此命令仅启动后端 API 服务（端口 10588），**不包含前端页面**。直接访问 `http://localhost:10588` 只能调用 API 接口，无法看到完整的网页界面。如需同时使用前端页面，请配合前端项目单独启动，或使用下方的 GUI 模式。
+     > 后端服务监听 `127.0.0.1:10588`，并同时提供 `data/web` 中的网页。浏览器访问 `http://127.0.0.1:10588` 即可。
 
-   - **方式二：启动 Electron 桌面客户端**
-
-     ```bash
-     yarn dev:gui
-     ```
-
-     > 此命令会同时启动后端服务和 Electron 桌面窗口，自带内置前端页面，开箱即用，无需额外配置。适合想要完整体验所有功能的开发者。
-
-   - **方式三：生产模式启动**
+   - **生产模式启动**
 
      ```bash
      yarn start
@@ -393,30 +378,12 @@ pm2 monit             # 监控面板
 
      > 以生产模式直接运行编译后的服务（需先执行 `yarn build`）。
 
-4. **项目打包**
+4. **构建服务**
 
    - 编译并生成 TypeScript 文件：
 
      ```bash
      yarn build
-     ```
-
-   - 打包为 Windows 平台可执行程序：
-
-     ```bash
-     yarn dist:win
-     ```
-
-   - 打包为 Mac 平台可执行程序：
-
-     ```bash
-     yarn dist:mac
-     ```
-
-   - 打包为 Linux 平台可执行程序：
-
-     ```bash
-     yarn dist:linux
      ```
 
 5. **代码质量检查**
@@ -493,7 +460,6 @@ pm2 monit             # 监控面板
 ├─ 📄 router.ts             # 路由注册
 └─ 📄 utils.ts              # 通用工具
 📄 Dockerfile                # Docker 构建文件
-📄 electron-builder.yml      # Electron 打包配置
 📄 skillList.json            # 技能清单
 📄 LICENSE                   # 许可证（Apache-2.0）
 📄 NOTICES.txt               # 第三方依赖声明
@@ -507,10 +473,10 @@ pm2 monit             # 监控面板
 
 | 仓库             | 说明                               | GitHub                                             | Gitee                                            |
 | ---------------- | ---------------------------------- | -------------------------------------------------- | ------------------------------------------------ |
-| **Toonflow-app** | 完整客户端（本仓库，推荐普通用户） | [GitHub](https://github.com/HBAI-Ltd/Toonflow-app) | [Gitee](https://gitee.com/HBAI-Ltd/Toonflow-app) |
+| **Toonflow-app** | 后端服务与唯一运行时网页包       | [GitHub](https://github.com/HBAI-Ltd/Toonflow-app) | [Gitee](https://gitee.com/HBAI-Ltd/Toonflow-app) |
 | **Toonflow-web** | 前端源代码（适合前端开发者）       | [GitHub](https://github.com/HBAI-Ltd/Toonflow-web) | [Gitee](https://gitee.com/HBAI-Ltd/Toonflow-web) |
 
-> 💡 **提示**：如果您只是想使用 Toonflow，直接下载本仓库的客户端即可。前端仓库仅供需要二次开发或定制前端界面的开发者使用。
+> 💡 **提示**：当前项目只保留 Web 运行方式；前端源码位于同级 `Toonflow-web`，构建产物部署到 `Toonflow-app/data/web`。
 
 ---
 
@@ -586,7 +552,6 @@ Toonflow 基于 Apache-2.0 协议开源发布，并附有补充商业协议。
 - [Axios](https://axios-http.com/) - 基于 Promise 的 HTTP 客户端
 - [Zod](https://zod.dev/) - TypeScript 优先的模式验证库
 - [Socket.IO](https://socket.io/) - 实时双向事件通信引擎
-- [Electron](https://www.electronjs.org/) - 跨平台桌面应用开发框架
 - [Hugging Face Transformers](https://huggingface.co/docs/transformers.js) - 本地 ML 推理库
 
 感谢以下组织/单位/个人为 Toonflow 提供支持：

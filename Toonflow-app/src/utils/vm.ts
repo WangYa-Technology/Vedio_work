@@ -1,6 +1,7 @@
 import { VM } from "vm2";
 import sharp from "sharp";
 import axios from "axios";
+import { createHash } from "crypto";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createZhipu } from "zhipu-ai-provider";
@@ -13,7 +14,35 @@ import { createMinimax } from "vercel-minimax-ai-provider";
 import FormData from "form-data";
 import jsonwebtoken from "jsonwebtoken";
 import u from "@/utils";
-export default function runCode(code: string, vendor?: Record<string, any>) {
+import { Buffer } from "node:buffer";
+
+export interface VmRuntimeHooks {
+  onAxiosResponse?: (response: {
+    url: string;
+    method: string;
+    data: unknown;
+  }) => void | Promise<void>;
+}
+
+function createRuntimeAxios(hooks?: VmRuntimeHooks) {
+  if (!hooks?.onAxiosResponse) return axios;
+  const instance = axios.create();
+  instance.interceptors.response.use(async (response) => {
+    try {
+      await hooks.onAxiosResponse?.({
+        url: String(response.config.url || ""),
+        method: String(response.config.method || "get").toUpperCase(),
+        data: response.data,
+      });
+    } catch (error) {
+      console.error("[供应商任务跟踪] 保存任务信息失败:", error);
+    }
+    return response;
+  });
+  return instance;
+}
+
+export default function runCode(code: string, vendor?: Record<string, any>, hooks?: VmRuntimeHooks) {
   // 创建一个沙盒
   const exports = {};
   const sandbox: Record<string, any> = {
@@ -26,6 +55,7 @@ export default function runCode(code: string, vendor?: Record<string, any>) {
     createXai,
     createMinimax,
     createGoogleGenerativeAI,
+    prepareImageForUpload,
     zipImage,
     zipImageResolution,
     urlToBase64,
@@ -33,8 +63,9 @@ export default function runCode(code: string, vendor?: Record<string, any>) {
     pollTask,
     fetch,
     exports,
-    axios,
+    axios: createRuntimeAxios(hooks),
     FormData,
+    Buffer,
     logger,
     jsonwebtoken,
   };
@@ -68,6 +99,94 @@ export async function zipImage(completeBase64: string, size: number): Promise<st
     output = await sharp(buffer).jpeg({ quality }).toBuffer();
   }
   return "data:image/jpeg;base64," + output.toString("base64");
+}
+
+/**
+ * 仅用于上游上传的参考图预处理：限制最长边和请求体大小。
+ * 未超限的 JPEG/PNG 原样返回，只有超限或格式不受支持时才转为 JPEG。
+ */
+type PreparedImageOptions = { maxBytes?: number; maxDimension?: number };
+
+// 参考图预处理可能在多个异步生图任务中重复出现。缓存 Promise 而不是结果，
+// 可以同时合并同一张图片的并发转换；限制条目数避免长期运行无限占用内存。
+const preparedImageCache = new Map<string, Promise<string>>();
+const MAX_PREPARED_IMAGE_CACHE_ENTRIES = 128;
+
+function parseImageDataUrl(dataUrl: string): { mimeType: string; encoded: string; buffer: Buffer } {
+  const match = /^data:([^;]+);base64,(.*)$/is.exec(dataUrl);
+  const mimeType = (match?.[1] || "application/octet-stream").toLowerCase();
+  const encoded = match?.[2] || dataUrl;
+  return { mimeType, encoded, buffer: Buffer.from(encoded, "base64") };
+}
+
+function rememberPreparedImage(key: string, value: Promise<string>): void {
+  if (preparedImageCache.size >= MAX_PREPARED_IMAGE_CACHE_ENTRIES) {
+    const oldestKey = preparedImageCache.keys().next().value;
+    if (oldestKey) preparedImageCache.delete(oldestKey);
+  }
+  preparedImageCache.set(key, value);
+}
+
+async function prepareImageForUploadUncached(
+  completeBase64: string,
+  mimeType: string,
+  buffer: Buffer,
+  options: Required<PreparedImageOptions>,
+): Promise<string> {
+  const metadata = await sharp(buffer).metadata();
+  const longestSide = Math.max(metadata.width || 0, metadata.height || 0);
+  const isSupportedOriginal = mimeType === "image/jpeg" || mimeType === "image/jpg" || mimeType === "image/png";
+  const isWithinUploadLimit = buffer.length <= options.maxBytes &&
+    (!longestSide || longestSide <= options.maxDimension);
+
+  // 小于上传限制的 JPEG/PNG 原样保留：不旋转、不重采样、不改质量，
+  // 因此透明 PNG 和用户已有的图片质量都不会被改变。
+  if (isSupportedOriginal && isWithinUploadLimit) return completeBase64;
+
+  let quality = 88;
+  let scale = 1;
+  while (true) {
+    const dimension = Math.max(1, Math.round(options.maxDimension * scale));
+    const output = await sharp(buffer)
+      .rotate()
+      .resize({ width: dimension, height: dimension, fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality, mozjpeg: true })
+      .toBuffer();
+    if (output.length <= options.maxBytes) {
+      return `data:image/jpeg;base64,${output.toString("base64")}`;
+    }
+    if (quality > 68) quality -= 5;
+    else {
+      scale *= 0.85;
+      quality = 82;
+    }
+  }
+}
+
+export async function prepareImageForUpload(
+  completeBase64: string,
+  options: PreparedImageOptions = {},
+): Promise<string> {
+  const parsed = parseImageDataUrl(completeBase64);
+  const normalizedOptions = {
+    maxBytes: Math.max(1, options.maxBytes ?? 1_200_000),
+    maxDimension: Math.max(1, options.maxDimension ?? 2048),
+  };
+  const hash = createHash("sha256")
+    .update(parsed.buffer)
+    .update(`|${parsed.mimeType}|${normalizedOptions.maxBytes}|${normalizedOptions.maxDimension}`)
+    .digest("hex");
+  const cached = preparedImageCache.get(hash);
+  if (cached) return cached;
+
+  const pending = prepareImageForUploadUncached(completeBase64, parsed.mimeType, parsed.buffer, normalizedOptions);
+  rememberPreparedImage(hash, pending);
+  try {
+    return await pending;
+  } catch (error) {
+    if (preparedImageCache.get(hash) === pending) preparedImageCache.delete(hash);
+    throw error;
+  }
 }
 
 export async function zipImageResolution(completeBase64: string, width: number, height: number): Promise<string> {

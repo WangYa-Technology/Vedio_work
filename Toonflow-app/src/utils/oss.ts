@@ -1,7 +1,8 @@
 import isPathInside from "is-path-inside";
-import getPath, { isEletron } from "@/utils/getPath";
+import getPath from "@/utils/getPath";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { Buffer } from "node:buffer";
 
 // 规范化路径：去除前导斜杠，并将路径分隔符统一转换为系统分隔符
 function normalizeUserPath(userPath: string): string {
@@ -50,8 +51,7 @@ class OSS {
     await this.ensureInit();
     const safePath = normalizeUserPath(userRelPath);
     // URL 始终使用 /，所以这里需要将系统分隔符转回 /
-    let url = `http://127.0.0.1:10588/${prefix}/`;
-    if (isEletron()) url = `http://localhost:${process.env.PORT}/${prefix}/`;
+    const url = `http://127.0.0.1:10588/${prefix}/`;
     return `${url}${safePath.split(path.sep).join("/")}`;
   }
 

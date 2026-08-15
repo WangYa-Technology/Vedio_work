@@ -88,6 +88,7 @@ declare const createMinimax: any;
 declare const createGoogleGenerativeAI: any;
 declare const logger: (logstring: string) => void;
 declare const jsonwebtoken: any;
+declare const exports: Record<string, unknown>;
 
 // ==================== 供应商数据 ====================
 const vendor: VendorConfig = {

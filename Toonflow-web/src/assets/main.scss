@@ -9,62 +9,6 @@ body,
   background-color: #ebebeb;
 }
 
-// Electron titleBar 偏移：一劳永逸处理所有 TDesign 固定定位弹出层被 titleBar 遮挡的问题
-// 如果新增了 TDesign 弹出层组件，在此处补充对应 class 即可
-body.is-electron {
-  --titlebar-height: 32px;
-  // Drawer 抽屉
-  .t-drawer__wrap {
-    top: var(--titlebar-height) !important;
-    height: calc(100vh - var(--titlebar-height)) !important;
-  }
-  .t-drawer__content-wrapper {
-    top: 30px;
-    bottom: 0px;
-    height: auto;
-  }
-
-  // Dialog 对话框
-  .t-dialog__ctx {
-    top: var(--titlebar-height) !important;
-    height: calc(100vh - var(--titlebar-height)) !important;
-  }
-
-  // ImageViewer 图片预览
-  .t-image-viewer-preview__header,
-  .t-image-viewer__modal {
-    top: var(--titlebar-height) !important;
-  }
-  .t-image-viewer__modal {
-    height: calc(100vh - var(--titlebar-height)) !important;
-  }
-
-  // Loading 全屏加载
-  .t-loading__fullscreen {
-    top: var(--titlebar-height) !important;
-    height: calc(100vh - var(--titlebar-height)) !important;
-  }
-
-  // Guide 引导
-  .t-guide__highlight--popup,
-  .t-guide__overlay {
-    top: var(--titlebar-height) !important;
-  }
-
-  // Message 全局提示
-  .t-message__list {
-    top: calc(var(--titlebar-height) + 16px) !important;
-  }
-
-  // Notification 通知
-  .t-notification__show--top-left,
-  .t-notification__show--top-right {
-    top: calc(var(--titlebar-height) + 16px) !important;
-  }
-  .t-notification-list__show {
-    top: calc(var(--titlebar-height) + 16px) !important;
-  }
-}
 * {
   box-sizing: border-box;
 }

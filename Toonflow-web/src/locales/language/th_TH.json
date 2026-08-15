@@ -56,7 +56,7 @@
       "fileManagement": "จัดการไฟล์",
       "otherConfig": "การตั้งค่าอื่นๆ",
       "requestConfig": "ที่อยู่คำขอ (API URL)",
-      "about": "ตรวจสอบการอัปเดต",
+      "about": "เกี่ยวกับ",
       "logoutConfig": "ออกจากระบบ",
       "skillsSkillsManagement": "การจัดการทักษะทักษะ"
     },
@@ -281,7 +281,6 @@
       "restoreDefault": "กู้คืนค่าเริ่มต้น",
       "regexPlaceholder": "โปรดกรอกนิพจน์ปกติ (Regex)",
       "showTitleBar": "แสดงแถบชื่อเรื่อง",
-      "isElectron": "สลับไปที่โหมดเดสก์ท็อป",
       "canvasScroll": "เลื่อนผ้าใบ",
       "canvasIsDisabled": "แคนวาสซูม",
       "agentCanvasScalingMethod": "งานล้อผ้าใบตัวแทน",
@@ -1325,14 +1324,6 @@
     "loginSuccess": "เข้าสู่ระบบสำเร็จ",
     "settingsSaved": "บันทึกการตั้งค่าแล้ว"
   },
-  "components.storyboardImageCheck.camera": "กล้อง",
-  "components.storyboardImageCheck.dialogTitle": "เลือกรูปสตอรี่บอร์ด",
-  "components.storyboardImageCheck.preview": "ดูตัวอย่าง",
-  "components.storyboardImageCheck.src": "รูปตัวอย่าง",
-  "components.storyboardImageCheck.title": "หัวข้อ",
-  "components.storyboardImageCheck.duration": "ระยะเวลา",
-  "components.storyboardImageCheck.lines": "บทพูด",
-  "components.storyboardImageCheck.createTime": "เวลาสร้าง",
   "workbench.script.extractAssets": "ดึงทรัพยากร",
   "promptManage": {
     "prompt": "คำพูดที่รวดเร็ว"

@@ -226,6 +226,13 @@ const videoTrackRef = ref();
 const videoPreviewRef = ref<InstanceType<typeof videoPreview>>();
 const isExporting = ref(false);
 
+interface ImportedVideoItem {
+  trackId: number;
+  videoId: number;
+  src: string;
+  duration: number;
+}
+
 async function handleExport() {
   if (!videoPreviewRef.value) return;
   if (isExporting.value) return;
@@ -387,6 +394,33 @@ async function handleDropMedia(mediaData: any, trackId: string, startTime: numbe
   }
 }
 
+async function importVideos(items: ImportedVideoItem[]) {
+  const mainTrack = tracksStore.tracks.find((track) => track.type === "video" && track.isMain)
+    ?? tracksStore.tracks.find((track) => track.type === "video");
+  if (!mainTrack) throw new Error("剪辑台缺少视频主轨道");
+
+  let startTime = mainTrack.clips
+    .filter((clip) => clip.type !== "transition")
+    .reduce((max, clip) => Math.max(max, Number(clip.endTime) || 0), 0);
+  for (const item of items) {
+    const duration = Number.isFinite(item.duration) && item.duration > 0 ? item.duration : 5;
+    await handleDropMedia(
+      {
+        id: `generated-video-${item.videoId}`,
+        type: "video",
+        name: `分镜视频 #${item.trackId}`,
+        url: item.src,
+        duration,
+      },
+      mainTrack.id,
+      startTime,
+    );
+    startTime = normalizeTime(startTime + duration);
+  }
+  playbackStore.setDuration(Math.max(playbackStore.duration, startTime));
+  playbackStore.seekTo(0);
+}
+
 // 处理转场拖拽
 function handleDropTransition(transitionData: any, trackId: string, dropTime: number) {
   const track = tracksStore.tracks.find((t) => t.id === trackId);
@@ -467,6 +501,8 @@ const theme = {
 onUnmounted(() => {
   resizeObserver?.disconnect();
 });
+
+defineExpose({ importVideos });
 </script>
 
 <style lang="scss" scoped>

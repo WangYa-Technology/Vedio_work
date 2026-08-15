@@ -1,31 +1,39 @@
 import { generateText, streamText, wrapLanguageModel, stepCountIs } from "ai";
 import { devToolsMiddleware } from "@ai-sdk/devtools";
 import axios from "axios";
-import { transform } from "sucrase";
 import u from "@/utils";
+import compileVendorCode from "@/utils/compileVendorCode";
+import type { VmRuntimeHooks } from "@/utils/vm";
 
-type AiType = "scriptAgent" | "storyboardAgent" | "universalAi";
+type AiType = "scriptAgent" | "productionAgent" | "universalAi";
 type FnName = "textRequest" | "imageRequest" | "videoRequest" | "ttsRequest";
 
-const AiTypeValues: AiType[] = ["scriptAgent", "storyboardAgent", "universalAi"];
+const AiTypeValues: AiType[] = ["scriptAgent", "productionAgent", "universalAi"];
 async function resolveModelName(value: AiType | `${string}:${string}`): Promise<`${string}:${string}`> {
-  if (AiTypeValues.includes(value as AiType)) {
-    const agentDeployData = await u.db("o_agentDeploy").where("key", value).first();
-    if (!agentDeployData?.modelName) throw new Error(`${value}模型未配置`);
-    return agentDeployData.modelName as `${number}:${string}`;
+  // Agent 子层级也使用冒号（例如 productionAgent:decisionAgent），不能把它
+  // 误判为供应商模型名。先按部署 key 查找，找不到时才按 vendor:model 处理。
+  const agentDeployData = await u.db("o_agentDeploy").where("key", value).first();
+  if (agentDeployData) {
+    if (!agentDeployData.modelName) throw new Error(`${value}模型未配置`);
+    return agentDeployData.modelName as `${string}:${string}`;
   }
+  if (AiTypeValues.includes(value as AiType)) throw new Error(`${value}模型未配置`);
   return value as `${number}:${string}`;
 }
 
-async function getVendorTemplateFn(fnName: FnName, modelName: `${string}:${string}`) {
+async function getVendorTemplateFn(
+  fnName: FnName,
+  modelName: `${string}:${string}`,
+  runtimeHooks?: VmRuntimeHooks,
+) {
   const [id, name] = modelName.split(":");
   const vendorConfigData = await u.db("o_vendorConfig").where("id", id).first();
   if (!vendorConfigData) throw new Error(`未找到供应商配置 id=${id}`);
   const modelList = JSON.parse(vendorConfigData.models ?? "[]");
   const selectedModel = modelList.find((i: any) => i.modelName == name);
   if (!selectedModel) throw new Error(`未找到模型 ${name} id=${id}`);
-  const jsCode = transform(vendorConfigData.code!, { transforms: ["typescript"] }).code;
-  const running = u.vm(jsCode);
+  const jsCode = compileVendorCode(vendorConfigData.code!);
+  const running = u.vm(jsCode, undefined, runtimeHooks);
   if (running.vendor) {
     Object.assign(running.vendor.inputValues, JSON.parse(vendorConfigData.inputValues ?? "{}"));
     running.vendor.models = modelList;
@@ -119,6 +127,14 @@ interface TaskRecord {
   describe: string; // 任务描述
   relatedObjects: string; // 相关对象信息，便于后续分析和追踪
   projectId: number; // 项目ID
+  onProviderTask?: (task: ProviderTaskInfo) => void | Promise<void>;
+}
+
+export interface ProviderTaskInfo {
+  provider: string;
+  taskId: string;
+  baseUrl: string;
+  submittedAt: number;
 }
 
 class AiImage {
@@ -132,6 +148,9 @@ class AiImage {
     const exec = async (mn: `${string}:${string}`) => {
       const fn = await getVendorTemplateFn("imageRequest", mn);
       this.result = await fn(input);
+      if (typeof this.result !== "string" || !this.result.trim()) {
+        throw new Error("图片生成未返回有效图像数据");
+      }
       if (this.result.startsWith("http")) this.result = await urlToBase64(this.result);
       return this;
     };
@@ -141,6 +160,9 @@ class AiImage {
     return exec(modelName);
   }
   async save(path: string) {
+    if (!this.result.trim()) {
+      throw new Error("图片生成未返回有效图像数据");
+    }
     await u.oss.writeFile(path, this.result);
     return this;
   }
@@ -164,7 +186,20 @@ class AiVideo {
   async run(input: VideoConfig, taskRecord?: TaskRecord) {
     const modelName = await resolveModelName(this.key);
     const exec = async (mn: `${string}:${string}`) => {
-      const fn = await getVendorTemplateFn("videoRequest", mn);
+      const provider = mn.split(":")[0];
+      const fn = await getVendorTemplateFn("videoRequest", mn, {
+        onAxiosResponse: async ({ url, method, data }) => {
+          const taskId = (data as any)?.prompt_id;
+          if (method !== "POST" || !taskId || !/\/prompt(?:\?|$)/i.test(url)) return;
+          const baseUrl = url.replace(/\/prompt(?:\?.*)?$/i, "").replace(/\/$/, "");
+          await taskRecord?.onProviderTask?.({
+            provider,
+            taskId: String(taskId),
+            baseUrl,
+            submittedAt: Date.now(),
+          });
+        },
+      });
       this.result = await fn(input);
       if (this.result.startsWith("http")) this.result = await urlToBase64(this.result);
       return this;

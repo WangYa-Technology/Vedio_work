@@ -2,7 +2,7 @@ import { readFile, writeFile } from "fs/promises";
 import getPath from "@/utils/getPath";
 import fs from "fs";
 import path from "path";
-import knex from "knex";
+import knex, { type Knex } from "knex";
 import initDB from "@/lib/initDB";
 // import fixDB from "@/lib/fixDB";
 import type { DB } from "@/types/database";
@@ -27,26 +27,35 @@ if (!fs.existsSync(dbPath)) {
 }
 
 const db = knex({
-  client: "better-sqlite3",
+  client: "sqlite3",
   connection: {
     filename: dbPath,
   },
   useNullAsDefault: true,
 });
 
+const shouldInitDB = process.env.FORCE_DB_INIT === "1" || fs.statSync(dbPath).size === 0;
+
 (async () => {
-  await initDB(db);
-  await fixDB(db);
-  if (process.env.NODE_ENV == "dev") initKnexType(db);
+  await initDB(db, shouldInitDB);
+  if (shouldInitDB) {
+    await fixDB(db);
+  }
+  if (process.env.NODE_ENV == "dev") await initKnexType(db);
 })();
 
-const dbClient = Object.assign(<TName extends TableName>(table: TName) => db<RowType<TName>, RowType<TName>[]>(table), db);
-dbClient.schema = db.schema;
+type TypedDbClient = typeof db & {
+  <TName extends TableName>(table: TName): Knex.QueryBuilder<RowType<TName>, RowType<TName>[]>;
+};
+
+// Keep the real Knex callable instance. Wrapping it with Object.assign drops
+// non-enumerable methods such as transaction() and raw() at runtime.
+const dbClient = db as TypedDbClient;
 export default dbClient;
 
 export { db };
 
-async function initKnexType(knexDb: any) {
+export async function initKnexType(knexDb: any) {
   const { Client } = await import("@rmp135/sql-ts");
   const outFile = "src/types/database.d.ts";
   const dbClient = Client.fromConfig({

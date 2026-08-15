@@ -1,5 +1,5 @@
 <template>
-  <div class="main" :style="{ height: isElectron ? 'calc(100vh - 32px)' : '100vh' }">
+  <div class="main" style="height: 100vh">
     <div class="menu fc jb">
       <div class="logoBox c">
         <img class="logo" src="@/assets/logo.png" />
@@ -22,9 +22,7 @@
       <div class="footItem fc ac">
         <t-tooltip :content="$t('workbench.menu.settings')" placement="right" theme="light" destroyOnClose :showArrow="false">
           <div class="item c" @click="showSetting = true">
-            <t-badge :count="needUpdate ? 1 : 0" dot>
-              <i-setting-one class="icon" />
-            </t-badge>
+            <i-setting-one class="icon" />
           </div>
         </t-tooltip>
         <t-tooltip :content="$t('workbench.menu.jumpGithub')" placement="right" theme="light" destroyOnClose :showArrow="false">
@@ -72,14 +70,13 @@
 </template>
 
 <script setup lang="ts">
-import axios from "@/utils/axios";
 import setting from "@/components/setting/index.vue";
 import migrateShow from "@/components/migrateShow.vue";
 import hello from "@/components/hello.vue";
 import projectStore from "@/stores/project";
 const { project } = storeToRefs(projectStore());
 import settingStore from "@/stores/setting";
-const { showSetting, isElectron, needUpdate } = storeToRefs(settingStore());
+const { showSetting } = storeToRefs(settingStore());
 const menuList = ref([
   { type: "btn", path: "/project", labelKey: "workbench.menu.myProject", icon: "i-folder-close" },
   { type: "btn", path: "/task", labelKey: "workbench.menu.taskCenter", icon: "i-view-list" },
@@ -114,23 +111,9 @@ function handleClick(menu: any) {
 }
 
 async function jumpGithub() {
-  if (isElectron.value) {
-    await fetch("toonflow://openurlwithbrowser?url=https://github.com/HBAI-Ltd/Toonflow-app");
-  } else {
-    window.open("https://github.com/HBAI-Ltd/Toonflow-app");
-  }
+  window.open("https://github.com/HBAI-Ltd/Toonflow-app", "_blank", "noopener,noreferrer");
 }
 
-onMounted(async () => {
-  const { data } = await axios.post("/setting/about/checkUpdate", {
-    source: "toonflow",
-  });
-  if (data.needUpdate) {
-    needUpdate.value = true;
-  } else {
-    needUpdate.value = false;
-  }
-});
 </script>
 
 <style lang="scss" scoped>

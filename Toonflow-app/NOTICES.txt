@@ -4,6 +4,12 @@ Repository: https://github.com/vercel/ai
 
 -----------------------------
 
+Name: @ai-sdk/anthropic
+License: Apache-2.0
+Repository: https://github.com/vercel/ai
+
+-----------------------------
+
 Name: @ai-sdk/deepseek
 License: Apache-2.0
 Repository: https://github.com/vercel/ai
@@ -65,6 +71,12 @@ Repository: https://github.com/DefinitelyTyped/DefinitelyTyped
 -----------------------------
 
 Name: @types/express
+License: MIT
+Repository: https://github.com/DefinitelyTyped/DefinitelyTyped
+
+-----------------------------
+
+Name: @types/graphlib
 License: MIT
 Repository: https://github.com/DefinitelyTyped/DefinitelyTyped
 
@@ -139,30 +151,6 @@ Repository: https://github.com/kentcdodds/cross-env
 Name: dotenv
 License: BSD-2-Clause
 Repository: https://github.com/motdotla/dotenv
-
------------------------------
-
-Name: dotenv
-License: BSD-2-Clause
-Repository: https://github.com/motdotla/dotenv
-
------------------------------
-
-Name: electron-builder
-License: MIT
-Repository: https://github.com/electron-userland/electron-builder
-
------------------------------
-
-Name: electron
-License: MIT
-Repository: https://github.com/electron/electron
-
------------------------------
-
-Name: electronmon
-License: ISC
-Repository: https://github.com/catdad/electronmon
 
 -----------------------------
 
@@ -244,6 +232,12 @@ Repository: https://github.com/remy/nodemon
 
 -----------------------------
 
+Name: p-limit
+License: MIT
+Repository: https://github.com/sindresorhus/p-limit
+
+-----------------------------
+
 Name: qwen-ai-provider-v5
 License: Apache-2.0
 Repository: https://github.com/bolechen/qwen-ai-provider-v5
@@ -301,6 +295,12 @@ Repository: https://github.com/microsoft/TypeScript
 Name: uuid
 License: MIT
 Repository: https://github.com/uuidjs/uuid
+
+-----------------------------
+
+Name: vercel-minimax-ai-provider
+License: Apache-2.0
+Repository: https://github.com/MiniMax-AI/vercel-minimax-ai-provider
 
 -----------------------------
 

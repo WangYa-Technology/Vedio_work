@@ -13,7 +13,6 @@
         <t-space size="small">
           <t-button theme="primary" type="submit" @click="handleSubmit">{{ $t("settings.request.save") }}</t-button>
           <t-button theme="default" @click="handleReset">{{ $t("settings.request.reset") }}</t-button>
-          <t-button v-if="isElectron" theme="warning" @click="refreshAPI">{{ $t("settings.request.refresh") }}</t-button>
         </t-space>
       </t-form-item>
     </t-form>
@@ -24,7 +23,7 @@
 import { ref, onMounted } from "vue";
 import { type FormRules } from "tdesign-vue-next";
 import settingStore from "@/stores/setting";
-const { baseUrl, isElectron } = storeToRefs(settingStore());
+const { baseUrl } = storeToRefs(settingStore());
 
 interface RequestForm {
   baseUrl: string;
@@ -55,24 +54,9 @@ function handleSubmit() {
 }
 
 function handleReset() {
-  formData.value.baseUrl = "http://localhost:10588";
+  formData.value.baseUrl = "http://127.0.0.1:10588";
   baseUrl.value = formData.value.baseUrl;
   window.$message.success($t("settings.request.msg.reset"));
-}
-
-async function refreshAPI() {
-  try {
-    const res = await fetch("toonflow://getPort");
-    const data = await res.json();
-    if (data?.port) {
-      baseUrl.value = `http://localhost:${data.port}/api`;
-      isElectron.value = true;
-      window.$message.success($t("settings.request.msg.refreshSuccess"));
-    }
-    window.$message.error($t("settings.request.msg.refreshFailed"));
-  } catch (error) {
-    window.$message.error($t("settings.request.msg.refreshFailed"));
-  }
 }
 
 onMounted(() => {

@@ -99,7 +99,7 @@ export default (nsp: Namespace) => {
           const errorMsg = u.error(err).message;
           console.error("[scriptAgent] chat error:", errorMsg);
           ctx.msg.text(errorMsg).complete();
-          ctx.msg.error();
+          ctx.msg.error(errorMsg);
         }
       } finally {
         if (abortController === currentController) {

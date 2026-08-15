@@ -13,23 +13,15 @@
     "url": "https://github.com/HBAI-Ltd/Toonflow-app/issues",
     "email": "ltlctools@outlook.com"
   },
-  "main": "build/main.js",
   "packageManager": "yarn@1.0.0",
   "engines": {
     "node": ">=1.0.0"
   },
   "scripts": {
     "dev": "nodemon --inspect --exec tsx src/app.ts",
-    "dev:gui": "electronmon -r tsx scripts/main.ts",
-    "dev:gui-vite": "cross-env VITE_DEV=1 electronmon -r tsx scripts/main.ts",
     "start": "cross-env NODE_ENV=prod node data/serve/app.js",
     "lint": "tsc --noEmit",
     "build": "cross-env NODE_ENV=prod tsx scripts/build.ts",
-    "pack": "electron-builder --dir",
-    "dist": "yarn build && electron-builder",
-    "dist:win": "yarn build && electron-builder --win",
-    "dist:mac": "yarn build && electron-builder --mac",
-    "dist:linux": "yarn build && electron-builder --linux",
     "debug:ai": "npx @ai-sdk/devtools",
     "license": "bun run scripts/license.ts"
   },
@@ -49,7 +41,6 @@
     "better-sqlite3": "^12.8.0",
     "compressing": "^2.1.0",
     "cors": "^2.8.5",
-    "custom-electron-titlebar": "^4.2.8",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "express-ws": "^5.0.2",
@@ -85,10 +76,6 @@
     "@types/lodash": "^4.17.24",
     "@types/morgan": "^1.9.10",
     "cross-env": "^10.1.0",
-    "electron": "^40.0.0",
-    "electron-builder": "^26.4.0",
-    "electron-rebuild": "^3.2.9",
-    "electronmon": "^2.0.4",
     "license-checker": "^25.0.1",
     "nodemon": "^3.1.11",
     "tsx": "^4.21.0",

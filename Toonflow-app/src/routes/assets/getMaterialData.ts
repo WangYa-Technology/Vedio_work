@@ -14,13 +14,15 @@ export default router.post(
   }),
   async (req, res) => {
     const { projectId, scriptId } = req.body;
-    const list = await u
+    const assetsQuery = u
       .db("o_assets")
       .leftJoin("o_image", "o_assets.id", "=", "o_image.assetsId")
       .where("o_assets.type", "clip")
-      .andWhere("projectId", projectId)
-      .andWhere("scriptId", scriptId)
-      .select("*");
+      .andWhere("o_assets.projectId", projectId);
+    if (scriptId !== undefined) {
+      assetsQuery.andWhere("o_assets.scriptId", scriptId);
+    }
+    const list = await assetsQuery.select("*");
     const data = await Promise.all(
       list.map(async (item) => ({
         ...item,
@@ -36,7 +38,11 @@ export default router.post(
       type: "clip",
     });
     // 查询o_video表
-    const videoRows = await u.db("o_video").where("state", "生成成功").andWhere("scriptId", scriptId).andWhere("projectId", projectId).select("*");
+    const videoQuery = u.db("o_video").where("state", "生成成功").andWhere("projectId", projectId);
+    if (scriptId !== undefined) {
+      videoQuery.andWhere("scriptId", scriptId);
+    }
+    const videoRows = await videoQuery.select("*");
     // 处理并返回结果
     const video = await Promise.all(
       videoRows.map(async (row) => ({

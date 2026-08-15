@@ -1,5 +1,4 @@
 <template>
-  <titleBar v-if="isElectron" />
   <t-config-provider :global-config="globalConfig">
     <router-view></router-view>
   </t-config-provider>
@@ -13,20 +12,8 @@ import enConfig from "tdesign-vue-next/es/locale/en_US";
 import { cachedLocale } from "@/locales";
 import { initTheme } from "@/utils/theme";
 import { type GlobalConfigProvider } from "tdesign-vue-next";
-const { baseUrl, isElectron, themeSetting } = storeToRefs(settingStore());
+const { themeSetting } = storeToRefs(settingStore());
 import { config } from "md-editor-v3";
-
-watch(
-  () => isElectron.value,
-  (newVal) => {
-    if (newVal) {
-      document.body.classList.add("is-electron");
-    } else {
-      document.body.classList.remove("is-electron");
-    }
-  },
-  { immediate: true },
-);
 
 onBeforeMount(() => {
   document.addEventListener("keydown", function (event) {
@@ -41,7 +28,7 @@ onBeforeMount(() => {
 onMounted(() => {
   themeSetting.value.primaryColor = "#000";
   initTheme();
-  getPort();
+  configureMarkdownLinks();
 });
 
 async function handleLinkClick(event: MouseEvent) {
@@ -52,11 +39,7 @@ async function handleLinkClick(event: MouseEvent) {
   const url = target?.getAttribute("data-link") || target?.getAttribute("href");
   if (!url) return false;
 
-  if (isElectron.value) {
-    await fetch(`toonflow://openurlwithbrowser?url=${encodeURIComponent(url)}`);
-  } else {
-    window.open(url, "_blank", "noopener,noreferrer");
-  }
+  window.open(url, "_blank", "noopener,noreferrer");
 
   return false;
 }
@@ -65,20 +48,7 @@ onMounted(() => {
   (window as any).handleLinkClick = handleLinkClick;
 });
 
-async function getPort() {
-  await nextTick();
-  await nextTick();
-  await nextTick();
-  await nextTick();
-  try {
-    const res = await fetch("toonflow://getPort");
-    const data = await res.json();
-    if (data?.port) {
-      baseUrl.value = `http://localhost:${data.port}/api`;
-      isElectron.value = true;
-    }
-  } catch (error) {}
-
+function configureMarkdownLinks() {
   config({
     markdownItConfig(md) {
       // 自定义链接渲染

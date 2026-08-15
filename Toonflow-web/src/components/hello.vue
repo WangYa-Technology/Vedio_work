@@ -102,7 +102,7 @@ import { useI18n } from "vue-i18n";
 import JSConfetti from "js-confetti";
 import settingStore from "@/stores/setting";
 import { languageList, cachedLocale } from "@/locales";
-const { showSetting, activeMenu, isElectron } = storeToRefs(settingStore());
+const { showSetting, activeMenu } = storeToRefs(settingStore());
 
 const { locale } = useI18n();
 const langOptions = languageList.map((item) => ({
@@ -141,11 +141,7 @@ function handleFinish() {
 }
 
 async function jumpGithub() {
-  if (isElectron.value) {
-    await fetch("toonflow://openurlwithbrowser?url=https://github.com/HBAI-Ltd/Toonflow-app");
-  } else {
-    window.open("https://github.com/HBAI-Ltd/Toonflow-app");
-  }
+  window.open("https://github.com/HBAI-Ltd/Toonflow-app", "_blank", "noopener,noreferrer");
 }
 </script>
 

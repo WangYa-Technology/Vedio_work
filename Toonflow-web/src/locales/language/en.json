@@ -49,6 +49,7 @@
       "vendorConfig": "Model Providers",
       "agentConfig": "Agent Config",
       "promptManage": "Prompt Management",
+      "contentSafety": "Content Safety",
       "skillManagement": "skillsSkillsManagement",
       "memoryConfig": "Agent Memory",
       "loginConfig": "Login Config",
@@ -56,7 +57,7 @@
       "fileManagement": "File Management",
       "otherConfig": "Other Config",
       "requestConfig": "Request URL",
-      "about": "Check for Updates",
+      "about": "About",
       "logoutConfig": "Logout",
       "skillsSkillsManagement": "SkillsSkills Management"
     },
@@ -348,7 +349,6 @@
       "restoreDefault": "Restore Defaults",
       "regexPlaceholder": "Please enter a regular expression",
       "showTitleBar": "show title bar",
-      "isElectron": "Switch to desktop mode",
       "canvasScroll": "Canvas scroll",
       "canvasIsDisabled": "Canvas zoom",
       "agentCanvasScalingMethod": "Unlimited canvas wheel operation on production page",
@@ -356,6 +356,13 @@
       "scroll": "scroll",
       "isInteracting": "Unlimited canvas drag performance optimization on production page",
       "closeIsInteracting": "closure"
+    },
+    "contentSafety": {
+      "desc": "This constraint is automatically appended to the system prompts of the script/storyboard Agents and their sub-agents, rewriting high-risk injury descriptions into tense, non-graphic expressions. Leave it empty to disable custom constraints.",
+      "constraint": "Content safety constraint",
+      "restoreDefault": "Restore default",
+      "placeholder": "Enter the safety rewriting rules to add automatically to Agents",
+      "save": "Save constraint"
     },
     "request": {
       "warning": "Do not modify unless absolutely necessary",
@@ -1416,14 +1423,6 @@
     "loginSuccess": "Login successful",
     "settingsSaved": "Settings saved"
   },
-  "components.storyboardImageCheck.camera": "Camera",
-  "components.storyboardImageCheck.dialogTitle": "Select Storyboard Image",
-  "components.storyboardImageCheck.preview": "Preview",
-  "components.storyboardImageCheck.src": "Preview Image",
-  "components.storyboardImageCheck.title": "Title",
-  "components.storyboardImageCheck.duration": "Duration",
-  "components.storyboardImageCheck.lines": "Lines",
-  "components.storyboardImageCheck.createTime": "Created Time",
   "workbench.script.extractAssets": "Extract Assets",
   "promptManage": {
     "prompt": "prompt word"

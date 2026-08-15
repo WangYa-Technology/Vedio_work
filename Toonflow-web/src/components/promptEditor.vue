@@ -3,7 +3,9 @@
     <div
       ref="editorRef"
       class="promptEditor"
-      contenteditable="true"
+      :class="{ readonly: props.readonly }"
+      :contenteditable="!props.readonly"
+      :aria-readonly="props.readonly"
       :data-placeholder="editorContent.length === 0 ? props.placeholder : ''"
       @input="handleInput"
       @keydown="handleKeydown"
@@ -30,13 +32,14 @@
 </template>
 
 <script setup lang="ts">
-import { h, render } from "vue";
+import { h, onBeforeUnmount, render } from "vue";
 import { Popup } from "tdesign-vue-next";
 import { Video, VolumeMute } from "@icon-park/vue-next";
 
 const props = defineProps<{
   references?: { type: "image" | "video" | "audio"; src: string }[];
   placeholder?: String;
+  readonly?: boolean;
 }>();
 
 const prompt = defineModel<string>({ default: "" });
@@ -61,19 +64,28 @@ function createRefTag(index: number): HTMLSpanElement {
   container.dataset.imgSrc = refSrc;
 
   const popupContent = () => {
-    if (refType === "image") {
+    if (refType === "image" && refSrc) {
       return h("img", {
         src: refSrc,
         style: { width: "200px", borderRadius: "8px", display: "block" },
-        alt: "",
+        alt: $t("workbench.production.editImage.reference", { index: index + 1 }),
       });
     }
-    return h("span", { style: { padding: "8px", display: "block" } }, refSrc);
+    return h(
+      "span",
+      { style: { padding: "8px", display: "block" } },
+      refSrc || $t("workbench.production.editImage.reference", { index: index + 1 }),
+    );
   };
 
   const tagContent = () => {
     if (refType === "image") {
-      return h("img", { src: refSrc, alt: "" });
+      return refSrc
+        ? h("img", {
+            src: refSrc,
+            alt: $t("workbench.production.editImage.reference", { index: index + 1 }),
+          })
+        : h("span", { class: "tagIndex" }, `#${index + 1}`);
     }
     if (refType === "video") {
       return h(Video);
@@ -97,11 +109,17 @@ function createRefTag(index: number): HTMLSpanElement {
   return container;
 }
 
-// 将 prompt 文本渲染到编辑器，处理 @图N 为标签
+function clearEditor() {
+  if (!editorRef.value) return;
+  editorRef.value.querySelectorAll<HTMLElement>("[data-ref-index]").forEach((node) => render(null, node));
+  editorRef.value.replaceChildren();
+}
+
+// 将 prompt 文本渲染到编辑器，处理 @图N 与旧版 @图片N 为标签
 function renderPromptToEditor(text: string) {
   if (!editorRef.value) return;
-  editorRef.value.innerHTML = "";
-  const regex = /@图(\d+)/g;
+  clearEditor();
+  const regex = /@图片?(\d+)/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(text)) !== null) {
@@ -125,14 +143,17 @@ onMounted(() => {
   }
 });
 
+onBeforeUnmount(clearEditor);
+
 // 监听 references 变化，重新渲染标签（避免 props 数据延迟导致图片为空）
 watch(
-  () => props.references,
+  () => (props.references ?? []).map((item) => `${item.type}:${item.src}`).join("|"),
   () => {
     if (editorRef.value && prompt.value) {
       renderPromptToEditor(prompt.value);
     }
   },
+  { flush: "post" },
 );
 
 // 监听外部 prompt 变化，同步到编辑器
@@ -302,6 +323,11 @@ function handleBlur() {
   word-break: break-all;
   cursor: text;
 
+  &.readonly {
+    background: var(--td-bg-color-secondarycontainer);
+    cursor: default;
+  }
+
   &:empty::before {
     content: attr(data-placeholder);
     color: #aaa;
@@ -430,6 +456,13 @@ function handleBlur() {
     object-fit: cover;
     flex-shrink: 0;
     border: 1px solid rgba(91, 204, 179, 0.2);
+  }
+
+  .tagIndex {
+    min-width: 18px;
+    text-align: center;
+    font-size: 10px;
+    color: #2da68a;
   }
 
   i {
