@@ -19,6 +19,51 @@ export interface AgentContext {
   msg: ReturnType<ResTool["newMessage"]>;
 }
 
+const SUB_AGENT_MAX_ATTEMPTS = 3;
+const TRANSIENT_AI_ERROR =
+  /(?:upstream_error|temporarily unavailable|service unavailable|overloaded|rate.?limit|too many requests|timeout|timed out|econnreset|etimedout|eai_again|\b(?:429|502|503|504)\b)/i;
+
+function collectErrorText(error: unknown, depth = 0): string {
+  if (depth > 3 || error == null) return "";
+  if (typeof error === "string") return error;
+  if (typeof error !== "object") return String(error);
+
+  const value = error as Record<string, unknown>;
+  const directValues = ["name", "message", "type", "code", "status", "statusCode", "responseBody"]
+    .map((key) => value[key])
+    .filter((item): item is string | number => typeof item === "string" || typeof item === "number")
+    .map(String);
+  const nestedValues = [value.cause, value.lastError, ...(Array.isArray(value.errors) ? value.errors : [])]
+    .map((item) => collectErrorText(item, depth + 1))
+    .filter(Boolean);
+  return [...directValues, ...nestedValues].join(" ");
+}
+
+export function isTransientAiError(error: unknown): boolean {
+  return TRANSIENT_AI_ERROR.test(collectErrorText(error));
+}
+
+function createAbortError() {
+  const error = new Error("生成已停止");
+  error.name = "AbortError";
+  return error;
+}
+
+async function waitBeforeRetry(delayMs: number, signal?: AbortSignal) {
+  if (signal?.aborted) throw createAbortError();
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(createAbortError());
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 function buildMemPrompt(mem: Awaited<ReturnType<Memory["get"]>>): string {
   let memoryContext = "";
   if (mem.rag.length) {
@@ -150,7 +195,7 @@ export async function decisionAI(ctx: AgentContext) {
     `章节数量：${novelData.length}章`,
   ].join("\n");
 
-  const { textStream } = await u.Ai.Text("scriptAgent").stream({
+  const { textStream } = await u.Ai.Text("scriptAgent:decisionAgent").stream({
     messages: [
       { role: "system", content: withContentSafetyConstraint(prompt, contentSafetyConstraint) },
       { role: "assistant", content: projectInfo + "\n" + mem },
@@ -175,6 +220,7 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
   const memory = new Memory("scriptAgent", parentCtx.isolationKey);
 
   async function runAgent({
+    modelKey,
     prompt,
     system,
     name,
@@ -182,6 +228,7 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
     tools: extraTools,
     messages,
   }: {
+    modelKey: `scriptAgent:${string}`;
     prompt: string;
     system: string;
     name: string;
@@ -194,26 +241,44 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
     const text = subMsg.text();
     let fullResponse = "";
 
-    const { textStream } = await u.Ai.Text("scriptAgent").stream({
-      system: withContentSafetyConstraint(system, contentSafetyConstraint),
-      messages: messages ?? [{ role: "user", content: prompt }],
-      abortSignal,
-      tools: { ...extraTools, ...useTools({ resTool, msg: subMsg }) },
-    });
+    for (let attempt = 1; attempt <= SUB_AGENT_MAX_ATTEMPTS; attempt++) {
+      let attemptResponse = "";
+      try {
+        const { textStream } = await u.Ai.Text(modelKey).stream({
+          system: withContentSafetyConstraint(system, contentSafetyConstraint),
+          messages: messages ?? [{ role: "user", content: prompt }],
+          abortSignal,
+          tools: { ...extraTools, ...useTools({ resTool, msg: subMsg }) },
+        });
 
-    try {
-      for await (const chunk of textStream) {
-        await new Promise<void>((resolve) => setTimeout(() => resolve(), 1));
-        text.append(chunk);
-        fullResponse += chunk;
+        for await (const chunk of textStream) {
+          await new Promise<void>((resolve) => setTimeout(() => resolve(), 1));
+          text.append(chunk);
+          attemptResponse += chunk;
+        }
+        if (!attemptResponse.trim()) {
+          throw new Error("模型服务未返回有效内容");
+        }
+        fullResponse = attemptResponse;
+        break;
+      } catch (err: any) {
+        const canRetry = !attemptResponse.trim() && (isTransientAiError(err) || /未返回有效内容/.test(collectErrorText(err)));
+        if (err?.name === "AbortError" || abortSignal?.aborted || !canRetry || attempt === SUB_AGENT_MAX_ATTEMPTS) {
+          text.complete();
+          subMsg.error(u.error(err).message);
+          throw err;
+        }
+
+        console.warn(`[scriptAgent] ${modelKey} 调用失败，准备第 ${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS} 次尝试:`, u.error(err).message);
+        const retryState = subMsg.thinking("模型服务暂时不可用，正在自动重试...");
+        retryState.appendText(`第 ${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS} 次尝试`);
+        retryState.complete();
+        await waitBeforeRetry(750 * attempt, abortSignal);
       }
-      text.complete();
-      subMsg.complete();
-    } catch (err: any) {
-      text.complete();
-      subMsg.stop();
-      throw err;
     }
+
+    text.complete();
+    subMsg.complete();
 
     if (fullResponse.trim()) {
       await persistPlanXml(resTool.data.projectId, fullResponse);
@@ -241,6 +306,7 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
       const formatPrompt = "\n你必须使用如下XML格式写入工作区：\n<storySkeleton>故事骨架内容</storySkeleton>";
 
       return runAgent({
+        modelKey: "scriptAgent:storySkeletonAgent",
         prompt,
         system: systemPrompt + formatPrompt,
         name: "编剧",
@@ -260,6 +326,7 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
       const formatPrompt = "\n你必须使用如下XML格式写入工作区：\n<adaptationStrategy>改编策略内容</adaptationStrategy>";
 
       return runAgent({
+        modelKey: "scriptAgent:adaptationStrategyAgent",
         prompt,
         system: systemPrompt + formatPrompt,
         name: "编剧",
@@ -286,6 +353,7 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
       const formatPrompt = `\n你必须使用如下XML格式写入工作区：\nXML不得添加任何额外标签<scriptItem name="剧本名称">剧本内容</scriptItem><scriptItem name="剧本名称">剧本内容</scriptItem><scriptItem name="剧本名称">剧本内容</scriptItem>`;
 
       return runAgent({
+        modelKey: "scriptAgent:scriptAgent",
         prompt,
         system: systemPrompt + formatPrompt,
         messages: [
@@ -306,6 +374,7 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
       const systemPrompt = await fs.promises.readFile(skill, "utf-8");
 
       return runAgent({
+        modelKey: "scriptAgent:supervisionAgent",
         prompt,
         system: systemPrompt,
         name: "编辑",
