@@ -4,6 +4,29 @@ import u from "@/utils";
 import * as agent from "@/agents/productionAgent";
 import ResTool from "@/socket/resTool";
 
+const DECISION_MAX_ATTEMPTS = 3;
+
+function createAbortError() {
+  const error = new Error("生成已停止");
+  error.name = "AbortError";
+  return error;
+}
+
+async function waitBeforeRetry(delayMs: number, signal?: AbortSignal) {
+  if (signal?.aborted) throw createAbortError();
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(createAbortError());
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 async function verifyToken(rawToken: string) {
   const setting = await u.db("o_setting").where("key", "tokenKey").select("value").first();
   if (!setting?.value || !rawToken) return false;
@@ -76,7 +99,6 @@ export default (nsp: Namespace) => {
       };
 
       try {
-        const textStream = await agent.decisionAI(ctx);
         let currentMsg = ctx.msg;
         let text = currentMsg.text();
         const syncCurrentMessage = () => {
@@ -87,20 +109,44 @@ export default (nsp: Namespace) => {
           text = currentMsg.text();
         };
 
-        let aborted = false;
-        try {
-          for await (const chunk of textStream) {
-            syncCurrentMessage();
-            text.append(chunk);
+        let completed = false;
+        let lastError: unknown;
+        for (let attempt = 1; attempt <= DECISION_MAX_ATTEMPTS; attempt++) {
+          let receivedText = false;
+          try {
+            resTool.workflowStatus("working", attempt === 1 ? "正在分析制作进度并规划下一步" : "正在重新连接制作 Agent", "planning");
+            const textStream = await agent.decisionAI(ctx);
+            for await (const chunk of textStream) {
+              syncCurrentMessage();
+              text.append(chunk);
+              receivedText = true;
+            }
+            completed = true;
+            break;
+          } catch (error: any) {
+            if (error?.name === "AbortError" || currentController.signal.aborted) throw error;
+            lastError = error;
+            const canRetry = !receivedText && agent.isTransientAiError(error) && attempt < DECISION_MAX_ATTEMPTS;
+            if (!canRetry) break;
+            resTool.workflowStatus("retrying", `制作 Agent 暂时不可用，正在自动重试（${attempt + 1}/${DECISION_MAX_ATTEMPTS}）`, "planning");
+            await waitBeforeRetry(750 * attempt, currentController.signal);
           }
-        } catch (error: any) {
-          if (error?.name === "AbortError" || currentController.signal.aborted) aborted = true;
-          else throw error;
-        } finally {
-          syncCurrentMessage();
+        }
+
+        syncCurrentMessage();
+        if (completed) {
           text.complete();
-          if (aborted) currentMsg.stop();
-          else currentMsg.complete();
+          currentMsg.complete();
+          resTool.workflowStatus("idle", "当前制作步骤已完成，请查看工作台或继续下一阶段");
+        } else if (lastError) {
+          const errorMessage = u.error(lastError).message;
+          text.append(`当前制作步骤未完成：${errorMessage}。已保存的制作数据不会丢失，请点击重试或继续当前步骤。`).complete();
+          currentMsg.error(errorMessage);
+          resTool.workflowStatus("error", `当前制作步骤未完成：${errorMessage}`, "planning");
+        } else {
+          text.complete();
+          currentMsg.stop();
+          resTool.workflowStatus("idle", "已停止当前制作任务");
         }
       } catch (error: any) {
         if (error?.name !== "AbortError" && !currentController.signal.aborted) {
@@ -109,6 +155,10 @@ export default (nsp: Namespace) => {
           ctx.msg.text(message).complete();
           ctx.msg.error(message);
           socket.emit("error", { code: "AGENT_ERROR", message });
+          resTool.workflowStatus("error", `当前制作步骤未完成：${message}`, "production");
+        } else {
+          ctx.msg.stop();
+          resTool.workflowStatus("idle", "已停止当前制作任务");
         }
       } finally {
         if (abortController === currentController) abortController = null;

@@ -4,8 +4,8 @@
 
 | 模式 | 风格标签 |
 |------|----------|
-| **通用多参模式（英文）** | `modern urban drama, photorealistic, cinematic, natural lighting, ultra-fine detail` |
-| **通用首尾帧模式（英文）** | `modern urban drama, photorealistic, cinematic, natural lighting, ultra-fine detail, shallow depth of field` |
-| **Seedance 2.0（中文）** | `都市写实摄影，电影风格，自然光照，极致细节` |
+| **通用多参模式（英文）** | `live-action urban realism, real human actors, contemporary everyday interiors, natural window and practical light, authentic skin and fabric texture, understated body language, simple observational camera` |
+| **通用首尾帧模式（英文）** | `live-action urban realism, real human actors, contemporary everyday interiors, natural window and practical light, authentic skin and fabric texture, understated body language, stable spatial continuity` |
+| **Seedance 2.0（中文）** | `真人都市写实影像，真实演员质感，当代日常空间，自然窗光与现场灯光，真实皮肤和织物，克制肢体表演，简洁观察式镜头` |
 
 

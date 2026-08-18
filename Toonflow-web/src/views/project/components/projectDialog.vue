@@ -67,6 +67,18 @@
                           <img :src="item.images && item.images[0]" :alt="item.name" class="artImage" loading="lazy" />
                           <div class="text">{{ item.name }}</div>
                         </div>
+                        <t-image-viewer v-if="item.images?.length" :images="item.images" :closeOnEscKeydown="true" :closeOnOverlay="true">
+                          <template #trigger="{ open }">
+                            <button
+                              type="button"
+                              class="previewBtn"
+                              :title="$t('components.imageTools.preview')"
+                              :aria-label="$t('components.imageTools.preview')"
+                              @click.stop="open">
+                              <t-icon name="browse" size="16px" />
+                            </button>
+                          </template>
+                        </t-image-viewer>
                         <div class="editBtn" @click.stop="openVisualManualDialog(item)">
                           <i-edit theme="outline" size="14" />
                         </div>
@@ -101,6 +113,18 @@
                           <img :src="item.images && item.images[0]" :alt="item.name" class="artImage" loading="lazy" />
                           <div class="text">{{ item.name }}</div>
                         </div>
+                        <t-image-viewer v-if="item.images?.length" :images="item.images" :closeOnEscKeydown="true" :closeOnOverlay="true">
+                          <template #trigger="{ open }">
+                            <button
+                              type="button"
+                              class="previewBtn"
+                              :title="$t('components.imageTools.preview')"
+                              :aria-label="$t('components.imageTools.preview')"
+                              @click.stop="open">
+                              <t-icon name="browse" size="16px" />
+                            </button>
+                          </template>
+                        </t-image-viewer>
                         <div class="editBtn" @click.stop="openDirectorManualDialog(item)">
                           <i-edit theme="outline" size="14" />
                         </div>
@@ -898,6 +922,9 @@ function handleDirectorManualCoverFileChange(e: Event) {
       .delBtn {
         opacity: 1;
       }
+      .previewBtn {
+        opacity: 1;
+      }
     }
 
     &.active {
@@ -966,6 +993,30 @@ function handleDirectorManualCoverFileChange(e: Event) {
 
       &:hover {
         background: #fff;
+      }
+    }
+    .previewBtn {
+      position: absolute;
+      right: 6px;
+      bottom: 30px;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--td-text-color-primary);
+      background: rgba(255, 255, 255, 0.9);
+      border: 0;
+      border-radius: 4px;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.2s;
+
+      &:hover,
+      &:focus-visible {
+        background: #fff;
+        opacity: 1;
       }
     }
   }

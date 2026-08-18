@@ -58,6 +58,17 @@ class ResTool {
       status: "complete" as ChatMessageStatus,
     });
   }
+
+  // Workflow events are intentionally separate from chat messages. A model can
+  // spend time planning or calling a sub-agent before it has text to stream.
+  // The client must still be able to show that work is in progress.
+  workflowStatus(
+    state: "idle" | "working" | "retrying" | "complete" | "error",
+    label: string,
+    phase?: string,
+  ) {
+    this.socket.emit("workflow:status", { state, label, phase });
+  }
 }
 
 // 消息构建器

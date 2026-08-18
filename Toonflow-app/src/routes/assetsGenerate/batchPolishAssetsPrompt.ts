@@ -154,7 +154,10 @@ export default router.post(
             return;
           }
 
-          await u.db("o_assets").where("id", item.assetsId).update({ prompt: _output, promptState: "已完成" });
+          await u
+            .db("o_assets")
+            .where("id", item.assetsId)
+            .update({ originalPrompt: _output, prompt: _output, promptState: "已完成" });
         } catch (e: any) {
           await u
             .db("o_assets")

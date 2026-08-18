@@ -53,6 +53,7 @@ export default router.post(
         { value: "art_scene_derivative", subDir: "art_prompt" },
         { value: "director_storyboard", subDir: "driector_skills" },
         { value: "art_storyboard_video", subDir: "art_prompt" },
+        { value: "prompt_reasoning", subDir: "art_prompt" },
         { value: "director_planning_style", subDir: "driector_skills" },
         { value: "director_storyboard_table_style", subDir: "driector_skills" },
       ];

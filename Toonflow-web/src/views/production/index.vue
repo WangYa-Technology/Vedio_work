@@ -135,11 +135,31 @@
             allowContentSegmentCustom />
         </t-chat-list>
 
+        <div
+          v-if="showWorkflowStatus"
+          class="workflowStatus"
+          :class="`is-${workflowStatus.state}`"
+          role="status"
+          aria-live="polite">
+          <i-loading-four v-if="workflowBusy" class="workflowSpinner" size="16" />
+          <i-info v-else-if="workflowStatus.state === 'error'" size="16" />
+          <span>{{ workflowStatusLabel }}</span>
+        </div>
+        <div v-if="nextAction" class="nextAction">
+          <div class="nextActionCopy">
+            <span class="nextActionTitle">{{ nextAction.title }}</span>
+            <span>{{ nextAction.description }}</span>
+          </div>
+          <t-button size="small" theme="primary" :disabled="workflowBusy || loadingData || loadingHistory" @click="runNextAction">
+            {{ nextAction.label }}
+          </t-button>
+        </div>
+
         <t-chat-sender
           class="chatSender"
-          :disabled="status === 'pending' || status === 'streaming' || !connected"
+          :disabled="workflowBusy || !connected || loadingData || loadingHistory"
           v-model="inputValue"
-          :loading="status === 'pending' || status === 'streaming'"
+          :loading="workflowBusy"
           :textarea-props="{
             placeholder: $t('workbench.production.chatBox.inputPlaceholder'),
             autosize: { minRows: 2, maxRows: 5 },
@@ -163,7 +183,7 @@ import "md-editor-v3/lib/preview.css";
 const projectState = projectStore();
 const { project, allProject } = storeToRefs(projectState);
 const productionStore = productionAgentStore();
-const { flowData, connected, renderableMessages, status, loadingHistory, thinkLevel } = storeToRefs(productionStore);
+const { flowData, connected, renderableMessages, status, workflowStatus, loadingHistory, thinkLevel } = storeToRefs(productionStore);
 
 const inputValue = ref("");
 const loadingData = ref(false);
@@ -200,6 +220,90 @@ const storyboardSegments = computed(() => {
   }));
 });
 const directorPlanPreview = computed(() => formatDirectorPlan(flowData.value?.scriptPlan || ""));
+function parseStoryboardTableReferenceIds(markdown: string) {
+  return [...String(markdown || "").matchAll(/\*\*引用资产ID\*\*\s*[：:]\s*(?:\[|［)([^\]］]*)(?:\]|］)/g)]
+    .flatMap((match) => match[1].match(/\d+/g) || [])
+    .map(Number)
+    .filter(Number.isFinite);
+}
+
+const assetIndex = computed(() => {
+  const entries = flowData.value.assets.flatMap((asset) => [asset, ...(asset.derive || [])]);
+  return new Map(entries.map((asset) => [Number(asset.id), asset]));
+});
+const requiredAssetIds = computed(() => {
+  const ids = flowData.value.storyboard.length
+    ? flowData.value.storyboard.flatMap((item) => item.associateAssetsIds || [])
+    : parseStoryboardTableReferenceIds(flowData.value.storyboardTable);
+  return [...new Set(ids.map(Number).filter(Number.isFinite))];
+});
+const missingRequiredAssets = computed(() =>
+  requiredAssetIds.value
+    .map((id) => assetIndex.value.get(id) || { id, name: `素材 #${id}`, src: "", state: "未生成" })
+    .filter((asset) => !asset.src),
+);
+const workflowBusy = computed(() =>
+  status.value === "pending" || status.value === "streaming" || workflowStatus.value.state === "working" || workflowStatus.value.state === "retrying",
+);
+const showWorkflowStatus = computed(() => Boolean(workflowStatus.value.label) && (workflowBusy.value || workflowStatus.value.state === "error"));
+const workflowStatusLabel = computed(() => workflowStatus.value.label || "正在处理当前制作任务");
+const productionStage = computed(() => {
+  if (!flowData.value.scriptPlan.trim()) return "directorPlan" as const;
+  if (!flowData.value.storyboardTable.trim()) return "storyboardTable" as const;
+  if (missingRequiredAssets.value.length) return "assetImages" as const;
+  if (!flowData.value.storyboard.length) return "storyboardPanel" as const;
+  if (flowData.value.storyboard.some((item) => item.state !== "已完成")) return "storyboardGen" as const;
+  return "complete" as const;
+});
+const nextAction = computed(() => {
+  if (workflowBusy.value || loadingData.value || loadingHistory.value || !currentEpisodesId.value || !connected.value) return null;
+  const failed = workflowStatus.value.state === "error";
+  switch (productionStage.value) {
+    case "directorPlan":
+      return {
+        title: "还没有导演规划",
+        description: "先根据当前剧本制定导演规划，再继续分镜流程。",
+        label: failed ? "重新制定" : "制定导演规划",
+        prompt: "继续执行导演规划",
+      };
+    case "storyboardTable":
+      return {
+        title: "导演规划已完成",
+        description: "继续构建分镜表，完成后会进入正式分镜面板。",
+        label: failed ? "重新构建" : "构建分镜表",
+        prompt: "继续构建分镜表",
+      };
+    case "assetImages": {
+      const names = missingRequiredAssets.value.map((asset) => `${asset.name}（${asset.id}）`).join("、");
+      const generating = missingRequiredAssets.value.some((asset) => asset.state === "生成中");
+      return {
+        title: generating ? "分镜所需素材正在生成" : "分镜所需素材未就绪",
+        description: generating
+          ? `${names}尚未生成完成，完成后才能进入分镜面板和视频生成。`
+          : `先补充生成${names}，系统会按片段自动关联对应素材。`,
+        label: generating ? "刷新素材状态" : failed ? "重新生成素材" : "生成缺失素材",
+        prompt: generating ? "" : `分镜引用的素材未就绪，请先生成这些缺失素材：${names}。素材就绪前不要进入分镜面板或视频生成。`,
+        refresh: generating,
+      };
+    }
+    case "storyboardPanel":
+      return {
+        title: "分镜表已保存",
+        description: "将已保存的分镜表写入正式分镜面板，不重复生成前置内容。",
+        label: failed ? "重新写入" : "写入分镜面板",
+        prompt: "继续写入正式分镜面板",
+      };
+    case "storyboardGen":
+      return {
+        title: "分镜面板已就绪",
+        description: "继续处理分镜图片生成和失败项。",
+        label: failed ? "重新处理" : "继续生成分镜图",
+        prompt: "继续生成分镜图并检查失败项",
+      };
+    default:
+      return null;
+  }
+});
 
 const currentEpisodeLabel = computed(() => {
   const ep = episodesOptions.value.find((o) => o.value === currentEpisodesId.value);
@@ -380,6 +484,16 @@ function handleSend(text: string) {
 
 function handleStop() {
   productionStore.stopGenerate();
+}
+
+function runNextAction() {
+  const action = nextAction.value;
+  if (!action) return;
+  if ("refresh" in action && action.refresh) {
+    refreshData();
+    return;
+  }
+  productionStore.chat(action.prompt);
 }
 
 function handleThinkLevelChange(value: unknown) {
@@ -747,6 +861,60 @@ onUnmounted(() => {
         overflow-y: auto;
       }
 
+      .workflowStatus {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 34px;
+        margin: 0 8px 8px;
+        padding: 7px 10px;
+        border: 1px solid var(--td-brand-color-3, #b5c7e8);
+        border-radius: 6px;
+        background: var(--td-brand-color-1, #f0f5ff);
+        color: var(--td-brand-color, #0052d9);
+        font-size: 12px;
+        line-height: 1.4;
+
+        &.is-error {
+          border-color: var(--td-error-color-3, #f3b9bd);
+          background: var(--td-error-color-1, #fff0f0);
+          color: var(--td-error-color, #d54941);
+        }
+
+        .workflowSpinner {
+          flex-shrink: 0;
+          animation: productionWorkflowRotate 0.9s linear infinite;
+        }
+      }
+
+      .nextAction {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin: 0 8px 8px;
+        padding: 9px 10px;
+        border: 1px solid var(--td-brand-color-3, #b5c7e8);
+        border-radius: 6px;
+        background: var(--td-brand-color-1, #f0f5ff);
+
+        .nextActionCopy {
+          display: flex;
+          min-width: 0;
+          flex-direction: column;
+          gap: 3px;
+          color: var(--td-text-color-secondary, #777);
+          font-size: 12px;
+          line-height: 1.45;
+        }
+
+        .nextActionTitle {
+          color: var(--td-text-color-primary, #333);
+          font-size: 13px;
+          font-weight: 600;
+        }
+      }
+
       .chatSender {
         flex-shrink: 0;
         padding-bottom: 8px;
@@ -762,6 +930,12 @@ onUnmounted(() => {
         }
       }
     }
+  }
+}
+
+@keyframes productionWorkflowRotate {
+  to {
+    transform: rotate(360deg);
   }
 }
 

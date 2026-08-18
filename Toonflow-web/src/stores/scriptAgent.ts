@@ -40,7 +40,7 @@ export default defineStore(
       projectId: undefined as number | undefined,
     });
 
-    const { connected, messages, renderableMessages, chat, stopGenerate, socket, status, connect, reconnect, disconnect, clearMessages } = useChat({
+    const { connected, messages, renderableMessages, chat, stopGenerate, socket, status, workflowStatus, connect, reconnect, disconnect, clearMessages } = useChat({
       url: `${settingStore().baseUrl}/socket/scriptAgent`,
       auth: chatAuth,
       manageLifecycle: false,
@@ -143,6 +143,7 @@ export default defineStore(
       stopGenerate,
       socket,
       status,
+      workflowStatus,
       planData,
       currentProjectId,
       setPlanData,

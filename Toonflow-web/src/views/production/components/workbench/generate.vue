@@ -106,6 +106,9 @@
           <div class="taskNotice" v-if="activeTrack.readiness?.messages?.length">
             {{ activeTrack.readiness.messages.join("；") }}
           </div>
+          <div class="taskNotice taskNoticeWarning" v-if="activeTrack.promptAudit?.length">
+            提示词质量门：{{ activeTrack.promptAudit.join("；") }}
+          </div>
         </div>
         <div v-else class="emptyVideo c">{{ $t("workbench.generate.noVideo") }}</div>
       </div>
@@ -215,7 +218,7 @@
             <div class="model">
               <modelSelect v-model="selectModel" type="video" size="small" />
             </div>
-            <t-select size="small" class="mode" v-model="selectMode">
+            <t-select v-if="!isB36Model" size="small" class="mode" v-model="selectMode">
               <t-option v-for="(item, index) in modeList" :key="index" :value="item.value" :label="item.label"></t-option>
             </t-select>
             <t-tooltip v-if="showAudioControl" :content="audioControlTooltip" placement="top">
@@ -234,7 +237,14 @@
                 </template>
               </t-button>
             </t-tooltip>
-            <t-tooltip content="生成清晰度" placement="top">
+            <t-select
+              v-if="isB36Model"
+              v-model="selectedMegapixels"
+              size="small"
+              class="megapixelSelect"
+              :options="megapixelOptions"
+              aria-label="百万像素" />
+            <t-tooltip v-else content="生成清晰度" placement="top">
               <t-select
                 v-model="selectedResolution"
                 size="small"
@@ -402,6 +412,7 @@ const promptText = computed({
   },
 });
 const selectedResolution = ref("480p");
+const selectedMegapixels = ref("0.4");
 const selectedDuration = ref(8);
 // 用户是否手动选择过时长，手动选择后不再被 track.duration 覆盖
 const userSelectedDuration = ref(false);
@@ -495,6 +506,7 @@ async function generateScenePrompts(scene: SceneGroup, requestedIds?: number[]) 
       trackIds,
       templateId: selectedVideoPromptTemplateId.value,
       model: selectModel.value,
+      mode: selectMode.value,
     });
     for (const result of data?.prompts || []) {
       const targetTrack = trackList.value.find((item) => item.id === Number(result.trackId));
@@ -514,8 +526,9 @@ async function generateScenePrompts(scene: SceneGroup, requestedIds?: number[]) 
 }
 
 async function genText() {
-  if (!activeSceneGroup.value) return;
-  await generateScenePrompts(activeSceneGroup.value);
+  const activeTrack = trackList.value[activeTrackIndex.value];
+  if (!activeSceneGroup.value || activeTrack?.id == null) return;
+  await generateScenePrompts(activeSceneGroup.value, [activeTrack.id]);
 }
 
 interface VideoItem {
@@ -758,6 +771,17 @@ interface VideoModel {
   durationResolutionMap: { duration: number[]; resolution: string[] }[];
 }
 const modeOptions = ref<VideoModel>({} as VideoModel);
+const B36_MODEL_ID = "comfyui-minimax-h3:minimax-h3-reference-to-video";
+const B36_MEGAPIXEL_RESOLUTIONS = new Map<number, [number, number]>([
+  [0.2, [608, 352]],
+  [0.3, [736, 416]],
+  [0.4, [864, 480]],
+  [0.5, [960, 544]],
+  [0.6, [1056, 608]],
+  [0.7, [1152, 640]],
+  [0.8, [1216, 672]],
+  [0.9, [1280, 736]],
+]);
 const showAudioControl = computed(() => modeOptions.value.audio === true || modeOptions.value.audio === "optional");
 const audioControlTooltip = computed(() => {
   if (modeOptions.value.audio === true) return "当前模型固定生成声音";
@@ -823,6 +847,36 @@ const modeList = computed(() => {
 
 const selectModel = ref<string>();
 const selectMode = ref<string>();
+const isB36Model = computed(() => selectModel.value === B36_MODEL_ID || modeOptions.value.name?.startsWith("B36"));
+
+function roundTo32(value: number) {
+  return Math.max(32, Math.round(value / 32) * 32);
+}
+
+function getB36Resolution(megapixels: number) {
+  const ratioText = String(projectConfig.value.videoRatio || "16:9");
+  const [ratioWidth, ratioHeight] = ratioText.split(":").map(Number);
+  const landscape = B36_MEGAPIXEL_RESOLUTIONS.get(megapixels) || B36_MEGAPIXEL_RESOLUTIONS.get(0.4)!;
+  if (ratioWidth === 16 && ratioHeight === 9) return `${landscape[0]}x${landscape[1]}`;
+  if (ratioWidth === 9 && ratioHeight === 16) return `${landscape[1]}x${landscape[0]}`;
+
+  const ratio = ratioWidth > 0 && ratioHeight > 0 ? ratioWidth / ratioHeight : 16 / 9;
+  const targetPixels = megapixels * 1_000_000;
+  const width = roundTo32(Math.sqrt(targetPixels * ratio));
+  const height = roundTo32(width / ratio);
+  return `${width}x${height}`;
+}
+
+const megapixelOptions = computed(() =>
+  [...B36_MEGAPIXEL_RESOLUTIONS.keys()].map((value) => {
+    const resolution = getB36Resolution(value);
+    return { label: `${value.toFixed(1)} MP · ${resolution.replace("x", "×")}`, value: value.toFixed(1) };
+  }),
+);
+
+function syncB36Resolution() {
+  if (isB36Model.value) selectedResolution.value = getB36Resolution(Number(selectedMegapixels.value));
+}
 
 const isMixedMode = computed(() => {
   const mode = parseMode(selectMode.value || "");
@@ -921,6 +975,10 @@ interface TrackItem {
   imagePrompt?: string;
   videoDesc?: string;
   promptSource?: string;
+  promptTemplateId?: number | null;
+  promptTemplateVersion?: string | null;
+  promptInferenceSnapshot?: string | null;
+  promptAudit?: string[];
   segmentRows?: Array<{
     serial: string;
     description: string;
@@ -967,8 +1025,9 @@ const preInferenceText = computed(() => {
   const track = activeTrack.value;
   if (!track) return "";
 
+  const referenceToken = String(projectConfig.value.referenceToken || "@图");
   const referenceMap = (track.medias || [])
-    .map((media, index) => `@图${index + 1}：${media.name || "未命名资产"}（${inferenceAssetTypeLabel(media)}）`)
+    .map((media, index) => `${referenceToken}${index + 1}：${media.name || "未命名资产"}（${inferenceAssetTypeLabel(media)}）`)
     .join("\n");
   const videoDescription = track.segmentRows?.length
     ? track.segmentRows
@@ -981,6 +1040,11 @@ const preInferenceText = computed(() => {
 
   return [
     `片段：${track.segmentTitle || track.title || `#${activeTrackIndex.value + 1}`}`,
+    `模型：${projectConfig.value.modelDisplayName || projectConfig.value.modelName || "未配置"}`,
+    `模式：${projectConfig.value.mode || "未标注"}；画幅：${projectConfig.value.videoRatio || "16:9"}；画风：${projectConfig.value.artStyle || "未标注"}`,
+    track.promptTemplateVersion
+      ? `提示词模板版本：${track.promptTemplateId || "未标注"} / ${track.promptTemplateVersion}`
+      : "提示词模板版本：尚未生成",
     `时长：${track.duration || 0} 秒`,
     referenceMap ? `[参考资产]\n${referenceMap}` : "",
     videoDescription ? `[视频描述]\n${videoDescription}` : "",
@@ -1252,6 +1316,7 @@ async function generateVideo() {
           resolution: selectedResolution.value,
           duration: effectiveDuration.value,
           audio: selectedAudio.value,
+          promptTemplateId: selectedVideoPromptTemplateId.value,
           trackId,
         };
         const { data } = await axios.post("/production/workbench/generateVideo", payload);
@@ -1282,7 +1347,9 @@ watch(selectModel, (val) => {
     // 重置分辨率和时长为第一个可选项
     const drMap = data.durationResolutionMap;
     if (Array.isArray(drMap) && drMap.length > 0) {
-      if (drMap[0].resolution?.length) {
+      if (isB36Model.value) {
+        syncB36Resolution();
+      } else if (drMap[0].resolution?.length) {
         selectedResolution.value = drMap[0].resolution[0];
       }
       if (drMap[0].duration?.length) {
@@ -1293,6 +1360,8 @@ watch(selectModel, (val) => {
     userSelectedDuration.value = false;
   });
 });
+
+watch([selectedMegapixels, isB36Model, () => projectConfig.value.videoRatio], syncB36Resolution, { immediate: true });
 
 const userEditedUploadBox = ref(false);
 
@@ -1360,15 +1429,17 @@ watch(
 );
 
 async function batchGenText() {
-  if (!sceneGroups.value.length) {
-    window.$message.warning("当前没有可推理的视频场次");
+  if (!checkedTrackIds.value.length) {
+    window.$message.warning("请先勾选需要推理的视频片段，或使用全选");
     return;
   }
   for (const scene of sceneGroups.value) {
-    await generateScenePrompts(
-      scene,
-      scene.entries.map((entry) => entry.track.id),
-    );
+    const requestedIds = scene.entries
+      .map((entry) => entry.track.id)
+      .filter((id) => checkedTrackIds.value.includes(id));
+    if (requestedIds.length) {
+      await generateScenePrompts(scene, requestedIds);
+    }
   }
 }
 
@@ -1397,6 +1468,7 @@ function batchGenVideo() {
                 return {
                   id: item.id,
                   sources: item.sources ? item.sources : "storyboard",
+                  fileType: item.fileType,
                 };
               }),
               prompt: track.prompt,
@@ -1404,6 +1476,7 @@ function batchGenVideo() {
               mode: selectMode.value,
               resolution: selectedResolution.value,
               audio: selectedAudio.value,
+              promptTemplateId: selectedVideoPromptTemplateId.value,
               trackId,
             };
             if (payload.prompt === "") return window.$message.warning($t("workbench.generate.skipDataWithEmptyVideoPromptWords"));
@@ -2088,6 +2161,9 @@ async function downloadVideo(value: HistoryVideoItem) {
           }
           .resolutionSelect {
             width: 156px;
+          }
+          .megapixelSelect {
+            width: 176px;
           }
           .durationSelect {
             width: 84px;

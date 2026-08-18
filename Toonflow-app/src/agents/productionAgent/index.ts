@@ -3,11 +3,12 @@ import { z } from "zod";
 import { Socket } from "socket.io";
 import * as fs from "fs";
 import path from "path";
+import { parseModelReference } from "@/utils/modelRef";
 import u from "@/utils";
 import Memory from "@/utils/agent/memory";
 import ResTool from "@/socket/resTool";
 import useTools from "@/agents/productionAgent/tools";
-import { saveProductionFlowArtifact } from "@/utils/productionFlow";
+import { parseStoryboardTableAssetBindings, saveProductionFlowArtifact } from "@/utils/productionFlow";
 import {
   CONTENT_SAFETY_SETTING_KEY,
   DEFAULT_CONTENT_SAFETY_CONSTRAINT,
@@ -61,7 +62,7 @@ function collectErrorText(error: unknown, depth = 0): string {
   return [...directValues, ...nestedValues].join(" ");
 }
 
-function isTransientAiError(error: unknown): boolean {
+export function isTransientAiError(error: unknown): boolean {
   return TRANSIENT_AI_ERROR.test(collectErrorText(error));
 }
 
@@ -119,6 +120,64 @@ async function getContentSafetyConstraint() {
   return String(setting?.value ?? DEFAULT_CONTENT_SAFETY_CONSTRAINT).trim();
 }
 
+async function getWorkflowContext(projectId: number, scriptId: number) {
+  const workData = await u
+    .db("o_agentWorkData")
+    .where({ projectId, episodesId: scriptId, key: "productionFlowData" })
+    .first();
+  let flowData: Record<string, unknown> = {};
+  try {
+    flowData = JSON.parse(workData?.data ?? "{}");
+  } catch {
+    flowData = {};
+  }
+  const storyboardCount = await u.db("o_storyboard").where({ projectId, scriptId }).count("id as count").first();
+  const panelCount = Number((storyboardCount as any)?.count ?? 0);
+  const hasScriptPlan = typeof flowData.scriptPlan === "string" && flowData.scriptPlan.trim().length > 0;
+  const hasStoryboardTable = typeof flowData.storyboardTable === "string" && flowData.storyboardTable.trim().length > 0;
+  const formalStoryboardIds = panelCount
+    ? await u.db("o_storyboard").where({ projectId, scriptId }).pluck("id")
+    : [];
+  const referencedAssetIds = panelCount
+    ? (
+        await u
+          .db("o_assets2Storyboard")
+          .whereIn("storyboardId", formalStoryboardIds)
+          .pluck("assetId")
+      ).map(Number)
+    : parseStoryboardTableAssetBindings(String(flowData.storyboardTable || "")).flat();
+  const uniqueReferencedAssetIds = [...new Set(referencedAssetIds)];
+  const requiredAssets = uniqueReferencedAssetIds.length
+    ? await u
+        .db("o_assets")
+        .leftJoin("o_image", "o_assets.imageId", "o_image.id")
+        .where("o_assets.projectId", projectId)
+        .whereIn("o_assets.id", uniqueReferencedAssetIds)
+        .select("o_assets.id", "o_assets.name", "o_image.filePath", "o_image.state")
+    : [];
+  const missingAssets = requiredAssets.filter((asset) => !asset.filePath);
+  const missingAssetLabel = missingAssets.map((asset) => `${asset.id}（${asset.name || "未命名素材"}）`).join("、");
+  const suggestedNext = !hasScriptPlan
+    ? "先执行导演规划"
+    : !hasStoryboardTable
+      ? "直接构建正式分镜表"
+      : missingAssets.length
+        ? `先生成分镜明确引用但尚无图片的素材：${missingAssetLabel}；素材就绪前不得进入分镜面板或视频生成`
+      : panelCount === 0
+        ? "直接把已保存的分镜表写入正式分镜面板，不要重新询问前置阶段"
+        : "正式分镜面板已存在，继续执行分镜图生成或处理当前失败项";
+
+  return [
+    "## 宿主制作工作流快照（可信）",
+    `导演规划：${hasScriptPlan ? "已保存" : "未生成"}`,
+    `分镜表：${hasStoryboardTable ? "已保存" : "未生成"}`,
+    `正式分镜面板：${panelCount}条`,
+    `分镜引用素材：${uniqueReferencedAssetIds.length}项；缺少可用图片：${missingAssets.length ? missingAssetLabel : "无"}`,
+    `建议下一步：${suggestedNext}`,
+    "用户说“继续”“确认”“重试”时，必须按此快照推进；缺少引用素材图片时必须先派发素材生成，不得写入分镜面板或进入视频生成；不要重复询问已经保存的阶段，也不要把执行层的自然语言失败说明当作成功结果。",
+  ].join("\n");
+}
+
 function withContentSafety(system: string, constraint: string) {
   return constraint
     ? `${system}\n\n## 内容安全约束（用户设置）\n${constraint}`
@@ -141,11 +200,17 @@ async function buildTechniqueContext(
   project: any,
   phase: "directorPlan" | "storyboardTable" | "storyboardPanel",
 ) {
-  const fileName =
+  const artFileName =
     phase === "directorPlan"
       ? "director_planning_style.md"
       : phase === "storyboardTable"
         ? "director_storyboard_table_style.md"
+        : "director_storyboard.md";
+  const narrativeFileName =
+    phase === "directorPlan"
+      ? "director_planning_narrative.md"
+      : phase === "storyboardTable"
+        ? "director_storyboard_table_narrative.md"
         : "director_storyboard.md";
   const root = u.getPath("skills");
   const files = [
@@ -154,14 +219,14 @@ async function buildTechniqueContext(
       "art_skills",
       String(project.artStyle || ""),
       "driector_skills",
-      fileName,
+      artFileName,
     ),
     path.join(
       root,
       "story_skills",
       String(project.directorManual || ""),
       "driector_skills",
-      fileName,
+      narrativeFileName,
     ),
   ];
   if (phase === "storyboardPanel")
@@ -175,12 +240,10 @@ async function buildTechniqueContext(
 }
 
 function projectModelInfo(project: any) {
-  const imageModel =
-    String(project.imageModel || "未配置").split(/:(.+)/)[1] ||
-    String(project.imageModel || "未配置");
-  const videoModel =
-    String(project.videoModel || "未配置").split(/:(.+)/)[1] ||
-    String(project.videoModel || "未配置");
+  const imageModelRef = parseModelReference(project.imageModel || "未配置");
+  const videoModelRef = parseModelReference(project.videoModel || "未配置");
+  const imageModel = imageModelRef.modelName || imageModelRef.vendorId;
+  const videoModel = videoModelRef.modelName || videoModelRef.vendorId;
   let videoMode: unknown = project.mode;
   try {
     videoMode = JSON.parse(project.mode || "null");
@@ -220,13 +283,14 @@ export async function decisionAI(ctx: AgentContext) {
   const prompt = await readSkill("production_agent_decision.md");
   const safety = await getContentSafetyConstraint();
   const mem = buildMemPrompt(await memory.get(text));
+  const workflowContext = await getWorkflowContext(Number(resTool.data.projectId), Number(resTool.data.scriptId));
 
   const { textStream } = await u.Ai.Text(
     "productionAgent:decisionAgent",
   ).stream({
     messages: [
       { role: "system", content: withContentSafety(prompt, safety) },
-      { role: "assistant", content: `${mem}\n\n${projectModelInfo(project)}` },
+      { role: "assistant", content: `${workflowContext}\n\n${mem}\n\n${projectModelInfo(project)}` },
       { role: "user", content: text },
     ],
     abortSignal,
@@ -268,6 +332,16 @@ async function createSubAgents(
       return "审核已开始或完成。本轮必须立即停止并等待用户下一条消息，不能继续执行或再次审核。";
     }
     if (config.isSupervision) supervisionStarted = true;
+    const workflowLabel = config.phase === "directorPlan"
+      ? "正在制定导演规划"
+      : config.phase === "storyboardTable"
+        ? "正在构建分镜表"
+        : config.phase === "storyboardPanel"
+          ? "正在写入分镜面板"
+          : config.isSupervision
+            ? "正在审核制作结果"
+            : "正在执行制作任务";
+    resTool.workflowStatus("working", workflowLabel, config.phase ?? "production");
     parentCtx.msg.complete();
     const subMsg = resTool.newMessage("assistant", config.name);
     const systemBase = await readSkill(config.skill);
@@ -280,15 +354,16 @@ async function createSubAgents(
     );
     const stream = subMsg.text();
     let fullResponse = "";
+    let attemptMessages: { role: "user" | "assistant" | "system"; content: string }[] = [
+      { role: "assistant", content: projectModelInfo(project) },
+      { role: "user", content: `${config.prompt}${config.format || ""}` },
+    ];
     for (let attempt = 1; attempt <= SUB_AGENT_MAX_ATTEMPTS; attempt++) {
       let attemptResponse = "";
       try {
         const { textStream } = await u.Ai.Text(config.key).stream({
           system,
-          messages: [
-            { role: "assistant", content: projectModelInfo(project) },
-            { role: "user", content: `${config.prompt}${config.format || ""}` },
-          ],
+          messages: attemptMessages,
           abortSignal,
           tools: useTools({ resTool, msg: subMsg }),
         });
@@ -302,12 +377,37 @@ async function createSubAgents(
           (config.isSupervision || config.requiredArtifact)
         )
           throw new Error("模型服务未返回有效内容");
+        if (config.requiredArtifact) {
+          try {
+            const artifact = getLastXmlElement(attemptResponse, config.requiredArtifact);
+            if (!artifact) {
+              throw new Error(`${config.requiredArtifact === "scriptPlan" ? "导演规划" : "分镜表"}任务未输出完整 XML 产出物`);
+            }
+          } catch (error) {
+            if (attempt === SUB_AGENT_MAX_ATTEMPTS) throw error;
+            const errorMessage = u.error(error).message;
+            console.warn(`[productionAgent] ${config.key} 产出格式无效，准备第 ${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS} 次尝试:`, errorMessage);
+            const retryState = subMsg.thinking("产出格式未通过校验，正在自动重新生成...");
+            retryState.appendText(`第 ${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS} 次尝试`);
+            retryState.complete();
+            resTool.workflowStatus("retrying", `${workflowLabel}，正在修复输出格式（${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS}）`, config.phase ?? "production");
+            attemptMessages = [
+              ...attemptMessages,
+              {
+                role: "user",
+                content: "上一轮输出未通过宿主校验。请忽略上一轮结果，重新完成任务，只输出一个完整且可解析的 XML 产出物，不要输出解释、Markdown 代码围栏或保存说明。",
+              },
+            ];
+            await waitBeforeRetry(750 * attempt, abortSignal);
+            continue;
+          }
+        }
         fullResponse = attemptResponse;
         break;
       } catch (error: any) {
         const canRetry =
-          config.isSupervision === true &&
           !attemptResponse.trim() &&
+          (config.isSupervision === true || config.requiredArtifact != null) &&
           (isTransientAiError(error) ||
             /未返回有效内容/.test(collectErrorText(error)));
         if (
@@ -360,9 +460,11 @@ async function createSubAgents(
       }
       stream.complete();
       subMsg.complete();
+      resTool.workflowStatus("complete", `${workflowLabel}完成`, config.phase ?? "production");
     } catch (error) {
       stream.complete();
       subMsg.error(u.error(error).message);
+      resTool.workflowStatus("error", `${workflowLabel}失败：${u.error(error).message}`, config.phase ?? "production");
       throw error;
     }
 

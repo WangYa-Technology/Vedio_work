@@ -17,6 +17,7 @@ const DATA_MAP: { label: string; value: string; subDir?: string }[] = [
   { label: "场景衍生", value: "art_scene_derivative", subDir: "art_prompt" },
   { label: "分镜", value: "director_storyboard", subDir: "driector_skills" },
   { label: "分镜视频", value: "art_storyboard_video", subDir: "art_prompt" },
+  { label: "提示词推理模板", value: "prompt_reasoning", subDir: "art_prompt" },
   { label: "技法-导演规划", value: "director_planning_style", subDir: "driector_skills" },
   { label: "技法-分镜表设计", value: "director_storyboard_table_style", subDir: "driector_skills" },
 ];

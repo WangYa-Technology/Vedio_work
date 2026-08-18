@@ -3,6 +3,7 @@ import { devToolsMiddleware } from "@ai-sdk/devtools";
 import axios from "axios";
 import u from "@/utils";
 import compileVendorCode from "@/utils/compileVendorCode";
+import { parseModelReference } from "@/utils/modelRef";
 import type { VmRuntimeHooks } from "@/utils/vm";
 
 type AiType = "scriptAgent" | "productionAgent" | "universalAi";
@@ -26,12 +27,12 @@ async function getVendorTemplateFn(
   modelName: `${string}:${string}`,
   runtimeHooks?: VmRuntimeHooks,
 ) {
-  const [id, name] = modelName.split(":");
-  const vendorConfigData = await u.db("o_vendorConfig").where("id", id).first();
-  if (!vendorConfigData) throw new Error(`未找到供应商配置 id=${id}`);
+  const { vendorId, modelName: name } = parseModelReference(modelName);
+  const vendorConfigData = await u.db("o_vendorConfig").where("id", vendorId).first();
+  if (!vendorConfigData) throw new Error(`未找到供应商配置 id=${vendorId}`);
   const modelList = JSON.parse(vendorConfigData.models ?? "[]");
   const selectedModel = modelList.find((i: any) => i.modelName == name);
-  if (!selectedModel) throw new Error(`未找到模型 ${name} id=${id}`);
+  if (!selectedModel) throw new Error(`未找到模型 ${name} id=${vendorId}`);
   const jsCode = compileVendorCode(vendorConfigData.code!);
   const running = u.vm(jsCode, undefined, runtimeHooks);
   if (running.vendor) {
@@ -39,7 +40,7 @@ async function getVendorTemplateFn(
     running.vendor.models = modelList;
   }
   const fn = running[fnName];
-  if (!fn) throw new Error(`未找到供应商配置中的函数 ${fnName} id=${id}`);
+  if (!fn) throw new Error(`未找到供应商配置中的函数 ${fnName} id=${vendorId}`);
   if (fnName == "textRequest") return fn(selectedModel);
   else return <T>(input: T) => fn(input, selectedModel);
 }
@@ -53,7 +54,7 @@ async function withTaskRecord<T>(
   fn: (modelName: `${string}:${string}`) => Promise<T>,
 ): Promise<T> {
   const modelName = await resolveModelName(modelKey);
-  const [id, model] = modelName.split(":");
+  const { modelName: model } = parseModelReference(modelName);
   const taskRecord = await u.task(projectId, taskClass, model, { describe: describe, content: relatedObjects });
   try {
     const result = await fn(modelName);
@@ -170,8 +171,13 @@ class AiImage {
 interface VideoConfig {
   prompt: string; //视频提示词
   imageBase64: string[]; //输入的图片提示词
+  referenceList?: Array<{
+    type: "image" | "video" | "audio";
+    sourceType: "base64";
+    base64: string;
+  }>;
   aspectRatio: `${number}:${number}`; // 长宽比
-  mode: string; //模式
+  mode: string | string[]; //模式
   duration: number; // 视频时长，单位秒
   resolution: string; // 视频分辨率
   audio: boolean; // 是否需要配音
@@ -186,7 +192,7 @@ class AiVideo {
   async run(input: VideoConfig, taskRecord?: TaskRecord) {
     const modelName = await resolveModelName(this.key);
     const exec = async (mn: `${string}:${string}`) => {
-      const provider = mn.split(":")[0];
+      const provider = parseModelReference(mn).vendorId;
       const fn = await getVendorTemplateFn("videoRequest", mn, {
         onAxiosResponse: async ({ url, method, data }) => {
           const taskId = (data as any)?.prompt_id;

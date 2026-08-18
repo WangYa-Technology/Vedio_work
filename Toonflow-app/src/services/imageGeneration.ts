@@ -1,6 +1,7 @@
 import pLimit from "p-limit";
 import { v4 as uuidv4 } from "uuid";
 import u from "@/utils";
+import { parseModelReference } from "@/utils/modelRef";
 
 type AssetType = "role" | "scene" | "tool";
 type ImageResolution = "1K" | "2K" | "4K";
@@ -194,7 +195,7 @@ async function runAssetImageTask(
         state: "已完成",
         filePath,
         type: item.type,
-        model: input.model.split(":")[1] || input.model,
+        model: parseModelReference(input.model).modelName || input.model,
         resolution: input.resolution,
         errorReason: "",
       });
@@ -237,7 +238,7 @@ export async function queueAssetImages(input: QueueAssetImagesInput) {
       type: item.type,
       state: "生成中",
       assetsId: item.id,
-      model: model.split(":")[1] || model,
+      model: parseModelReference(model).modelName || model,
       resolution: input.resolution,
       errorReason: "",
     });

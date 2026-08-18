@@ -4,6 +4,7 @@ import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import { error, success } from "@/lib/responseFormat";
 import { validateFields } from "@/middleware/middleware";
+import { parseModelReference } from "@/utils/modelRef";
 
 const router = express.Router();
 
@@ -123,7 +124,7 @@ export default router.post("/", validateFields(requestSchema), async (req, res) 
         state: "已完成",
         filePath: imagePath,
         type,
-        model: model.split(":")[1],
+        model: parseModelReference(model).modelName || model,
         resolution,
       });
 

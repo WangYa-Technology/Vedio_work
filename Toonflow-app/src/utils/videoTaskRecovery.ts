@@ -2,7 +2,10 @@ import axios from "axios";
 import { randomUUID } from "node:crypto";
 import db, { db as knex } from "@/utils/db";
 import oss from "@/utils/oss";
+import getPath from "@/utils/getPath";
 import type { o_video } from "@/types/database";
+import { auditVideoOutput } from "@/utils/videoOutputAudit";
+import { probeVideoFile } from "@/utils/videoOutputProbe";
 
 export const VIDEO_WORKER_RUN_ID = randomUUID();
 
@@ -151,6 +154,25 @@ async function recoverComfyTask(
   const buffer = Buffer.from(fileResponse.data);
   if (!buffer.length) throw new Error("ComfyUI 返回了空视频文件");
   await oss.writeFile(video.filePath, buffer);
+  const metadata = await probeVideoFile(getPath(["oss", video.filePath]));
+  if (metadata) {
+    const project = video.projectId != null
+      ? await db("o_project").where({ id: video.projectId }).first("videoRatio")
+      : null;
+    const outputAudit = auditVideoOutput({
+      expectedRatio: project?.videoRatio || "16:9",
+      expectedDuration: Number(video.time) || undefined,
+      ...metadata,
+    });
+    await db("o_video").where({ id: video.id }).update({
+      outputAudit: JSON.stringify({
+        schemaVersion: 1,
+        auditedAt: Date.now(),
+        ...metadata,
+        ...outputAudit,
+      }),
+    });
+  }
   await updateVideoTaskState(video, "已完成");
 }
 

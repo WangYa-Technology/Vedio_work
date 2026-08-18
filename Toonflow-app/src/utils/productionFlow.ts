@@ -2,6 +2,12 @@ import u from "@/utils";
 
 type AnyObject = Record<string, any>;
 
+export function parseStoryboardTableAssetBindings(markdown: string): number[][] {
+  return [...String(markdown || "").matchAll(/\*\*引用资产ID\*\*\s*[：:]\s*(?:\[|［)([^\]］]*)(?:\]|］)/g)].map((match) =>
+    [...new Set((match[1].match(/\d+/g) || []).map(Number).filter(Number.isFinite))],
+  );
+}
+
 function safeJsonParse<T>(value: any, fallback: T): T {
   if (value == null || value === "") return fallback;
   if (typeof value === "object") return value as T;
@@ -55,7 +61,8 @@ async function loadAssets(projectId: number, scriptId: number) {
         prompt: child.prompt || "",
         imageFilePath: child.imageFilePath,
         src: "",
-        state: child.promptState || child.imageState || "未生成",
+        state: child.imageState || (child.imageFilePath ? "已完成" : "未生成"),
+        imageState: child.imageState || (child.imageFilePath ? "已完成" : "未生成"),
         type: child.type || "scene",
         flowId: child.flowId ?? undefined,
         errorReason: child.promptErrorReason || child.imageErrorReason || "",
@@ -76,7 +83,8 @@ async function loadAssets(projectId: number, scriptId: number) {
         prompt: parent.prompt || "",
         imageFilePath: parent.imageFilePath,
         src: "",
-        state: parent.promptState || parent.imageState || "未生成",
+        state: parent.imageState || (parent.imageFilePath ? "已完成" : "未生成"),
+        imageState: parent.imageState || (parent.imageFilePath ? "已完成" : "未生成"),
         type: parent.type || "scene",
         flowId: parent.flowId ?? undefined,
         errorReason: parent.promptErrorReason || parent.imageErrorReason || "",

@@ -1,4 +1,5 @@
 import express from "express";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import u from "@/utils";
 import { validateFields } from "@/middleware/middleware";
@@ -8,6 +9,11 @@ import {
   updateVideoTaskState,
   VIDEO_WORKER_RUN_ID,
 } from "@/utils/videoTaskRecovery";
+import { resolveVideoModelPromptProfile } from "@/utils/videoModelPromptProfile";
+import { buildVideoTaskData } from "@/utils/videoTaskData";
+import { collectVideoPromptContractViolations } from "@/utils/videoPromptContract";
+import { auditVideoOutput } from "@/utils/videoOutputAudit";
+import { probeVideoFile } from "@/utils/videoOutputProbe";
 
 const router = express.Router();
 
@@ -37,6 +43,35 @@ async function resolveReferenceFile(item: {
   return storyboard.filePath as string;
 }
 
+function resolveReferenceType(item: {
+  fileType?: "image" | "video" | "audio";
+  sources: "assets" | "storyboard";
+}) {
+  if (item.sources === "storyboard") return "image" as const;
+  return item.fileType || "image";
+}
+
+function normalizeVideoMode(mode: string | string[] | undefined) {
+  if (Array.isArray(mode)) return mode;
+  const value = String(mode || "").trim();
+  if (value.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed) && parsed.every((item) => typeof item === "string")) return parsed;
+    } catch {
+      // 保留原始模式，让供应商自行处理无法解析的自定义模式。
+    }
+  }
+  return value;
+}
+
+function hashPromptTemplate(value: unknown) {
+  return createHash("sha256")
+    .update(String(value || ""))
+    .digest("hex")
+    .slice(0, 16);
+}
+
 export default router.post(
   "/",
   validateFields({
@@ -44,7 +79,11 @@ export default router.post(
     scriptId: z.number(),
     trackId: z.number(),
     uploadData: z.array(
-      z.object({ id: z.number(), sources: z.enum(["assets", "storyboard"]) }),
+      z.object({
+        id: z.number(),
+        sources: z.enum(["assets", "storyboard"]),
+        fileType: z.enum(["image", "video", "audio"]).optional(),
+      }),
     ),
     prompt: z.string().min(1),
     model: z.string().min(1),
@@ -52,6 +91,7 @@ export default router.post(
     resolution: z.string().optional(),
     duration: z.number().optional(),
     audio: z.boolean().optional(),
+    promptTemplateId: z.number().optional(),
   }),
   async (req, res) => {
     const {
@@ -65,6 +105,7 @@ export default router.post(
       resolution,
       duration,
       audio,
+      promptTemplateId,
     } = req.body;
     const track = await u
       .db("o_videoTrack")
@@ -72,12 +113,40 @@ export default router.post(
       .first();
     if (!track) throw new Error("未找到对应的视频片段");
     const project = await u.db("o_project").where({ id: projectId }).first();
+    const taskData = await buildVideoTaskData(projectId, scriptId, {
+      model,
+      mode,
+    });
+    const promptTask = taskData.trackList.find(
+      (item) => Number(item.id) === Number(trackId),
+    );
+    if (promptTask) {
+      const promptViolations = collectVideoPromptContractViolations(
+        promptTask,
+        prompt,
+        taskData.projectConfig,
+      );
+      if (promptViolations.length) {
+        return res.status(422).send({
+          message: `视频提示词未通过质量门：${promptViolations.join("；")}`,
+          violations: promptViolations,
+        });
+      }
+    }
+    const promptTemplate = promptTemplateId
+      ? await u.db("o_prompt").where({ id: promptTemplateId }).first()
+      : null;
     const referencePaths = await Promise.all(
       uploadData.map(resolveReferenceFile),
     );
     const imageBase64 = await Promise.all(
       referencePaths.map((filePath) => u.oss.getImageBase64(filePath)),
     );
+    const referenceList = imageBase64.map((base64, index) => ({
+      type: resolveReferenceType(uploadData[index]),
+      sourceType: "base64" as const,
+      base64,
+    }));
     const id = await nextId("o_video");
     const filePath = `${projectId}/video/${scriptId}/${u.uuid()}.mp4`;
     const requestedDuration = Math.max(
@@ -88,6 +157,28 @@ export default router.post(
       ? Math.min(15, requestedDuration)
       : requestedDuration;
     const startedAt = Date.now();
+    const videoPromptProfile = resolveVideoModelPromptProfile({
+      modelName: model,
+      mode,
+      audio,
+    });
+    const generationConfig = {
+      schemaVersion: 1,
+      model,
+      mode: normalizeVideoMode(mode),
+      ratio: project?.videoRatio || "16:9",
+      resolution: resolution || "864x480",
+      duration: effectiveDuration,
+      audio: Boolean(audio),
+      videoPromptProfile,
+    };
+    const referenceSnapshot = uploadData.map((item: any, index: number) => ({
+      index,
+      id: item.id,
+      sources: item.sources,
+      fileType: resolveReferenceType(item),
+      filePath: referencePaths[index],
+    }));
 
     await u.db("o_video").insert({
       id,
@@ -100,6 +191,13 @@ export default router.post(
       errorReason: "",
       model,
       providerTaskData: JSON.stringify(pendingVideoTaskData(startedAt)),
+      promptSnapshot: prompt,
+      promptTemplateId: promptTemplateId || null,
+      promptTemplateVersion: promptTemplate
+        ? hashPromptTemplate(promptTemplate.useData || promptTemplate.data)
+        : null,
+      referenceSnapshot: JSON.stringify(referenceSnapshot),
+      generationConfig: JSON.stringify(generationConfig),
       createTime: startedAt,
     });
     await u
@@ -122,11 +220,10 @@ export default router.post(
             {
               prompt,
               imageBase64,
+              referenceList,
               aspectRatio: (project?.videoRatio ||
                 "16:9") as `${number}:${number}`,
-              mode: Array.isArray(mode)
-                ? JSON.stringify(mode)
-                : String(mode || ""),
+              mode: normalizeVideoMode(mode),
               duration: effectiveDuration,
               resolution: resolution || "864x480",
               audio: Boolean(audio),
@@ -140,12 +237,23 @@ export default router.post(
               }),
               projectId,
               onProviderTask: async (task) => {
+                const existing = await u
+                  .db("o_video")
+                  .where({ id })
+                  .first("providerTaskData");
+                let previous: Record<string, any> = {};
+                try {
+                  previous = JSON.parse(existing?.providerTaskData || "{}");
+                } catch {
+                  previous = {};
+                }
                 await u
                   .db("o_video")
                   .where({ id })
                   .update({
                     providerTaskId: task.taskId,
                     providerTaskData: JSON.stringify({
+                      ...previous,
                       ...task,
                       runId: VIDEO_WORKER_RUN_ID,
                       startedAt,
@@ -155,6 +263,22 @@ export default router.post(
             },
           )
         ).save(filePath);
+        const probedMetadata = await probeVideoFile(u.getPath(["oss", filePath]));
+        if (probedMetadata) {
+          const outputAudit = auditVideoOutput({
+            expectedRatio: project?.videoRatio || "16:9",
+            expectedDuration: effectiveDuration,
+            ...probedMetadata,
+          });
+          await u.db("o_video").where({ id }).update({
+            outputAudit: JSON.stringify({
+              schemaVersion: 1,
+              auditedAt: Date.now(),
+              ...probedMetadata,
+              ...outputAudit,
+            }),
+          });
+        }
         await updateVideoTaskState({ id, videoTrackId: trackId }, "已完成");
       } catch (error) {
         const reason = u.error(error).message;

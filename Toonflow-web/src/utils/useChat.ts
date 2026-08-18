@@ -56,6 +56,12 @@ export interface XmlTagOption {
   keepInMessage?: boolean;
 }
 
+export interface WorkflowStatus {
+  state: "idle" | "working" | "retrying" | "complete" | "error";
+  label: string;
+  phase?: string;
+}
+
 export interface ChatSocketEvents {
   // 发送事件
   chat: { content: string; attachments?: any[] };
@@ -92,6 +98,7 @@ export function useChat(options: UseChatOptions) {
   const messages = ref<ChatMessagesData[]>([]);
   const currentMessageId = ref<string | null>(null);
   const status = ref<"idle" | "pending" | "streaming">("idle");
+  const workflowStatus = ref<WorkflowStatus>({ state: "idle", label: "" });
   const xmlData = ref<Record<string, string>>({});
   const xmlDataByMessage = ref<Record<string, Record<string, string>>>({});
   const normalizedXmlTagOptions = Array.from(
@@ -531,6 +538,14 @@ export function useChat(options: UseChatOptions) {
     // 内容更新（流式/完成）
     socket.value.on("content:update", handleContentUpdate);
 
+    socket.value.on("workflow:status", (data: Partial<WorkflowStatus>) => {
+      workflowStatus.value = {
+        state: data.state ?? "idle",
+        label: data.label ?? "",
+        ...(data.phase ? { phase: data.phase } : {}),
+      };
+    });
+
     // 错误处理
     socket.value.on("error", (error: { code: string; message: string }) => {
       console.error("[Chat Error]", error);
@@ -547,6 +562,9 @@ export function useChat(options: UseChatOptions) {
     socket.value.on("disconnect", (reason) => {
       connected.value = false;
       connecting.value = false;
+      if (workflowStatus.value.state === "working" || workflowStatus.value.state === "retrying") {
+        workflowStatus.value = { state: "error", label: "连接已断开，当前任务可重新继续" };
+      }
       onDisconnect?.();
       console.log("[Chat Disconnected]", reason);
     });
@@ -664,6 +682,7 @@ export function useChat(options: UseChatOptions) {
     }
     currentMessageId.value = null;
     status.value = "idle";
+    workflowStatus.value = { state: "idle", label: "已停止当前生成" };
 
     return emit("stop", { messageId: id });
   };
@@ -677,6 +696,7 @@ export function useChat(options: UseChatOptions) {
     messages.value = [];
     currentMessageId.value = null;
     status.value = "idle";
+    workflowStatus.value = { state: "idle", label: "" };
     xmlData.value = {};
     xmlDataByMessage.value = {};
     emittedXmlState.clear();
@@ -738,6 +758,7 @@ export function useChat(options: UseChatOptions) {
     connected,
     connecting,
     status,
+    workflowStatus,
     messages,
     renderableMessages,
     currentMessageId,

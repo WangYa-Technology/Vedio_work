@@ -1,4 +1,5 @@
 import express from "express";
+import { createHash } from "node:crypto";
 import { stepCountIs, tool } from "ai";
 import { z } from "zod";
 import u from "@/utils";
@@ -6,13 +7,86 @@ import { db as knexDb } from "@/utils/db";
 import { validateFields } from "@/middleware/middleware";
 import { error, success } from "@/lib/responseFormat";
 import { buildVideoTaskData } from "@/utils/videoTaskData";
+import { resolveStylePromptReasoning } from "@/utils/stylePromptReasoning";
 import { resolveVideoPromptInstructions } from "@/utils/videoPromptTemplate";
+import { collectVideoPromptContractViolations } from "@/utils/videoPromptContract";
 import {
   CONTENT_SAFETY_SETTING_KEY,
   DEFAULT_CONTENT_SAFETY_CONSTRAINT,
 } from "@/constants/contentSafety";
 
 const router = express.Router();
+
+const DEFAULT_VIDEO_PROMPT_TIMEOUT_MS = 120_000;
+const MAX_VIDEO_PROMPT_TIMEOUT_MS = 600_000;
+
+function getVideoPromptTimeoutMs() {
+  const configured = Number(process.env.VIDEO_PROMPT_TIMEOUT_MS);
+  if (!Number.isFinite(configured) || configured <= 0) {
+    return DEFAULT_VIDEO_PROMPT_TIMEOUT_MS;
+  }
+  return Math.min(Math.max(Math.round(configured), 1_000), MAX_VIDEO_PROMPT_TIMEOUT_MS);
+}
+
+function hashTemplateContent(value: unknown) {
+  return createHash("sha256")
+    .update(String(value || ""))
+    .digest("hex")
+    .slice(0, 16);
+}
+
+function buildPromptInferenceSnapshot(
+  task: Record<string, any>,
+  projectConfig: Record<string, any>,
+  templateId: number,
+  templateVersion: string,
+  systemPrompt: string,
+) {
+  return {
+    schemaVersion: 2,
+    generatedAt: Date.now(),
+    templateId,
+    templateVersion,
+    systemPrompt: {
+      hash: templateVersion,
+      content: systemPrompt,
+    },
+    projectConfig: {
+      model: projectConfig.modelName || projectConfig.videoModel || "",
+      modelDisplayName: projectConfig.modelDisplayName || "",
+      mode: projectConfig.mode || "",
+      videoRatio: projectConfig.videoRatio || "16:9",
+      artStyle: projectConfig.artStyle || "",
+      directorManual: projectConfig.directorManual || "",
+      visualStyleManual: projectConfig.visualStyleManual || "",
+      referenceToken: projectConfig.referenceToken || "@图",
+      audioSupported: Boolean(projectConfig.audio),
+      videoPromptProfile: projectConfig.videoPromptProfile || null,
+    },
+    track: {
+      trackId: Number(task.id),
+      sceneTitle: task.sceneTitle || "",
+      segmentTitle: task.segmentTitle || "",
+      duration: Number(task.duration) || 0,
+      references: (task.medias || []).map((media: any, index: number) => ({
+        index: index + 1,
+        id: media.id,
+        name: media.name || "",
+        type: media.type || "",
+        sources: media.sources || "",
+      })),
+      shotFacts: (task.segmentRows || []).map((row: any) => ({
+        serial: row.serial || "",
+        description: row.description || "",
+        duration: Number(row.duration) || 0,
+        scale: row.scale || "",
+        cameraMovement: row.cameraMovement || "",
+        dialogue: row.dialogue || "",
+        sound: row.sound || "",
+      })),
+    },
+  };
+}
 
 const GeneratedPromptSchema = z.object({
   trackId: z.number(),
@@ -26,6 +100,13 @@ function stripFieldLabel(value: unknown, label: string) {
     .trim();
 }
 
+function extractOnScreenText(value: string) {
+  const match = value.match(
+    /^(?:日历|画面|屏幕|招牌|纸张|海报|字幕|标题)文字[：:]\s*(.+)$/,
+  );
+  return match?.[1]?.trim() || "";
+}
+
 function assetTypeLabel(value: unknown) {
   const normalized = String(value || "").toLowerCase();
   if (normalized === "role" || normalized === "character") return "角色";
@@ -36,13 +117,18 @@ function assetTypeLabel(value: unknown) {
 }
 
 function normalizeShot(row: Record<string, any>) {
+  const rawDialogue = stripFieldLabel(row.dialogue, "台词");
+  const onScreenText = extractOnScreenText(rawDialogue);
+  const dialogue = onScreenText ? "无台词" : rawDialogue || "无台词";
   return {
     sequence: String(row.serial || ""),
     visualAndAction: String(row.description || "").trim(),
     durationSeconds: Number(row.duration) || 0,
     shotScale: String(row.scale || "").trim() || "未标注",
     cameraMovement: String(row.cameraMovement || "").trim() || "未标注",
-    dialogue: stripFieldLabel(row.dialogue, "台词") || "无台词",
+    dialogue,
+    onScreenText,
+    speechAllowed: dialogue !== "无台词",
     sound: stripFieldLabel(row.sound, "音效") || "无音效",
   };
 }
@@ -54,17 +140,29 @@ function buildVideoDescription(task: Record<string, any>) {
   return shots
     .map(
       (shot: ReturnType<typeof normalizeShot>) =>
-        `${shot.sequence}. ${shot.visualAndAction}；${shot.durationSeconds}s；${shot.shotScale}；${shot.cameraMovement}；台词：${shot.dialogue}；音效：${shot.sound}`,
+        `${shot.sequence}. ${shot.visualAndAction}；${shot.durationSeconds}s；${shot.shotScale}；${shot.cameraMovement}；对白：${shot.dialogue}；画内文字：${shot.onScreenText || "无"}；音效：${shot.sound}`,
     )
     .join("\n");
 }
 
 export function buildSceneInput(
   tasks: any[],
-  _projectConfig: Record<string, any>,
+  projectConfig: Record<string, any>,
 ) {
+  const referenceToken = String(projectConfig.referenceToken || "@图");
   return JSON.stringify(
     {
+      contract: {
+        model: projectConfig.modelName || projectConfig.videoModel || "未标注",
+        mode: projectConfig.mode || "未标注",
+        videoRatio: projectConfig.videoRatio || "16:9",
+        artStyle: projectConfig.artStyle || "未标注",
+        directorManual: projectConfig.directorManual || "未标注",
+        visualStyleManual: projectConfig.visualStyleManual || "未加载",
+        referenceToken,
+        audioSupported: Boolean(projectConfig.audio),
+        videoPromptProfile: projectConfig.videoPromptProfile || null,
+      },
       scene: tasks[0]?.sceneTitle || "未标注场次",
       segments: tasks.map((task) => ({
         trackId: task.id,
@@ -72,7 +170,25 @@ export function buildSceneInput(
         duration: task.duration,
         referenceMap: (task.medias || []).map(
           (media: any, index: number) =>
-            `@图${index + 1}：${media.name || "未命名资产"}（${assetTypeLabel(media.type)}）`,
+            `${referenceToken}${index + 1}：${media.name || "未命名资产"}（${assetTypeLabel(media.type)}）`,
+        ),
+        references: (task.medias || []).map((media: any, index: number) => ({
+          token: `${referenceToken}${index + 1}`,
+          id: media.id,
+          name: media.name || "未命名资产",
+          type: assetTypeLabel(media.type),
+          usage:
+            media.sources === "storyboard"
+              ? "storyboard"
+              : "asset identity/reference",
+          stableDescription:
+            media.describe ||
+            media.prompt ||
+            "未提供稳定外观描述，不得自行补写",
+        })),
+        shotFacts: (task.segmentRows || []).map(normalizeShot),
+        speechAllowed: (task.segmentRows || []).some(
+          (row: Record<string, any>) => normalizeShot(row).speechAllowed,
         ),
         videoDescription: buildVideoDescription(task),
       })),
@@ -80,12 +196,17 @@ export function buildSceneInput(
   );
 }
 
-function validatePromptReferences(task: Record<string, any>, prompt: string) {
+function validatePromptReferences(
+  task: Record<string, any>,
+  prompt: string,
+  referenceToken = "@图",
+) {
   const medias = task.medias || [];
   if (!medias.length) return;
 
+  const escapedToken = referenceToken.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const referencedNumbers = Array.from(
-    prompt.matchAll(/@图\s*(\d+)/g),
+    prompt.matchAll(new RegExp(`${escapedToken}\\s*(\\d+)`, "g")),
     (match) => Number(match[1]),
   );
   const invalidNumbers = Array.from(
@@ -93,14 +214,14 @@ function validatePromptReferences(task: Record<string, any>, prompt: string) {
   );
   if (invalidNumbers.length) {
     throw new Error(
-      `${task.segmentTitle || task.id} 引用了不存在的资产编号：${invalidNumbers.map((number) => `@图${number}`).join("、")}`,
+      `${task.segmentTitle || task.id} 引用了不存在的资产编号：${invalidNumbers.map((number) => `${referenceToken}${number}`).join("、")}`,
     );
   }
 
   const lines = prompt.split(/\r?\n/);
   const missingMappings: string[] = [];
   medias.forEach((media: any, index: number) => {
-    const token = `@图${index + 1}`;
+    const token = `${referenceToken}${index + 1}`;
     const assetName = String(media.name || "").trim();
     const mappingLine = lines.find((line) => line.includes(token));
     if (!mappingLine || (assetName && !mappingLine.includes(assetName))) {
@@ -124,9 +245,10 @@ export default router.post(
     templateId: z.number(),
     info: z.array(z.any()).optional(),
     model: z.string().optional(),
+    mode: z.union([z.string(), z.array(z.string())]).optional(),
   }),
   async (req, res) => {
-    const { projectId, sceneTitle, templateId } = req.body;
+    const { projectId, sceneTitle, templateId, model, mode } = req.body;
     const requestedTrackIds = Array.from(
       new Set<number>(
         [
@@ -157,7 +279,10 @@ export default router.post(
     const template = await u.db("o_prompt").where({ id: templateId }).first();
     if (!template || template.type !== "videoPromptGeneration")
       return res.status(400).send(error("请选择有效的视频推理模版"));
-    const data = await buildVideoTaskData(projectId, scriptIds[0]);
+    const data = await buildVideoTaskData(projectId, scriptIds[0], {
+      model,
+      mode,
+    });
     const taskMap = new Map(
       data.trackList.map((item) => [Number(item.id), item]),
     );
@@ -175,22 +300,41 @@ export default router.post(
       return res.status(400).send(error("所选片段不属于同一场次"));
     if (sceneTitle && sceneTitle !== actualSceneTitle)
       return res.status(409).send(error("场次数据已变化，请刷新后重试"));
-    const overLimit = tasks.find((task) => Number(task.duration) > 15);
+    const configuredDurations = (data.projectConfig.durationResolutionMap || [])
+      .flatMap((item: any) =>
+        Array.isArray(item?.duration) ? item.duration : [item?.duration],
+      )
+      .map(Number)
+      .filter((value: number) => Number.isFinite(value));
+    const maxDuration = Math.max(
+      Number(data.projectConfig.videoPromptProfile?.maxDuration) || 15,
+      ...configuredDurations,
+    );
+    const overLimit = tasks.find(
+      (task) => Number(task.duration) > maxDuration,
+    );
     if (overLimit)
       return res
         .status(400)
         .send(
           error(
-            `${overLimit.segmentTitle || overLimit.id} 时长超过 MiniMax H3 的 15 秒限制`,
+            `${overLimit.segmentTitle || overLimit.id} 时长超过当前模型允许的 ${maxDuration} 秒限制`,
           ),
         );
 
     const templateContent = resolveVideoPromptInstructions(template, {
       modelName: data.projectConfig.modelName || data.projectConfig.videoModel,
       mode: data.projectConfig.mode,
+      referenceToken: data.projectConfig.referenceToken,
+      videoRatio: data.projectConfig.videoRatio,
     });
     if (!templateContent)
       return res.status(400).send(error("所选视频推理模版内容为空"));
+
+    const styleReasoning = resolveStylePromptReasoning(
+      data.projectConfig.artStyle,
+      data.projectConfig.visualStyleManual,
+    );
 
     const safetySetting = await u
       .db("o_setting")
@@ -217,21 +361,29 @@ export default router.post(
     const batchConstraint = `
 ## 本次场次批量推理的最高优先级规则
 1. 输入中同一场次包含多个独立视频片段；一次读取全部片段，但每个 trackId 必须分别生成一条独立提示词。
-2. 每条提示词对应的视频时长不得超过 15 秒，不得把整个场次合并成一个长视频提示词。
-3. 当前为图片多参考生视频模式。输入仅包含文字，不包含图片；只允许使用 referenceMap 中给出的资产映射，禁止引用故事板图、分镜图或虚构图片编号。
-4. referenceMap 在每个片段内独立从 @图1 开始。每条输出必须完整保留该片段的全部映射行，编号和资产名称必须逐一匹配。
-5. 不直接输出正文，必须调用 resultTool 一次性返回全部 trackId 的结果。
+2. 每条提示词对应的视频时长不得超过当前模型允许的 ${maxDuration} 秒，不得把整个场次合并成一个长视频提示词。
+3. contract 是当前模型、模式、画幅、画风和参考图标记的唯一事实来源；不得用模板示例覆盖它。
+4. 只允许使用当前片段 references/referenceMap 中的资产映射；${data.projectConfig.referenceToken} 编号在每个片段内独立从 1 开始，名称必须逐一匹配。
+5. artStyle、videoRatio 和 visualStyleManual 高于模板示例；不得默认改成真人、2.39:1、8K、摄影机品牌或胶片风格。
+6. 画内文字不是对白；speechAllowed 为 false 时不得添加对白、拟声台词或“啊/来啊”等模型自造语音。
+7. 只扩写 shotFacts 中明确存在的动作、镜头、时长、对白和音效；多镜头必须用逐镜时间段（例如 0-3s、3-7s）锁定动作先后；信息过载时简化动作，不凭空补剧情。
+8. 不直接输出正文，必须调用 resultTool 一次性返回全部 trackId 的结果。
 `;
+    const systemPrompt = `${templateContent}\n\n${styleReasoning}\n\n${contentSafety ? `## 内容安全约束\n${contentSafety}\n` : ""}${batchConstraint}`;
+    const templateVersion = hashTemplateContent(systemPrompt);
     const sceneInput = buildSceneInput(tasks, data.projectConfig);
     try {
       await u.Ai.Text("universalAi").invoke({
-        system: `${templateContent}\n\n${contentSafety ? `## 内容安全约束\n${contentSafety}\n` : ""}${batchConstraint}`,
+        system: systemPrompt,
         messages: [{ role: "user", content: sceneInput }],
         tools: { resultTool },
         toolChoice: "required",
         stopWhen: stepCountIs(1),
         maxRetries: 0,
-        abortSignal: AbortSignal.timeout(60_000),
+        // Batch generation can legitimately need more than a single model round-trip.
+        // Keep the limit bounded, but allow deployments to tune it for their provider.
+        maxOutputTokens: 4096,
+        abortSignal: AbortSignal.timeout(getVideoPromptTimeoutMs()),
       });
     } catch (caught) {
       const normalized = u.error(caught);
@@ -264,7 +416,22 @@ export default router.post(
       }
 
       for (const task of tasks) {
-        validatePromptReferences(task, returnedMap.get(Number(task.id)) || "");
+        const prompt = returnedMap.get(Number(task.id)) || "";
+        validatePromptReferences(
+          task,
+          prompt,
+          data.projectConfig.referenceToken,
+        );
+        const violations = collectVideoPromptContractViolations(
+          task,
+          prompt,
+          data.projectConfig,
+        );
+        if (violations.length) {
+          throw new Error(
+            `${task.segmentTitle || task.id} 提示词契约校验失败：${violations.join("；")}`,
+          );
+        }
       }
     } catch (caught) {
       return res.status(422).send(error(u.error(caught).message));
@@ -273,9 +440,23 @@ export default router.post(
     try {
       await knexDb.transaction(async (trx) => {
         for (const trackId of requestedTrackIds) {
+          const task = tasks.find((item) => Number(item.id) === trackId);
           await trx("o_videoTrack")
             .where({ id: trackId, projectId })
-            .update({ prompt: returnedMap.get(trackId) });
+            .update({
+              prompt: returnedMap.get(trackId),
+              promptTemplateId: Number(template.id),
+              promptTemplateVersion: templateVersion,
+              promptInferenceSnapshot: JSON.stringify(
+                buildPromptInferenceSnapshot(
+                  task || { id: trackId },
+                  data.projectConfig,
+                  Number(template.id),
+                  templateVersion,
+                  systemPrompt,
+                ),
+              ),
+            });
         }
       });
     } catch (caught) {

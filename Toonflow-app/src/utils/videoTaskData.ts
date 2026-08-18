@@ -1,6 +1,9 @@
 import u from "@/utils";
 import { buildProductionFlowData } from "@/utils/productionFlow";
 import { resolveProjectVideoModel } from "@/services/videoGeneration";
+import { parseModelReference } from "@/utils/modelRef";
+import { resolveVideoModelPromptProfile } from "@/utils/videoModelPromptProfile";
+import { collectVideoPromptContractViolations } from "@/utils/videoPromptContract";
 
 type AnyObject = Record<string, any>;
 
@@ -200,7 +203,16 @@ async function ensureTracks(
   return u.db("o_videoTrack").where({ projectId, scriptId });
 }
 
-export async function buildVideoTaskData(projectId: number, scriptId: number) {
+export interface VideoTaskDataOverrides {
+  model?: unknown;
+  mode?: unknown;
+}
+
+export async function buildVideoTaskData(
+  projectId: number,
+  scriptId: number,
+  overrides: VideoTaskDataOverrides = {},
+) {
   const project = await u.db("o_project").where("id", projectId).first();
   if (project && !project.videoModel) {
     try {
@@ -209,19 +221,24 @@ export async function buildVideoTaskData(projectId: number, scriptId: number) {
       // 保持工作台可打开；无法唯一匹配时由用户在面板中明确选择。
     }
   }
-  const configuredMode = parseMode(project?.mode);
-  const modelParts = String(project?.videoModel || "").split(/:(.+)/);
-  const vendor = modelParts[0]
+  const effectiveVideoModel = String(
+    overrides.model || project?.videoModel || "",
+  ).trim();
+  const configuredMode = parseMode(
+    overrides.mode === undefined ? project?.mode : overrides.mode,
+  );
+  const modelReference = parseModelReference(effectiveVideoModel);
+  const vendor = modelReference.vendorId
     ? await u
         .db("o_vendorConfig")
-        .where({ id: modelParts[0], enable: 1 })
+        .where({ id: modelReference.vendorId, enable: 1 })
         .first()
     : null;
   const modelDetail = (() => {
     try {
       return (
         JSON.parse(vendor?.models || "[]").find(
-          (item: AnyObject) => item.modelName === modelParts[1],
+          (item: AnyObject) => item.modelName === modelReference.modelName,
         ) || null
       );
     } catch {
@@ -229,6 +246,17 @@ export async function buildVideoTaskData(projectId: number, scriptId: number) {
     }
   })();
   const mode = resolveModelMode(configuredMode, modelDetail?.mode);
+  const videoPromptProfile = resolveVideoModelPromptProfile({
+    modelName: modelReference.modelName,
+    displayName: modelDetail?.name,
+    mode,
+    durationResolutionMap: modelDetail?.durationResolutionMap,
+    audio: modelDetail?.audio,
+  });
+  const referenceToken = videoPromptProfile.referenceToken;
+  const visualStyleManual = project?.artStyle
+    ? u.getArtPromptFile(project.artStyle, "art_skills", "art_storyboard_video")
+    : "";
 
   const flow = await buildProductionFlowData(projectId, scriptId);
   const segments = parseStoryboardTable(flow.storyboardTable || "");
@@ -290,13 +318,18 @@ export async function buildVideoTaskData(projectId: number, scriptId: number) {
       )
     : [];
 
-  const capabilities = Array.isArray(mode) ? mode.map(modeCapability) : [];
+  const declaredCapabilities: ReturnType<typeof modeCapability>[] = Array.isArray(modelDetail?.mode)
+    ? modelDetail.mode.flatMap((candidate: unknown) => (Array.isArray(candidate) ? candidate.map((item) => modeCapability(String(item))) : []))
+    : [];
+  const capabilities = Array.isArray(mode)
+    ? mode.map(modeCapability)
+    : mode === "multiImage"
+      ? declaredCapabilities
+      : [];
   const imageLimit = capabilities.find(
     (item) => item.type === "imageReference",
   )?.count;
-  const referenceMode =
-    Array.isArray(mode) &&
-    capabilities.some((item) => item.type === "imageReference");
+  const referenceMode = mode === "multiImage" || capabilities.some((item) => item.type === "imageReference");
 
   const tasks = storyboardList.map((storyboard, index) => {
     const segment = segments[index];
@@ -358,6 +391,21 @@ export async function buildVideoTaskData(projectId: number, scriptId: number) {
         src: fileUrl(video.filePath),
         state: video.state === "生成成功" ? "已完成" : video.state || "未生成",
       }));
+    const promptAudit = collectVideoPromptContractViolations(
+      {
+        segmentTitle: segment?.segmentTitle || `片段 ${index + 1}`,
+        duration: segmentDuration,
+        dialogue: summarizeSegmentField(segment?.rows || [], "dialogue"),
+        segmentRows: segment?.rows || [],
+      },
+      prompt,
+      {
+        artStyle: project?.artStyle || "",
+        videoRatio: project?.videoRatio || "16:9",
+        referenceToken,
+        visualStyleManual,
+      },
+    );
 
     return {
       id: Number(storyboard.trackId),
@@ -379,6 +427,10 @@ export async function buildVideoTaskData(projectId: number, scriptId: number) {
       imagePrompt: storyboard.prompt || "",
       videoDesc: videoDescription,
       prompt,
+      promptTemplateId: Number(track?.promptTemplateId) || null,
+      promptTemplateVersion: track?.promptTemplateVersion || null,
+      promptInferenceSnapshot: track?.promptInferenceSnapshot || null,
+      promptAudit,
       promptSource:
         generatedPrompt && !stalePrompt ? "videoTrack" : "storyboard.videoDesc",
       state: track?.state || "未生成",
@@ -396,7 +448,7 @@ export async function buildVideoTaskData(projectId: number, scriptId: number) {
       readiness: {
         ready:
           Boolean(prompt) &&
-          (mode === "text" || selectedMedias.some((item) => item.src)),
+          (mode === "text" || (selectedMedias.some((item) => item.src) && (!referenceMode || missingAssetNames.length === 0))),
         hasPrompt: Boolean(prompt),
         referenceCount: selectedMedias.filter((item) => item.src).length,
         referenceLimit: imageLimit || null,
@@ -421,11 +473,17 @@ export async function buildVideoTaskData(projectId: number, scriptId: number) {
     projectConfig: {
       projectId,
       scriptId,
-      videoModel: project?.videoModel || "",
-      modelName: modelDetail?.name || modelParts[1] || "",
+      videoModel: effectiveVideoModel,
+      modelName: modelDetail?.modelName || modelReference.modelName || "",
+      modelDisplayName: modelDetail?.name || "",
+      referenceToken,
       mode: Array.isArray(mode) ? JSON.stringify(mode) : mode,
       modeCapabilities: capabilities,
       videoRatio: project?.videoRatio || "16:9",
+      artStyle: project?.artStyle || "",
+      directorManual: project?.directorManual || "",
+      visualStyleManual,
+      videoPromptProfile,
       durationResolutionMap: modelDetail?.durationResolutionMap || [],
       audio: modelDetail?.audio ?? false,
     },

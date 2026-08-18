@@ -118,7 +118,12 @@ export default async function startServe(randomPort: Boolean = false) {
     res.status(err.status || 500).send(err);
   });
 
-  const port = randomPort ? 0 : 10588;
+  const configuredPort = Number(process.env.TOONFLOW_PORT);
+  const port = randomPort
+    ? 0
+    : Number.isInteger(configuredPort) && configuredPort > 0
+      ? configuredPort
+      : 10588;
   return await new Promise((resolve) => {
     server.listen(port, "0.0.0.0", async () => {
       const address = server.address();

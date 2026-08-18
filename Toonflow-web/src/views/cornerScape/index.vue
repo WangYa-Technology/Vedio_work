@@ -37,6 +37,26 @@
                 { label: '4K', value: '4K' },
               ]"></t-select>
           </t-form-item>
+          <t-form-item label="项目风格">
+            <div class="styleControl">
+              <t-select
+                v-model="selectedArtStyle"
+                :options="artStyleOptions"
+                :loading="artStyleLoading"
+                placeholder="选择项目风格" />
+              <t-button
+                theme="primary"
+                variant="outline"
+                size="small"
+                :loading="artStyleSaving"
+                :disabled="!artStyleDirty"
+                title="保存项目风格"
+                @click="saveArtStyle">
+                <template #icon><t-icon name="save" /></template>
+                保存
+              </t-button>
+            </div>
+          </t-form-item>
           <!-- <t-form-item :label="$t('workbench.cornerScape.concurrency')">
             <t-input-number
               v-model="concurrentCount"
@@ -191,7 +211,14 @@
               </t-button>
             </div>
           </t-form-item>
-          <t-form-item :label="$t('workbench.cornerScape.promptLabel')">
+          <t-form-item label="原始提示词">
+            <t-textarea
+              :value="editForm.originalPrompt"
+              placeholder="批量生成提示词后显示在这里"
+              :autosize="{ minRows: 3, maxRows: 8 }"
+              readonly />
+          </t-form-item>
+          <t-form-item label="当前提示词（模板推理结果）">
             <t-loading style="width: 100%" :loading="currentItem.promptState == '生成中'">
               <t-textarea
                 v-model="editForm.prompt"
@@ -200,10 +227,6 @@
                 :disabled="polishing"
                 @blur="savePromptOnBlur" />
             </t-loading>
-            <div v-if="reasoningPreview" class="promptReasoningPreview">
-              <div class="promptReasoningPreview__head">推理结果</div>
-              <t-textarea :value="reasoningPreview" readonly :autosize="{ minRows: 4, maxRows: 10 }" />
-            </div>
           </t-form-item>
           <t-form-item>
             <div class="drawerActions">
@@ -247,6 +270,7 @@ interface DataItem {
   type: string;
   name: string;
   prompt: string;
+  originalPrompt?: string | null;
   filePath: string | null;
   state: string;
   model: string;
@@ -279,8 +303,12 @@ const resolutionOptions = [
 const reasoningTemplates = ref<ReasoningTemplateItem[]>([]);
 const reasoningTemplateLoading = ref(false);
 const selectedReasoningTemplateId = ref<number | undefined>(undefined);
-const reasoningPreview = ref("");
 const reasoningRunning = ref(false);
+const selectedArtStyle = ref(project.value?.artStyle || "");
+const artStyleLoading = ref(false);
+const artStyleSaving = ref(false);
+const artStyleOptions = ref<Array<{ label: string; value: string }>>([]);
+const artStyleDirty = computed(() => selectedArtStyle.value !== (project.value?.artStyle || ""));
 const reasoningTemplateOptions = computed(() =>
   reasoningTemplates.value.map((item) => ({
     label: `${item.name}${item.group ? ` · ${item.group}` : ""}`,
@@ -313,6 +341,7 @@ function createAbortController() {
 
 onMounted(() => {
   loadReasoningTemplates();
+  loadArtStyles();
   getFilteredData();
 });
 
@@ -344,6 +373,43 @@ async function getFilteredData() {
     dataList.value = [];
   } finally {
     loading.value = false;
+  }
+}
+
+async function loadArtStyles() {
+  artStyleLoading.value = true;
+  try {
+    const { data } = await axios.post("/project/getVisualManual");
+    const options = (Array.isArray(data) ? data : [])
+      .filter((item: any) => item?.stylePath)
+      .map((item: any) => ({ label: item.name || item.stylePath, value: item.stylePath }));
+    if (project.value?.artStyle && !options.some((item) => item.value === project.value?.artStyle)) {
+      options.unshift({ label: project.value.artStyle, value: project.value.artStyle });
+    }
+    artStyleOptions.value = options;
+  } catch (error) {
+    console.error("加载项目风格失败:", error);
+    if (project.value?.artStyle) artStyleOptions.value = [{ label: project.value.artStyle, value: project.value.artStyle }];
+  } finally {
+    artStyleLoading.value = false;
+  }
+}
+
+async function saveArtStyle() {
+  const projectId = Number(project.value?.id);
+  if (!Number.isFinite(projectId) || !selectedArtStyle.value) {
+    window.$message.warning("请选择项目风格");
+    return;
+  }
+  artStyleSaving.value = true;
+  try {
+    await axios.post("/project/updateArtStyle", { projectId, artStyle: selectedArtStyle.value });
+    if (project.value) project.value.artStyle = selectedArtStyle.value;
+    window.$message.success("项目风格已保存");
+  } catch (error: any) {
+    window.$message.error(error?.message || "项目风格保存失败");
+  } finally {
+    artStyleSaving.value = false;
   }
 }
 
@@ -386,39 +452,6 @@ function clearSelection() {
 
 const selectedReasoningTemplate = computed(() => reasoningTemplates.value.find((item) => item.id === selectedReasoningTemplateId.value) ?? null);
 
-function buildReasoningContext() {
-  const item = currentItem.value;
-  const lines = [
-    `名称：${editForm.name || item?.name || ""}`,
-    `类型：${editForm.type || item?.type || ""}`,
-    `描述：${editForm.describe || item?.describe || ""}`,
-    `当前提示词：${editForm.prompt || item?.prompt || ""}`,
-  ].filter((line) => line.replace(/：\s*$/, "").trim());
-  const imageLine = item?.filePath ? `@图1 ${item.name || "当前图片"}` : "无图片";
-  return {
-    text: lines.join("\n"),
-    images: imageLine,
-    imageName: item?.name || "当前图片",
-  };
-}
-
-function renderReasoningOutput(template: string) {
-  const context = buildReasoningContext();
-  let output = String(template || "");
-  output = output
-    .replace(/\{\{(?:输入文本|文本|测试文本|输入内容|提示词)\}\}/g, context.text || "【输入内容】")
-    .replace(/\{\{(?:图片列表|参考图|输入图片|图片输入)\}\}/g, context.images)
-    .replace(/\{\{图片(\d+)\}\}/g, (_, index) => {
-      const imageIndex = Number(index);
-      return imageIndex === 1 ? context.images : `【图片${index}】`;
-    })
-    .replace(/\{\{名称\}\}/g, currentItem.value?.name || editForm.name || "")
-    .replace(/\{\{类型\}\}/g, currentItem.value?.type || editForm.type || "")
-    .replace(/\{\{描述\}\}/g, editForm.describe || currentItem.value?.describe || "")
-    .replace(/\{\{当前提示词\}\}/g, editForm.prompt || currentItem.value?.prompt || "");
-  return output.trim();
-}
-
 async function runReasoningTemplate() {
   if (!currentItem.value) return;
   if (!selectedReasoningTemplate.value) {
@@ -427,12 +460,24 @@ async function runReasoningTemplate() {
   }
   reasoningRunning.value = true;
   try {
-    const output = renderReasoningOutput(selectedReasoningTemplate.value.data);
-    reasoningPreview.value = output;
+    const { data } = await axios.post("/assetsGenerate/reasonAssetPrompt", {
+      projectId: project.value?.id,
+      assetsId: currentItem.value.id,
+      templateId: selectedReasoningTemplate.value.id,
+    });
+    const output = String(data?.prompt || "").trim();
+    if (!output) throw new Error("图片推理未返回有效提示词");
+    editForm.originalPrompt = String(data?.originalPrompt || editForm.originalPrompt || currentItem.value.prompt || "");
     editForm.prompt = output;
+    currentItem.value.originalPrompt = editForm.originalPrompt;
+    currentItem.value.prompt = output;
+    const target = dataList.value.find((item) => item.id === currentItem.value!.id);
+    if (target) {
+      target.originalPrompt = editForm.originalPrompt;
+      target.prompt = output;
+    }
     window.$message.success("推理完成，结果已写入提示词");
   } catch (error: any) {
-    reasoningPreview.value = "";
     window.$message.error(error?.message || "推理失败");
   } finally {
     reasoningRunning.value = false;
@@ -501,6 +546,7 @@ const editForm = reactive({
   model: "",
   type: "",
   resolution: "",
+  originalPrompt: "",
   prompt: "",
   name: "",
   describe: "",
@@ -509,7 +555,6 @@ const editForm = reactive({
 
 async function openDrawer(item: DataItem) {
   selectedHistoryId.value = null;
-  reasoningPreview.value = "";
   // 先用当前数据打开抽屉
   editForm.assetsId = item.id;
   editForm.name = item.name || "";
@@ -517,6 +562,7 @@ async function openDrawer(item: DataItem) {
   editForm.model = item.model || "";
   currentItem.value = item;
   editForm.resolution = item.resolution || "";
+  editForm.originalPrompt = item.originalPrompt || item.prompt || "";
   editForm.prompt = item.prompt || "";
   editForm.describe = item.describe || "";
   editForm.promptState = item.promptState;
@@ -534,6 +580,7 @@ async function openDrawer(item: DataItem) {
       if (idx !== -1) dataList.value[idx] = freshItem;
       // 更新当前抽屉项
       currentItem.value = freshItem;
+      editForm.originalPrompt = freshItem.originalPrompt || editForm.originalPrompt;
       editForm.prompt = freshItem.prompt || editForm.prompt;
       editForm.resolution = freshItem.resolution || editForm.resolution;
     }
@@ -633,9 +680,14 @@ async function polishPrompts() {
     });
     window.$message.success($t("workbench.cornerScape.msg.promptGenSuccess"));
     if (data.assetsId === editForm.assetsId) {
+      editForm.originalPrompt = data.originalPrompt || data.prompt || "";
       editForm.prompt = data.prompt;
+      if (currentItem.value) {
+        currentItem.value.originalPrompt = editForm.originalPrompt;
+        currentItem.value.prompt = data.prompt;
+      }
     }
-    getFilteredData();
+    await getFilteredData();
   } catch {
     window.$message.error($t("workbench.cornerScape.msg.polishFailed"));
   } finally {
@@ -750,11 +802,12 @@ async function pollingPromptAssets() {
     const { data } = await axios.post("/assets/pollingPromptAssets", { ids });
     let hasCompleted = false;
     if (Array.isArray(data) && data.length) {
-      data.forEach((item: { id: number; promptState: string; prompt: string }) => {
+      data.forEach((item: { id: number; promptState: string; originalPrompt?: string; prompt: string }) => {
         const target = dataList.value.find((row) => row.id === item.id);
         if (target) {
           if (target.promptState === "生成中" && item.promptState !== "生成中") hasCompleted = true;
           target.promptState = item.promptState;
+          if (item.originalPrompt !== undefined) target.originalPrompt = item.originalPrompt;
           if (item.prompt !== undefined) target.prompt = item.prompt;
         }
       });
@@ -768,12 +821,16 @@ async function pollingPromptAssets() {
         });
         (freshData as DataItem[]).forEach((fresh) => {
           const target = dataList.value.find((row) => row.id === fresh.id);
-          if (target) target.historyImages = fresh.historyImages;
+          if (target) Object.assign(target, fresh);
         });
         // 同步更新抽屉中的当前项
         if (currentItem.value) {
           const freshCurrent = (freshData as DataItem[]).find((d) => d.id === currentItem.value!.id);
-          if (freshCurrent) currentItem.value.historyImages = freshCurrent.historyImages;
+          if (freshCurrent) {
+            currentItem.value = freshCurrent;
+            editForm.originalPrompt = freshCurrent.originalPrompt || freshCurrent.prompt || "";
+            editForm.prompt = freshCurrent.prompt || "";
+          }
         }
       } catch (e) {
         console.error("刷新历史图片失败:", e);
@@ -912,7 +969,7 @@ watch(generatingData, (val) => {
     :deep(.t-form__item) {
       margin-bottom: 0;
     }
-    .quickActions {
+.quickActions {
       display: flex;
       flex-direction: column;
       gap: 10px;
@@ -1053,6 +1110,17 @@ watch(generatingData, (val) => {
   }
 }
 
+.styleControl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  :deep(.t-select) {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
 .drawerHeader {
   display: flex;
   align-items: center;
@@ -1157,22 +1225,6 @@ watch(generatingData, (val) => {
   :deep(.t-button) {
     flex: 0 0 auto;
     white-space: nowrap;
-  }
-}
-
-.promptReasoningPreview {
-  margin-top: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  .promptReasoningPreview__head {
-    color: var(--td-text-color-secondary);
-    font-size: 12px;
-    line-height: 1.2;
-  }
-  :deep(.t-textarea__inner) {
-    min-height: 120px;
-    resize: vertical;
   }
 }
 

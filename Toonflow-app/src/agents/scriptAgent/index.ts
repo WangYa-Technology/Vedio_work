@@ -64,6 +64,21 @@ async function waitBeforeRetry(delayMs: number, signal?: AbortSignal) {
   });
 }
 
+function getWorkflowLabel(stage?: string) {
+  switch (stage) {
+    case "storySkeleton":
+      return "正在生成故事骨架";
+    case "adaptationStrategy":
+      return "正在制定改编策略";
+    case "script":
+      return "正在编写剧本";
+    case "supervision":
+      return "正在审核当前产出";
+    default:
+      return "正在分析项目并规划下一步";
+  }
+}
+
 function buildMemPrompt(mem: Awaited<ReturnType<Memory["get"]>>): string {
   let memoryContext = "";
   if (mem.rag.length) {
@@ -85,9 +100,59 @@ async function getContentSafetyConstraint(): Promise<string> {
   return String(setting?.value ?? DEFAULT_CONTENT_SAFETY_CONSTRAINT).trim();
 }
 
+function getTargetEpisodeCount(...contents: unknown[]) {
+  const text = contents.filter((content): content is string => typeof content === "string").join("\n");
+  const taggedCount = text.match(/<集数>\s*(\d+)\s*集?\s*<\/集数>/)?.[1];
+  const describedCount = text.match(/(?:总共|共|目标|拆分为|规划为)\s*(\d+)\s*集/)?.[1];
+  const count = Number(taggedCount ?? describedCount);
+  return Number.isSafeInteger(count) && count > 0 && count <= 100 ? count : undefined;
+}
+
 function withContentSafetyConstraint(systemPrompt: string, constraint: string): string {
   if (!constraint) return systemPrompt;
   return `${systemPrompt}\n\n## 内容安全约束（用户设置）\n${constraint}`;
+}
+
+async function getWorkflowContext(projectIdValue: unknown) {
+  const projectId = Number(projectIdValue);
+  if (!Number.isSafeInteger(projectId) || projectId <= 0) return "当前工作流状态未知。";
+
+  const workData = await u.db("o_agentWorkData").where({ projectId, key: "scriptAgent" }).first();
+  const scripts = await u.db("o_script").where({ projectId }).select("id", "name");
+  let planData: Record<string, unknown> = {};
+  try {
+    planData = JSON.parse(workData?.data ?? "{}");
+  } catch {
+    planData = {};
+  }
+
+  const hasSkeleton = typeof planData.storySkeleton === "string" && planData.storySkeleton.trim().length > 0;
+  const hasStrategy = typeof planData.adaptationStrategy === "string" && planData.adaptationStrategy.trim().length > 0;
+  const targetEpisodeCount = getTargetEpisodeCount(planData.adaptationStrategy, planData.storySkeleton);
+  const remainingEpisodes = targetEpisodeCount === undefined ? undefined : Math.max(targetEpisodeCount - scripts.length, 0);
+  const suggestedNext = !hasSkeleton
+    ? "先生成故事骨架"
+    : !hasStrategy
+      ? "直接制定改编策略，不重复询问已确认项目参数"
+        : scripts.length === 0
+        ? targetEpisodeCount === undefined
+          ? "进入剧本编写；如用户未指定本次集数，询问本次生成几集（默认3集，上限5集）"
+          : `进入剧本编写；已确认目标${targetEpisodeCount}集，本次直接生成${Math.min(targetEpisodeCount, 5)}集，不再询问集数`
+        : remainingEpisodes === undefined
+          ? "剧本已存在，汇报已生成集数并引导用户继续生成后续剧本或进入制作流程"
+          : remainingEpisodes > 0
+            ? `已生成${scripts.length}集，继续生成剩余${remainingEpisodes}集；不再询问已确认集数`
+            : "全部目标剧本已生成，直接引导进入制作流程";
+
+  return [
+    "## 宿主工作流快照（可信）",
+    `故事骨架：${hasSkeleton ? "已保存" : "未生成"}`,
+    `改编策略：${hasStrategy ? "已保存" : "未生成"}`,
+    `目标集数：${targetEpisodeCount === undefined ? "未从已保存配置中识别" : `${targetEpisodeCount}集`}`,
+    `已生成剧本：${scripts.length}集${scripts.length ? `（${scripts.map((item) => item.name).join("、")}）` : ""}`,
+    `建议下一步：${suggestedNext}`,
+    "当用户说“继续”“已经有了”“确认”或表达同意时，必须基于此快照推进，不得重新询问已保存阶段或已确认参数。",
+  ].join("\n");
 }
 
 function getLastXmlElement(text: string, tag: string) {
@@ -219,11 +284,12 @@ export async function decisionAI(ctx: AgentContext) {
     `目标改编视频画幅：${projectData?.videoRatio ?? "16:9"}`,
     `章节数量：${novelData.length}章`,
   ].join("\n");
+  const workflowContext = await getWorkflowContext(resTool.data.projectId);
 
   const { textStream } = await u.Ai.Text("scriptAgent:decisionAgent").stream({
     messages: [
       { role: "system", content: withContentSafetyConstraint(prompt, contentSafetyConstraint) },
-      { role: "assistant", content: projectInfo + "\n" + mem },
+      { role: "assistant", content: projectInfo + "\n\n" + workflowContext + "\n\n" + mem },
       { role: "user", content: text },
     ],
     abortSignal,
@@ -254,6 +320,7 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
     memoryKey,
     requiredArtifact,
     isSupervision,
+    workflowStage,
     tools: extraTools,
     messages,
   }: {
@@ -264,6 +331,7 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
     memoryKey: string;
     requiredArtifact?: RequiredArtifact;
     isSupervision?: boolean;
+    workflowStage?: "storySkeleton" | "adaptationStrategy" | "script" | "supervision";
     tools?: Record<string, any>;
     messages?: { role: "user" | "assistant" | "system"; content: string }[];
   }) {
@@ -271,17 +339,19 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
       return "审核已开始或完成。本轮必须立即停止并等待用户下一条消息，不能继续执行或再次审核。";
     }
     if (isSupervision) supervisionStarted = true;
+    resTool.workflowStatus("working", getWorkflowLabel(workflowStage), workflowStage);
     parentCtx.msg.complete();
     const subMsg = resTool.newMessage("assistant", name);
     const text = subMsg.text();
     let fullResponse = "";
+    let attemptMessages = messages ?? [{ role: "user" as const, content: prompt }];
 
     for (let attempt = 1; attempt <= SUB_AGENT_MAX_ATTEMPTS; attempt++) {
       let attemptResponse = "";
       try {
         const { textStream } = await u.Ai.Text(modelKey).stream({
           system: withContentSafetyConstraint(system, contentSafetyConstraint),
-          messages: messages ?? [{ role: "user", content: prompt }],
+          messages: attemptMessages,
           abortSignal,
           tools: { ...extraTools, ...useTools({ resTool, msg: subMsg }) },
         });
@@ -293,6 +363,29 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
         }
         if (!attemptResponse.trim()) {
           throw new Error("模型服务未返回有效内容");
+        }
+        if (requiredArtifact) {
+          try {
+            getRequiredArtifact(attemptResponse, requiredArtifact);
+          } catch (err) {
+            if (attempt === SUB_AGENT_MAX_ATTEMPTS) throw err;
+            const errorMsg = u.error(err).message;
+            console.warn(`[scriptAgent] ${modelKey} 产出格式无效，准备第 ${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS} 次尝试:`, errorMsg);
+            const retryState = subMsg.thinking("产出格式未通过校验，正在自动重新生成...");
+            retryState.appendText(`第 ${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS} 次尝试`);
+            retryState.complete();
+            resTool.workflowStatus("retrying", `${getWorkflowLabel(workflowStage)}，正在修复输出格式（${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS}）`, workflowStage);
+            attemptMessages = [
+              ...attemptMessages,
+              {
+                role: "user",
+                content:
+                  "上一轮输出未通过宿主校验。请忽略上一轮结果，重新完成任务，并且只输出一个带 name 属性、开闭标签完整的 XML 产出物；不要输出任何解释、Markdown 代码围栏或保存说明。",
+              },
+            ];
+            await waitBeforeRetry(750 * attempt, abortSignal);
+            continue;
+          }
         }
         fullResponse = attemptResponse;
         break;
@@ -308,6 +401,7 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
         const retryState = subMsg.thinking("模型服务暂时不可用，正在自动重试...");
         retryState.appendText(`第 ${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS} 次尝试`);
         retryState.complete();
+        resTool.workflowStatus("retrying", `${getWorkflowLabel(workflowStage)}，正在自动重试（${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS}）`, workflowStage);
         await waitBeforeRetry(750 * attempt, abortSignal);
       }
     }
@@ -321,9 +415,11 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
       }
       text.complete();
       subMsg.complete();
+      resTool.workflowStatus("complete", `${getWorkflowLabel(workflowStage)}完成`, workflowStage);
     } catch (err) {
       text.complete();
       subMsg.error(u.error(err).message);
+      resTool.workflowStatus("error", `${getWorkflowLabel(workflowStage)}失败：${u.error(err).message}`, workflowStage);
       throw err;
     }
 
@@ -362,6 +458,7 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
         name: "编剧",
         memoryKey: "assistant:execution:storySkeleton",
         requiredArtifact: "storySkeleton",
+        workflowStage: "storySkeleton",
         messages: [{ role: "user", content: prompt + formatPrompt }],
       });
     },
@@ -384,6 +481,7 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
         name: "编剧",
         memoryKey: "assistant:execution:adaptationStrategy",
         requiredArtifact: "adaptationStrategy",
+        workflowStage: "adaptationStrategy",
         messages: [{ role: "user", content: prompt + formatPrompt }],
       });
     },
@@ -417,6 +515,7 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
         name: "编剧",
         memoryKey: "assistant:execution:script",
         requiredArtifact: "scriptItem",
+        workflowStage: "script",
       });
     },
   });
@@ -435,6 +534,7 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
         name: "编辑",
         memoryKey: "assistant:supervision",
         isSupervision: true,
+        workflowStage: "supervision",
       });
     },
   });

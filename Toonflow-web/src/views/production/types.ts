@@ -11,6 +11,7 @@ export interface DeriveAsset {
   src: string;
   flowId?: number;
   state: GenerationState;
+  imageState?: GenerationState;
   type: AssetType;
   errorReason?: string;
 }
@@ -22,6 +23,7 @@ export interface AssetItem {
   prompt: string;
   src: string;
   state: GenerationState;
+  imageState?: GenerationState;
   type: AssetType;
   flowId?: number;
   derive: DeriveAsset[];

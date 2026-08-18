@@ -2,7 +2,7 @@ import { tool, type Tool } from "ai";
 import { z } from "zod";
 import u from "@/utils";
 import ResTool from "@/socket/resTool";
-import { buildProductionFlowData } from "@/utils/productionFlow";
+import { buildProductionFlowData, parseStoryboardTableAssetBindings } from "@/utils/productionFlow";
 import {
   buildDerivedAssetPrompt,
   queueAssetImagesById,
@@ -206,18 +206,21 @@ export default ({ resTool, msg, toolsNames }: ToolConfig) => {
       execute: async (raw) => {
         ensureContext();
         const thinking = msg.thinking("正在写入正式分镜面板...");
-        const assets = normalizeIds(raw.associateAssetsIds);
+        let assets = normalizeIds(raw.associateAssetsIds);
+        const flowData = await buildProductionFlowData(projectId, scriptId);
+        const tableBindings = parseStoryboardTableAssetBindings(flowData.storyboardTable || "");
         const shouldGenerateImage = raw.shouldGenerateImage === true || raw.shouldGenerateImage === "true" ? 1 : 0;
         let storyboardId = 0;
         let index = 0;
         await u.db.transaction(async (trx) => {
+          const maxIndex = await trx("o_storyboard").where({ projectId, scriptId }).max("index as value").first();
+          index = Number((maxIndex as any)?.value ?? -1) + 1;
+          if (tableBindings[index]?.length) assets = tableBindings[index];
           const existingAssets = assets.length ? await trx("o_assets").where({ projectId }).whereIn("id", assets).pluck("id") : [];
           if (existingAssets.length !== assets.length) {
             const existing = new Set(existingAssets.map(Number));
             throw new Error(`关联资产不存在：${assets.filter((id) => !existing.has(id)).join(", ")}`);
           }
-          const maxIndex = await trx("o_storyboard").where({ projectId, scriptId }).max("index as value").first();
-          index = Number((maxIndex as any)?.value ?? -1) + 1;
           const now = Date.now();
           const inserted = await trx("o_storyboard").insert({
             projectId,
@@ -251,7 +254,7 @@ export default ({ resTool, msg, toolsNames }: ToolConfig) => {
         thinking.appendText(`真实分镜 ID：${storyboardId}`);
         thinking.updateTitle("正式分镜面板写入完成");
         thinking.complete();
-        return { success: true, storyboardId, index, associateAssetsIds: assets };
+        return { success: true, storyboardId, index, associateAssetsIds: assets, autoAssociated: Boolean(tableBindings[index]?.length) };
       },
     }),
 

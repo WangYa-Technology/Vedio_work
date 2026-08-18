@@ -29,6 +29,15 @@ export function getArtPrompt(styleName: string, source: string, fileName: string
   const fileContent = fs.readFileSync(found, "utf-8");
   return prefixContent ? `${prefixContent}\n${fileContent}` : fileContent;
 }
+
+/** Read one visual-manual file without prepending the style prefix. */
+export function getArtPromptFile(styleName: string, source: string, fileName: string): string {
+  const baseDir = getPath(["skills", source, styleName]);
+  if (!fs.existsSync(baseDir)) return "";
+  const target = fileName.endsWith(".md") ? fileName : `${fileName}.md`;
+  const found = findFileRecursive(baseDir, target);
+  return found ? fs.readFileSync(found, "utf-8") : "";
+}
 /**
  * 传入风格目录名，获取该风格下所有 .md 文件内容，按文件名映射返回
  * @param styleName - 风格目录名，例如 "chinese_sweet_romance"

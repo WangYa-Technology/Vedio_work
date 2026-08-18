@@ -20,6 +20,25 @@
               <!-- </template> -->
             </t-chat-message>
           </t-chat-list>
+          <div
+            v-if="showWorkflowStatus"
+            class="workflowStatus"
+            :class="`is-${workflowStatus.state}`"
+            role="status"
+            aria-live="polite">
+            <i-loading-four v-if="workflowBusy" class="workflowSpinner" size="16" />
+            <i-info v-else-if="workflowStatus.state === 'error'" size="16" />
+            <span>{{ workflowStatusLabel }}</span>
+          </div>
+          <div v-if="nextAction" class="nextAction">
+            <div class="nextActionCopy">
+              <span class="nextActionTitle">{{ nextAction.title }}</span>
+              <span>{{ nextAction.description }}</span>
+            </div>
+            <t-button size="small" theme="primary" :disabled="workflowBusy || loadingProjectData" @click="runNextAction">
+              {{ nextAction.label }}
+            </t-button>
+          </div>
           <t-chat-sender
             class="inputBox"
             :disabled="status === 'pending' || status === 'streaming' || loadingProjectData || !activeProjectId"
@@ -170,11 +189,12 @@ import "splitpanes/dist/splitpanes.css";
 import axios from "@/utils/axios";
 import type { ChatMessagesData } from "@tdesign-vue-next/chat";
 import projectStore from "@/stores/project";
+import router from "@/router";
 const { project } = storeToRefs(projectStore());
 import editMdPreivew from "@/components/editMdPreivew.vue";
 import scriptAgentStore from "@/stores/scriptAgent";
 const scriptAgent = scriptAgentStore();
-const { connected, messages, renderableMessages, status, planData } = storeToRefs(scriptAgent);
+const { connected, messages, renderableMessages, status, workflowStatus, planData } = storeToRefs(scriptAgent);
 const currentTable = ref(1);
 const inputValue = ref("");
 const activeProjectId = computed<number | null>(() => {
@@ -186,6 +206,73 @@ const projectLoadVersion = ref(0);
 const planRequestVersion = ref(0);
 const forceGenerateVisible = ref(false);
 const novelData = ref<any[]>([]);
+
+const workflowBusy = computed(() =>
+  status.value === "pending" || status.value === "streaming" || workflowStatus.value.state === "working" || workflowStatus.value.state === "retrying",
+);
+const showWorkflowStatus = computed(() => Boolean(workflowStatus.value.label) && (workflowBusy.value || workflowStatus.value.state === "error"));
+const workflowStatusLabel = computed(() => workflowStatus.value.label || "正在处理当前任务");
+
+function getTargetEpisodeCount(...contents: string[]) {
+  const text = contents.join("\n");
+  const taggedCount = text.match(/<集数>\s*(\d+)\s*集?\s*<\/集数>/)?.[1];
+  const describedCount = text.match(/(?:总共|共|目标|拆分为|规划为)\s*(\d+)\s*集/)?.[1];
+  const count = Number(taggedCount ?? describedCount);
+  return Number.isSafeInteger(count) && count > 0 && count <= 100 ? count : undefined;
+}
+
+const targetEpisodeCount = computed(() => getTargetEpisodeCount(planData.value.adaptationStrategy, planData.value.storySkeleton));
+const persistedScriptCount = computed(() => planData.value.script.filter((item) => item.name.trim() && item.content.trim()).length);
+const remainingScriptCount = computed(() =>
+  targetEpisodeCount.value === undefined ? undefined : Math.max(targetEpisodeCount.value - persistedScriptCount.value, 0),
+);
+
+const nextAction = computed(() => {
+  if (workflowBusy.value || loadingProjectData.value || !activeProjectId.value) return null;
+  if (remainingScriptCount.value !== undefined && remainingScriptCount.value > 0) {
+    const generatedCount = persistedScriptCount.value;
+    return {
+      title: "剧本尚未完成",
+      description: `已生成 ${generatedCount}/${targetEpisodeCount.value} 集，剩余 ${remainingScriptCount.value} 集待生成。`,
+      label: workflowStatus.value.state === "error" ? "重新生成" : "继续生成",
+      prompt: "继续生成剩余剧本",
+      type: "chat" as const,
+    };
+  }
+  if (persistedScriptCount.value > 0) {
+    return {
+      title: "剧本已就绪",
+      description: "进入制作流程，继续完成导演规划、资产和分镜。",
+      label: "进入制作",
+      type: "production" as const,
+    };
+  }
+  if (planData.value.adaptationStrategy.trim()) {
+    return {
+      title: "改编策略已完成",
+      description: "继续生成剧本，系统会按已确认的集数顺序执行。",
+      label: "生成剧本",
+      prompt: "继续生成剧本",
+      type: "chat" as const,
+    };
+  }
+  if (planData.value.storySkeleton.trim()) {
+    return {
+      title: "故事骨架已完成",
+      description: "继续制定改编策略，系统会自动进行后续审核。",
+      label: "制定策略",
+      prompt: "继续制定改编策略",
+      type: "chat" as const,
+    };
+  }
+  return {
+    title: "准备开始策划",
+    description: "生成故事骨架后，系统会继续推进后续阶段。",
+    label: "开始策划",
+    prompt: "开始生成故事骨架",
+    type: "chat" as const,
+  };
+});
 const toolbars: ToolbarNames[] = [
   "bold",
   "underline",
@@ -276,6 +363,18 @@ function handleSend(text: string) {
 }
 function handleStop() {
   scriptAgent.stopGenerate();
+}
+
+function runNextAction() {
+  const action = nextAction.value;
+  if (!action) return;
+  if (action.type === "production") {
+    router.push("/production");
+    return;
+  }
+  if (scriptAgent.chat(action.prompt)) {
+    inputValue.value = "";
+  }
 }
 
 const memoryTypeLabel: Record<string, string> = {
@@ -448,6 +547,12 @@ onUnmounted(() => {
 </script>
 
 <style lang="scss" scoped>
+@keyframes workflowRotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .scriptAgent {
   height: calc(100% - 16px);
   display: flex;
@@ -485,6 +590,54 @@ onUnmounted(() => {
         .inputBox {
           padding-right: 8px;
           padding-bottom: 8px;
+        }
+        .workflowStatus {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          min-height: 36px;
+          margin: 0 8px 8px 0;
+          padding: 8px 10px;
+          color: var(--td-text-color-secondary);
+          font-size: 13px;
+          border: 1px solid var(--td-border-level-2-color);
+          border-radius: 6px;
+          background: var(--td-bg-color-container);
+
+          &.is-error {
+            color: var(--td-error-color);
+            border-color: var(--td-error-color-4);
+          }
+        }
+        .workflowSpinner {
+          animation: workflowRotate 0.9s linear infinite;
+          flex-shrink: 0;
+        }
+        .nextAction {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          margin: 0 8px 8px 0;
+          padding: 10px;
+          border: 1px solid var(--td-brand-color-3);
+          border-radius: 6px;
+          background: var(--td-brand-color-1);
+
+          .nextActionCopy {
+            display: flex;
+            min-width: 0;
+            flex-direction: column;
+            gap: 3px;
+            color: var(--td-text-color-secondary);
+            font-size: 12px;
+            line-height: 1.5;
+          }
+          .nextActionTitle {
+            color: var(--td-text-color-primary);
+            font-size: 13px;
+            font-weight: 600;
+          }
         }
         .dot {
           position: absolute;

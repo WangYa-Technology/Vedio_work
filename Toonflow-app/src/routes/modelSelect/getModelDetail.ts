@@ -3,6 +3,7 @@ import u from "@/utils";
 import { z } from "zod";
 import { success } from "@/lib/responseFormat";
 import { validateFields } from "@/middleware/middleware";
+import { parseModelReference } from "@/utils/modelRef";
 const router = express.Router();
 
 export default router.post(
@@ -12,7 +13,7 @@ export default router.post(
   }),
   async (req, res) => {
     const { modelId } = req.body;
-    const [id, name] = modelId.split(":");
+    const { vendorId: id, modelName: name } = parseModelReference(modelId);
     const data = await u.db("o_vendorConfig").where("id", id).andWhere("enable", 1).select("models").first();
     if (!data) {
       return res.status(404).send({ error: "模型未找到" });
