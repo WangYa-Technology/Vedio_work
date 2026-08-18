@@ -1087,6 +1087,12 @@ export default async (knex: Knex, forceInit: boolean = false): Promise<void> => 
     }
   }
 
+  const userCount = Number((await knex("o_user").count<{ count: number | string }>("id as count").first())?.count ?? 0);
+  if (userCount === 0) {
+    await knex("o_user").insert({ id: 1, name: "admin", password: "admin123" });
+    console.log("[初始化数据库] 已补充默认管理员账号");
+  }
+
   if ((await knex.schema.hasTable("o_assets")) && !(await knex.schema.hasColumn("o_assets", "originalPrompt"))) {
     await knex.schema.alterTable("o_assets", (table) => {
       table.text("originalPrompt");
