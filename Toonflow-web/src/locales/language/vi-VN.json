@@ -398,6 +398,8 @@
         "videoRatio": "Tỷ lệ video",
         "novelIntro": "Tóm tắt tiểu thuyết",
         "novelIntroPh": "Vui lòng nhập tóm tắt tiểu thuyết",
+        "negativePrompt": "Prompt phủ định",
+        "negativePromptPh": "Nhập prompt phủ định áp dụng cho toàn bộ hình ảnh trong dự án",
         "editArtStyleTitle": "Chỉnh sửa hướng dẫn trực quan",
         "newArtStyleTitle": "Hướng dẫn trực quan mới",
         "artStyleName": "Tên hướng dẫn trực quan",

@@ -68,6 +68,7 @@ const editProjectData = ref<{
   intro: string;
   type: string;
   artStyle: string | null;
+  negativePrompt: string | null;
   videoRatio: string | null;
   imageModel: string;
   videoModel: string;
@@ -109,6 +110,7 @@ function openEdit(item: {
   intro: string;
   type: string;
   artStyle: string | null;
+  negativePrompt: string | null;
   directorManual: string;
   videoRatio: string | null;
   imageModel: string;
@@ -129,6 +131,7 @@ function editProjectFn(data: {
   intro: string;
   type: string;
   artStyle: string;
+  negativePrompt: string;
   directorManual: string;
   videoRatio: string;
   imageModel: string;
@@ -153,6 +156,7 @@ function addProjectFn(data: {
   intro: string;
   type: string;
   artStyle: string;
+  negativePrompt: string;
   directorManual: string;
   videoRatio: string;
   imageModel: string;

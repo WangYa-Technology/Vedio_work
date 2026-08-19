@@ -34,3 +34,11 @@ test("profiles Seedance first/last-frame models", () => {
   assert.equal(profile.requiresStartEnd, true);
   assert.equal(profile.audioPolicy, "unsupported");
 });
+
+test("profiles mixed image, video, and audio references as multimodal", () => {
+  const profile = resolveVideoModelPromptProfile({
+    modelName: "MiniMax-H3",
+    mode: [["imageReference:9", "videoReference:1", "audioReference:1"]],
+  });
+  assert.equal(profile.modeKind, "multimodal");
+});

@@ -7,6 +7,9 @@ import { collectVideoPromptContractViolations } from "@/utils/videoPromptContrac
 
 type AnyObject = Record<string, any>;
 
+const MAX_EPISODE_SCRIPT_CONTEXT_CHARS = 4_000;
+const MAX_SOURCE_CHAPTER_CONTEXT_CHARS = 6_000;
+
 export interface StoryboardSegmentRow {
   serial: string;
   description: string;
@@ -27,6 +30,74 @@ interface StoryboardSegment {
 function parseDuration(value: unknown): number {
   const match = String(value ?? "").match(/\d+(?:\.\d+)?/);
   return match ? Number(match[0]) : 0;
+}
+
+function narrativeTrigrams(value: unknown) {
+  const chars = Array.from(
+    String(value || "")
+      .replace(/[#*_`>|\-—–\s，。！？；：“”‘’、,.!?;:'"()[\]{}]/g, "")
+      .trim(),
+  );
+  const grams = new Set<string>();
+  for (let index = 0; index <= chars.length - 3; index += 1) {
+    grams.add(chars.slice(index, index + 3).join(""));
+  }
+  return grams;
+}
+
+function narrativeOverlapScore(source: unknown, targetGrams: Set<string>) {
+  if (!targetGrams.size) return 0;
+  let score = 0;
+  for (const gram of narrativeTrigrams(source)) {
+    if (targetGrams.has(gram)) score += 1;
+  }
+  return score;
+}
+
+export function selectNarrativeContext(
+  episodeScript: unknown,
+  chapterRows: AnyObject[],
+) {
+  const script = String(episodeScript || "").trim();
+  const scriptGrams = narrativeTrigrams(script);
+  const ranked = chapterRows
+    .map((row) => ({
+      row,
+      score: narrativeOverlapScore(row.chapterData, scriptGrams),
+    }))
+    .sort(
+      (left, right) =>
+        right.score - left.score ||
+        Number(left.row.chapterIndex || 0) - Number(right.row.chapterIndex || 0),
+    );
+  const candidates = ranked.some((item) => item.score > 0)
+    ? ranked.filter((item) => item.score > 0).slice(0, 2)
+    : ranked.slice(0, 1);
+
+  let remaining = MAX_SOURCE_CHAPTER_CONTEXT_CHARS;
+  const sourceChapters = candidates
+    .sort(
+      (left, right) =>
+        Number(left.row.chapterIndex || 0) - Number(right.row.chapterIndex || 0),
+    )
+    .map(({ row }) => {
+      const content = String(row.chapterData || "").trim().slice(0, remaining);
+      remaining -= content.length;
+      return {
+        id: Number(row.id),
+        chapterIndex: Number(row.chapterIndex) || null,
+        title:
+          String(row.chapter || "").trim() ||
+          (row.chapterIndex ? `第${row.chapterIndex}章` : "未命名章节"),
+        content,
+      };
+    })
+    .filter((item) => item.content);
+
+  return {
+    episodeScript: script.slice(0, MAX_EPISODE_SCRIPT_CONTEXT_CHARS),
+    sourceChapters,
+  };
 }
 
 function stripStoryboardFieldLabel(value: unknown, label: string) {
@@ -259,6 +330,12 @@ export async function buildVideoTaskData(
     : "";
 
   const flow = await buildProductionFlowData(projectId, scriptId);
+  const chapterRows = await u
+    .db("o_novel")
+    .where({ projectId })
+    .orderBy("chapterIndex", "asc")
+    .select("id", "chapterIndex", "chapter", "chapterData");
+  const narrativeContext = selectNarrativeContext(flow.script, chapterRows);
   const segments = parseStoryboardTable(flow.storyboardTable || "");
   const storyboardList = await u
     .db("o_storyboard")
@@ -411,6 +488,7 @@ export async function buildVideoTaskData(
       id: Number(storyboard.trackId),
       storyboardId: Number(storyboard.id),
       index,
+      isEpisodeOpening: index === 0,
       shotNumber: index + 1,
       title: segment
         ? `${segment.sceneTitle} / ${segment.segmentTitle}`
@@ -470,6 +548,7 @@ export async function buildVideoTaskData(
   });
 
   return {
+    narrativeContext,
     projectConfig: {
       projectId,
       scriptId,

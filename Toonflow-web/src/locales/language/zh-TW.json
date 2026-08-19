@@ -412,6 +412,8 @@
         "videoRatio": "影片比例",
         "novelIntro": "小說簡介",
         "novelIntroPh": "請輸入小說簡介",
+        "negativePrompt": "負向提示詞",
+        "negativePromptPh": "請輸入此專案生成圖片時統一使用的負向提示詞",
         "editArtStyleTitle": "編輯視覺手冊",
         "newArtStyleTitle": "新視覺手冊",
         "artStyleName": "視覺手冊名稱",

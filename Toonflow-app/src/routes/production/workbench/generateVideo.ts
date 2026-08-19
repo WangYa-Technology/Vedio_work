@@ -14,6 +14,10 @@ import { buildVideoTaskData } from "@/utils/videoTaskData";
 import { collectVideoPromptContractViolations } from "@/utils/videoPromptContract";
 import { auditVideoOutput } from "@/utils/videoOutputAudit";
 import { probeVideoFile } from "@/utils/videoOutputProbe";
+import {
+  migrateLegacyPromptForH3,
+  removeNarrationLipSyncInstructions,
+} from "@/utils/videoPromptMigration";
 
 const router = express.Router();
 
@@ -120,11 +124,24 @@ export default router.post(
     const promptTask = taskData.trackList.find(
       (item) => Number(item.id) === Number(trackId),
     );
+    const videoPromptProfile = resolveVideoModelPromptProfile({
+      modelName: model,
+      displayName: taskData.projectConfig.modelDisplayName,
+      mode,
+      durationResolutionMap: taskData.projectConfig.durationResolutionMap,
+      audio: audio ?? taskData.projectConfig.audio,
+    });
+    const effectivePrompt = removeNarrationLipSyncInstructions(migrateLegacyPromptForH3(prompt, {
+      profile: videoPromptProfile,
+      referenceToken: taskData.projectConfig.referenceToken,
+      references: promptTask?.referenceAssets,
+      task: promptTask,
+    }));
     if (promptTask) {
       const promptViolations = collectVideoPromptContractViolations(
         promptTask,
-        prompt,
-        taskData.projectConfig,
+        effectivePrompt,
+        { ...taskData.projectConfig, videoPromptProfile },
       );
       if (promptViolations.length) {
         return res.status(422).send({
@@ -157,11 +174,6 @@ export default router.post(
       ? Math.min(15, requestedDuration)
       : requestedDuration;
     const startedAt = Date.now();
-    const videoPromptProfile = resolveVideoModelPromptProfile({
-      modelName: model,
-      mode,
-      audio,
-    });
     const generationConfig = {
       schemaVersion: 1,
       model,
@@ -191,7 +203,7 @@ export default router.post(
       errorReason: "",
       model,
       providerTaskData: JSON.stringify(pendingVideoTaskData(startedAt)),
-      promptSnapshot: prompt,
+      promptSnapshot: effectivePrompt,
       promptTemplateId: promptTemplateId || null,
       promptTemplateVersion: promptTemplate
         ? hashPromptTemplate(promptTemplate.useData || promptTemplate.data)
@@ -204,7 +216,7 @@ export default router.post(
       .db("o_videoTrack")
       .where({ id: trackId })
       .update({
-        prompt,
+        prompt: effectivePrompt,
         duration: effectiveDuration,
         state: "生成中",
         reason: "",
@@ -218,7 +230,7 @@ export default router.post(
         await (
           await u.Ai.Video(model as `${string}:${string}`).run(
             {
-              prompt,
+              prompt: effectivePrompt,
               imageBase64,
               referenceList,
               aspectRatio: (project?.videoRatio ||

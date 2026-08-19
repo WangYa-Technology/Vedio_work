@@ -13,19 +13,22 @@ export default router.post(
     intro: z.string().optional().nullable(),
     type: z.string().optional().nullable(),
     artStyle: z.string().optional().nullable(),
+    negativePrompt: z.string().optional().nullable(),
     videoRatio: z.string().optional().nullable(),
     projectType: z.string().optional().nullable(),
   }),
   async (req, res) => {
-    const { id, intro, type, artStyle, videoRatio, projectType } = req.body;
+    const { id, intro, type, artStyle, negativePrompt, videoRatio, projectType } = req.body;
 
-    await u.db("o_project").where("id", id).update({
+    const updateData: Record<string, unknown> = {
       intro,
       type,
       artStyle,
       videoRatio,
       projectType,
-    });
+    };
+    if (negativePrompt !== undefined) updateData.negativePrompt = negativePrompt?.trim() || null;
+    await u.db("o_project").where("id", id).update(updateData);
 
     res.status(200).send(success({ message: "修改成功" }));
   },

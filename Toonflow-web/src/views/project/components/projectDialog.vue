@@ -41,6 +41,12 @@
                 :autosize="{ minRows: 3, maxRows: 6 }"
                 :placeholder="$t('workbench.project.dialog.novelIntroPh')" />
             </t-form-item>
+            <t-form-item :label="$t('workbench.project.dialog.negativePrompt')">
+              <t-textarea
+                v-model="formState.negativePrompt"
+                :autosize="{ minRows: 4, maxRows: 8 }"
+                :placeholder="$t('workbench.project.dialog.negativePromptPh')" />
+            </t-form-item>
           </t-form>
         </div>
         <div class="formRight">
@@ -295,6 +301,7 @@ import "md-editor-v3/lib/style.css";
 import modelSelect from "@/components/modelSelect.vue";
 import type { TabValue } from "tdesign-vue-next";
 import { DialogPlugin } from "tdesign-vue-next";
+import { DEFAULT_IMAGE_NEGATIVE_PROMPT } from "@/constants/projectDefaults";
 
 const addProjectShow = defineModel<boolean>();
 const props = defineProps<{
@@ -310,6 +317,7 @@ const emit = defineEmits<{
       intro: string;
       type: string;
       artStyle: string;
+      negativePrompt: string;
       directorManual: string;
       videoRatio: string;
       imageModel: string;
@@ -328,6 +336,7 @@ interface ProjectData {
   intro: string;
   type: string;
   artStyle: string | null;
+  negativePrompt: string | null;
   directorManual: string | null;
   videoRatio: string | null;
   imageModel: string;
@@ -344,6 +353,7 @@ interface ProjectFormData {
   intro: string;
   type: string;
   artStyle: string;
+  negativePrompt: string;
   directorManual: string;
   videoRatio: string;
   imageModel: string;
@@ -393,6 +403,7 @@ const DEFAULT_FORM: () => ProjectFormData & { id: number; era: string; createTim
   intro: "",
   type: "",
   artStyle: "",
+  negativePrompt: DEFAULT_IMAGE_NEGATIVE_PROMPT,
   era: "",
   videoRatio: "16:9",
   createTime: 0,
@@ -431,6 +442,7 @@ function handleOk() {
       intro: formState.value.intro,
       type: formState.value.type,
       artStyle: formState.value.artStyle,
+      negativePrompt: formState.value.negativePrompt,
       videoRatio: formState.value.videoRatio,
       imageModel: formState.value.imageModel,
       videoModel: formState.value.videoModel,
@@ -446,6 +458,7 @@ function handleOk() {
       intro: formState.value.intro,
       type: formState.value.type,
       artStyle: formState.value.artStyle,
+      negativePrompt: formState.value.negativePrompt,
       videoRatio: formState.value.videoRatio || "16:9",
       imageModel: formState.value.imageModel,
       videoModel: formState.value.videoModel,
@@ -484,6 +497,7 @@ watch(addProjectShow, async (visible) => {
         intro: props.projectData.intro || "",
         type: props.projectData.type || "",
         artStyle: props.projectData.artStyle || "",
+        negativePrompt: props.projectData.negativePrompt ?? DEFAULT_IMAGE_NEGATIVE_PROMPT,
         videoRatio: props.projectData.videoRatio || "16:9",
         imageModel: props.projectData.imageModel || "",
         videoModel: props.projectData.videoModel || "",

@@ -60,10 +60,15 @@ export function resolveVideoModelPromptProfile(
   const identity = `${modelName} ${displayName}`.toLowerCase();
   const tokens = modeTokens(input.mode);
   const hasImageReference = tokens.some((token) => token.startsWith("imageReference:"));
+  const hasNonImageReference = tokens.some(
+    (token) => token.startsWith("videoReference:") || token.startsWith("audioReference:"),
+  );
   const requiresStartEnd = tokens.includes("startEndRequired");
   const hasSingleImage = tokens.includes("singleImage") || requiresStartEnd;
   const hasText = tokens.includes("text");
-  const modeKind: VideoPromptModeKind = hasImageReference
+  const modeKind: VideoPromptModeKind = hasNonImageReference
+    ? "multimodal"
+    : hasImageReference
     ? "multiReference"
     : hasSingleImage
       ? "firstLastFrame"

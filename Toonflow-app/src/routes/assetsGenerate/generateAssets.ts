@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 import { error, success } from "@/lib/responseFormat";
 import { validateFields } from "@/middleware/middleware";
 import { parseModelReference } from "@/utils/modelRef";
+import { appendNegativePrompt } from "@/utils/imagePrompt";
 
 const router = express.Router();
 
@@ -16,6 +17,7 @@ interface AssetTypeConfig {
   dir: string;
   promptTitle: string;
   promptEnd: string;
+  promptGuidance?: string[];
 }
 
 const assetTypeConfig: Record<AssetType, AssetTypeConfig> = {
@@ -25,6 +27,15 @@ const assetTypeConfig: Record<AssetType, AssetTypeConfig> = {
     dir: "role",
     promptTitle: "角色标准四视图",
     promptEnd: "人物角色四视图",
+    promptGuidance: [
+      "角色图必须是横向角色设计板：左侧大幅正脸面部特写，右侧依次为同一角色正面全身、标准侧面全身、背面全身。",
+      "若提示词包含3D半写实国漫、BJD、成年少女、甜美纯欲、梦幻偶像、轻哥特、Y2K、洛丽塔、甜酷Coquette、精灵、猫系杏仁眼、御姐、女团、轻奢穿搭、高级黑、冷感美少年、痞帅校园、暗黑街头、精英西装、ai男主、建模脸cos、少年偶像、韩系高街、静奢、轻Y2K、学院休闲、潮流针织、牛仔、机能、轻朋克、国漫古风美男、古风cos、华服、仙侠男性等线索，必须保留脸型或骨相、玻璃感瞳孔或猫系杏仁眼、深邃眼神、鼻唇、CG人偶肤质、发丝层次、身高头身比、服饰材质、配饰细节与16:9横向四视图版式。",
+      "成年少女风必须明确为成年年轻女性，保留甜美、甜酷和梦幻感；若指定1.8米/九头身，必须保留小头、窄肩、细腰、修长双腿和完整鞋履，避免幼童感、大头娃娃、身体过短、腿短、廉价Cos感、单一配色、厚重服饰和过度暴露。",
+      "甜酷Coquette风可保留齐刘海、空气刘海、长卷发、双马尾、半扎公主头、编发、猫耳发饰、大型蝴蝶结，服饰优先轻盈修身上衣、丝光针织、薄纱泡泡袖、抽褶绑带、毛绒细节、荷叶边百褶短裙裤、珍珠水晶猫系首饰、玛丽珍鞋或精致复古运动鞋；避免塑料假人感、球形关节和视图缺失。",
+      "少年偶像/韩系高街风必须明确年轻成年男性，保留清冷高级偶像气质、220cm九头身、小头长颈窄腰、蓬松分层碎发和宽松但有结构的高街服装；可用静奢、轻Y2K、学院休闲、轻机能或轻朋克元素，但避免普通运动服、老气商务装、廉价塑料面料、胡须油腻皮肤和女性化首饰。",
+      "现代高级黑男性风必须保留年轻成年男性身份、冷冽攻击感、220cm或用户指定高挑九头身比例、小头长颈窄腰超长腿、黑/深棕蓬松碎发、当代都市轻奢高定男装材质；避免真人感、紧身裤、廉价基础款、未来制服、奇幻礼服、过度女性化和耳饰。",
+      "浅灰色无缝影棚背景，柔和商业棚拍光，细腻轮廓光；全身从头顶到脚底完整展示，不裁切；不要文字、水印、标签或尺标。",
+    ],
   },
   scene: {
     label: "场景",
@@ -55,6 +66,8 @@ function buildPrompt(cfg: AssetTypeConfig, artStyle: string, name: string, promp
     - 名称:${name},
     - 提示词:${prompt},
 
+    ${cfg.promptGuidance?.length ? `**生成硬性要求：**\n${cfg.promptGuidance.map((item) => `    - ${item}`).join("\n")}` : ""}
+
     请严格按照系统规范生成${cfg.promptEnd}。
   `;
 }
@@ -76,7 +89,7 @@ export default router.post("/", validateFields(requestSchema), async (req, res) 
   const { projectId, model, resolution, id, type, name, prompt, base64 } = req.body;
 
   // 1. 查询项目 & 获取类型配置
-  const project = await u.db("o_project").where("id", projectId).select("artStyle", "type", "intro").first();
+  const project = await u.db("o_project").where("id", projectId).select("artStyle", "negativePrompt", "type", "intro").first();
   if (!project) return res.status(500).send(success({ message: "项目为空" }));
 
   const cfg = assetTypeConfig[type as AssetType];
@@ -92,7 +105,10 @@ export default router.post("/", validateFields(requestSchema), async (req, res) 
 
   // 3. 准备生成参数
   const imagePath = `/${projectId}/${cfg.dir}/${uuidv4()}.jpg`;
-  const userPrompt = buildPrompt(cfg, project.artStyle!, name, prompt);
+  const userPrompt = appendNegativePrompt(
+    buildPrompt(cfg, project.artStyle!, name, prompt),
+    project.negativePrompt,
+  );
   const describe = `生成${cfg.label}图，名称：${name}，提示词：${prompt}`;
   const relatedObjects = { id, projectId, type: cfg.label };
 

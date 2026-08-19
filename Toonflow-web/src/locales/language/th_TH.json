@@ -407,6 +407,8 @@
         "videoRatio": "อัตราส่วนวิดีโอ",
         "novelIntro": "เรื่องย่อนิยาย",
         "novelIntroPh": "โปรดกรอกเรื่องย่อนิยาย",
+        "negativePrompt": "พรอมต์เชิงลบ",
+        "negativePromptPh": "ป้อนพรอมต์เชิงลบที่ใช้กับการสร้างรูปภาพทั้งหมดในโครงการ",
         "editArtStyleTitle": "แก้ไขคู่มือภาพ",
         "newArtStyleTitle": "คู่มือภาพใหม่",
         "artStyleName": "ชื่อคู่มือแบบภาพ",

@@ -14,6 +14,7 @@ export default router.post(
     intro: z.string(),
     type: z.string(),
     artStyle: z.string(),
+    negativePrompt: z.string().optional(),
     directorManual: z.string(),
     videoRatio: z.string(),
     imageModel: z.string(),
@@ -23,13 +24,14 @@ export default router.post(
     mode: z.string(),
   }),
   async (req, res) => {
-    const { id, name, intro, type, artStyle, videoRatio, directorManual, imageModel, videoModel, imageQuality, projectType, mode } = req.body;
+    const { id, name, intro, type, artStyle, negativePrompt, videoRatio, directorManual, imageModel, videoModel, imageQuality, projectType, mode } = req.body;
 
     await u.db("o_project").where("id", id).update({
       name,
       intro,
       type,
       artStyle,
+      ...(negativePrompt === undefined ? {} : { negativePrompt: negativePrompt.trim() }),
       videoRatio,
       directorManual,
       imageModel,

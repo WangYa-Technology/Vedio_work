@@ -406,6 +406,8 @@
         "videoRatio": "画面アスペクト比",
         "novelIntro": "小説のあらすじ",
         "novelIntroPh": "あらすじを入力してください",
+        "negativePrompt": "ネガティブプロンプト",
+        "negativePromptPh": "このプロジェクトのすべての画像生成に適用するネガティブプロンプトを入力してください",
         "editArtStyleTitle": "ビジュアルマニュアルの編集",
         "newArtStyleTitle": "新しいビジュアルマニュアル",
         "artStyleName": "ビジュアルマニュアル名",

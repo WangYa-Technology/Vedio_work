@@ -3,6 +3,7 @@ import u from "@/utils";
 import { z } from "zod";
 import { success } from "@/lib/responseFormat";
 import { validateFields } from "@/middleware/middleware";
+import { DEFAULT_IMAGE_NEGATIVE_PROMPT } from "@/constants/imagePromptDefaults";
 const router = express.Router();
 
 // 新增项目
@@ -14,6 +15,7 @@ export default router.post(
     intro: z.string(),
     type: z.string(),
     artStyle: z.string(),
+    negativePrompt: z.string().optional(),
     directorManual: z.string(),
     videoRatio: z.string(),
     imageModel: z.string(),
@@ -22,7 +24,7 @@ export default router.post(
     mode: z.string(),
   }),
   async (req, res) => {
-    const { projectType, name, intro, type, directorManual, artStyle, videoRatio, imageModel, videoModel, imageQuality, mode } = req.body;
+    const { projectType, name, intro, type, directorManual, artStyle, negativePrompt, videoRatio, imageModel, videoModel, imageQuality, mode } = req.body;
 
     await u.db("o_project").insert({
       id: Date.now(),
@@ -31,6 +33,7 @@ export default router.post(
       intro,
       type,
       artStyle,
+      negativePrompt: String(negativePrompt ?? DEFAULT_IMAGE_NEGATIVE_PROMPT).trim(),
       videoRatio,
       directorManual,
       userId: 1,

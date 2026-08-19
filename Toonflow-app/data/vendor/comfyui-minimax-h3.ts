@@ -20,6 +20,16 @@ interface ReferenceItem {
   base64: string;
 }
 
+interface UploadedReference {
+  type: ReferenceType;
+  name: string;
+  subfolder: string;
+  fps?: number;
+  frameCount?: number;
+  duration?: number;
+  hasAudio?: boolean;
+}
+
 interface VideoConfig {
   prompt: string;
   duration: number;
@@ -55,10 +65,10 @@ declare const exports: any;
 
 const vendor = {
   id: "comfyui-minimax-h3",
-  version: "2.1.0",
+  version: "2.2.1",
   author: "Toonflow",
   name: "ComfyUI · MiniMax H3",
-  description: "通过 ComfyUI API 适配云端镜像中的 MiniMax H3 工作流族。主模型使用 B36 九参考图非智能加速版的原始 API 执行图，其他模型继续使用通用 H3 兼容图。",
+  description: "通过 ComfyUI API 适配云端镜像中的 MiniMax H3 工作流族。B36 私有节点齐全时使用原始图，缺少节点时自动切换到公开兼容加速图。",
   inputs: [
     { key: "baseUrl", label: "ComfyUI 地址", type: "url", required: true, placeholder: "https://your-comfyui.example.com" },
     { key: "clientId", label: "客户端标识（可选）", type: "text", required: false, placeholder: "toonflow" },
@@ -133,6 +143,20 @@ const vendor = {
       durationResolutionMap: [{ duration: [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], resolution: ["864x480", "1024x576", "480x864", "576x1024"] }],
     },
     {
+      name: "MiniMax H3 · 万能参考（AIEverything / 4 步）",
+      modelName: "minimax-h3-universal-reference",
+      type: "video",
+      mode: [["imageReference:9", "videoReference:3", "audioReference:3", "textReference"]],
+      audio: true,
+      durationResolutionMap: [{
+        duration: [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+        resolution: [
+          "608x352", "736x416", "864x480", "960x544", "1056x608", "1152x640", "1216x672", "1280x736",
+          "352x608", "416x736", "480x864", "544x960", "608x1056", "640x1152", "672x1216", "736x1280",
+        ],
+      }],
+    },
+    {
       name: "MiniMax H3 · 导演台 / 高保真核心（U10）",
       modelName: "minimax-h3-director",
       type: "video",
@@ -170,7 +194,7 @@ interface WorkflowProfile {
   useLightX2V: boolean;
   useAudioConditioning?: boolean;
   workflowFamily: string;
-  workflowTemplate?: "legacy" | "b36";
+  workflowTemplate?: "legacy" | "b36" | "universal-ref";
 }
 
 const WORKFLOW_PROFILES: Record<string, WorkflowProfile> = {
@@ -211,6 +235,10 @@ const WORKFLOW_PROFILES: Record<string, WorkflowProfile> = {
     kind: "reference", maxImages: 9, refImageSize: "max", useLightX2V: false,
     useAudioConditioning: true, workflowFamily: "U07 全能参考/原生音画",
   },
+  "minimax-h3-universal-reference": {
+    kind: "reference", maxImages: 9, refImageSize: "match", useLightX2V: true,
+    workflowFamily: "MiniMax_H3_万能参考-by AIEverything", workflowTemplate: "universal-ref",
+  },
   // U10 导演台的核心仍是 Ref2VA，导演台 timeline_data 暂未进入画布参数，
   // 但参考图与提示词可以使用同一高保真主链。
   "minimax-h3-director": {
@@ -241,6 +269,7 @@ const CLOUD_WORKFLOW_CATALOG: Record<string, string> = {
   "U11-Minimax-H3-图生视频-音频同步": "minimax-h3-audio-unified",
   "U12-minimax_h3-全能无加速-可选超分": "minimax-h3-reference-to-video-quality",
   "U13-MiniMaxH3-黑鹤加速视频流整合": "minimax-h3-reference-to-video",
+  "MiniMax_H3_万能参考-by AIEverything": "minimax-h3-universal-reference",
 };
 
 const getWorkflowProfile = (modelName: string): WorkflowProfile =>
@@ -269,8 +298,24 @@ const parseDataUrl = (value: string) => {
     "image/jpg": "jpg",
     "image/png": "png",
     "image/webp": "webp",
+    "image/gif": "gif",
+    "image/bmp": "bmp",
+    "video/mp4": "mp4",
+    "video/quicktime": "mov",
+    "video/x-matroska": "mkv",
+    "video/webm": "webm",
+    "video/x-msvideo": "avi",
+    "audio/mpeg": "mp3",
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/flac": "flac",
+    "audio/ogg": "ogg",
+    "audio/mp4": "m4a",
+    "audio/aac": "aac",
   };
-  return { mimeType, data: match[2], extension: extensionMap[mimeType] || "png" };
+  const extension = extensionMap[mimeType.toLowerCase()];
+  if (!extension) throw new Error(`万能参考不支持素材格式 ${mimeType}`);
+  return { mimeType, data: match[2], extension };
 };
 
 const uploadImage = async (baseUrl: string, dataUrl: string, index: number) => {
@@ -293,6 +338,40 @@ const uploadImage = async (baseUrl: string, dataUrl: string, index: number) => {
   return uploaded.subfolder ? `${uploaded.subfolder}/${uploaded.name}` : uploaded.name;
 };
 
+const uploadUniversalReference = async (
+  baseUrl: string,
+  reference: ReferenceItem,
+  index: number,
+): Promise<UploadedReference> => {
+  const parsed = parseDataUrl(reference.base64);
+  const form = new FormData();
+  form.append("file", Buffer.from(parsed.data, "base64"), {
+    filename: `toonflow-h3-universal-${Date.now()}-${index}.${parsed.extension}`,
+    contentType: parsed.mimeType,
+  });
+  const response = await axios.post(`${baseUrl}/UniversalRef_minimaxH3/upload`, form, {
+    headers: form.getHeaders(),
+    maxBodyLength: Infinity,
+    maxContentLength: Infinity,
+    timeout: 10 * 60 * 1000,
+  });
+  const uploaded = response.data || {};
+  if (!uploaded.name) throw new Error(`ComfyUI 上传万能参考素材失败：${JSON.stringify(uploaded).slice(0, 500)}`);
+  const detectedType = uploaded.kind;
+  if (detectedType && detectedType !== reference.type) {
+    throw new Error(`参考素材类型不匹配：选择的是 ${reference.type}，文件实际为 ${detectedType}`);
+  }
+  return {
+    type: reference.type,
+    name: uploaded.name,
+    subfolder: uploaded.subfolder || "UniversalRef_minimaxH3",
+    fps: Number(uploaded.fps) || undefined,
+    frameCount: Number(uploaded.frame_count) || undefined,
+    duration: Number(uploaded.duration) || undefined,
+    hasAudio: Boolean(uploaded.has_audio),
+  };
+};
+
 const getDimensions = (config: VideoConfig) => {
   const match = String(config.resolution || "").match(/(\d+)\s*[x*×]\s*(\d+)/i);
   if (match) {
@@ -306,6 +385,254 @@ const getDimensions = (config: VideoConfig) => {
 const cloneWorkflow = () => JSON.parse(Buffer.from(WORKFLOW_TEMPLATE_BASE64, "base64").toString("utf8"));
 
 const cloneB36Workflow = () => JSON.parse(Buffer.from(B36_WORKFLOW_TEMPLATE_BASE64, "base64").toString("utf8"));
+
+let objectInfoCache: { baseUrl: string; loadedAt: number; nodeTypes: Set<string> } | null = null;
+
+const getComfyNodeTypes = async (baseUrl: string): Promise<Set<string> | null> => {
+  if (objectInfoCache && objectInfoCache.baseUrl === baseUrl && Date.now() - objectInfoCache.loadedAt < 60_000) {
+    return objectInfoCache.nodeTypes;
+  }
+  try {
+    const response = await axios.get(`${baseUrl}/object_info`, { timeout: 30000 });
+    const nodeTypes = new Set(Object.keys(response.data || {}));
+    objectInfoCache = { baseUrl, loadedAt: Date.now(), nodeTypes };
+    return nodeTypes;
+  } catch (error: any) {
+    logger(`[ComfyUI MiniMax H3] 无法读取节点清单，将使用公开兼容执行图：${error?.message || error}`);
+    return null;
+  }
+};
+
+const resolveRuntimeProfile = async (baseUrl: string, profile: WorkflowProfile): Promise<WorkflowProfile> => {
+  if (profile.workflowTemplate !== "b36") return profile;
+  const nodeTypes = await getComfyNodeTypes(baseUrl);
+  const requiredTypes = [...new Set(Object.values(cloneB36Workflow()).map((node: any) => String(node.class_type || "")))];
+  const missingTypes = nodeTypes ? requiredTypes.filter((nodeType) => !nodeTypes.has(nodeType)) : ["节点清单不可用"];
+  if (!missingTypes.length) return profile;
+
+  logger(
+    `[ComfyUI MiniMax H3] B36 原始执行图缺少节点 ${missingTypes.join("、")}，` +
+      "自动切换到公开兼容加速图",
+  );
+  return {
+    ...profile,
+    workflowTemplate: "legacy",
+    workflowFamily: `${profile.workflowFamily}（公开兼容图）`,
+  };
+};
+
+const configureUniversalRefWorkflow = (
+  config: VideoConfig,
+  references: UploadedReference[],
+  profile: WorkflowProfile,
+) => {
+  const { width, height } = getDimensions(config);
+  const duration = Math.max(5, Math.min(15, Math.round(Number(config.duration) || 5)));
+  const baseFrameCount = Math.max(5, Math.round(duration * 24));
+  const length = baseFrameCount + (5 - (baseFrameCount % 17)) % 17;
+  const imageReferences = references.filter((item) => item.type === "image").slice(0, profile.maxImages);
+  const guideReferences = references.filter((item) => item.type !== "image");
+  const guideItems = guideReferences.map((item) => {
+    if (item.type === "video") {
+      const finalFrame = item.frameCount
+        ? Math.max(0, Math.min(item.frameCount, length) - 1)
+        : length - 1;
+      return {
+        frame_idx: 0,
+        visual_file: item.name,
+        visual_original: item.name,
+        visual_subfolder: item.subfolder,
+        visual_kind: "video",
+        visual_start_frame: 0,
+        visual_end_frame: finalFrame,
+        visual_fps: item.fps || 24,
+        visual_frame_count: item.frameCount || 0,
+        visual_duration: item.duration || 0,
+        visual_has_audio: item.hasAudio || false,
+        audio_source: item.hasAudio ? "visual" : "none",
+        audio_file: "",
+        audio_original: "",
+        audio_subfolder: item.subfolder,
+        audio_start_sec: null,
+        audio_end_sec: null,
+        audio_duration: item.hasAudio ? (item.duration || 0) : 0,
+      };
+    }
+    return {
+      frame_idx: 0,
+      visual_file: "",
+      visual_original: "",
+      visual_subfolder: item.subfolder,
+      visual_kind: "auto",
+      visual_start_frame: 0,
+      visual_end_frame: -1,
+      visual_fps: 0,
+      visual_frame_count: 0,
+      visual_duration: 0,
+      visual_has_audio: false,
+      audio_source: "file",
+      audio_file: item.name,
+      audio_original: item.name,
+      audio_subfolder: item.subfolder,
+      audio_start_sec: null,
+      audio_end_sec: null,
+      audio_duration: item.duration || 0,
+    };
+  });
+
+  const workflow: Record<string, any> = {
+    "92": {
+      inputs: {
+        filename_prefix: `toonflow/minimax-h3/universal-${Date.now()}`,
+        format: "auto",
+        codec: "auto",
+        video: ["130", 0],
+      },
+      class_type: "SaveVideo",
+      _meta: { title: "保存视频" },
+    },
+    "119": {
+      inputs: { vae_name: "minimax_h3_video_vae_int8_convrot.safetensors" },
+      class_type: "VAELoader",
+      _meta: { title: "视频 VAE" },
+    },
+    "120": {
+      inputs: { vae_name: "minimax_h3_audio_vae_fp32.safetensors" },
+      class_type: "VAELoader",
+      _meta: { title: "音频 VAE" },
+    },
+    "121": {
+      inputs: { samples: ["125", 0], vae: ["120", 0] },
+      class_type: "VAEDecodeAudio",
+      _meta: { title: "音频解码" },
+    },
+    "122": {
+      inputs: { samples: ["125", 0], vae: ["119", 0] },
+      class_type: "VAEDecode",
+      _meta: { title: "视频解码" },
+    },
+    "123": {
+      inputs: { sampler_name: "euler" },
+      class_type: "KSamplerSelect",
+      _meta: { title: "采样器" },
+    },
+    "124": {
+      inputs: { scheduler: "simple", steps: 4, denoise: 1, model: ["174", 0] },
+      class_type: "BasicScheduler",
+      _meta: { title: "4 步调度" },
+    },
+    "125": {
+      inputs: {
+        noise: ["129", 0],
+        guider: ["126", 0],
+        sampler: ["123", 0],
+        sigmas: ["187", 0],
+        latent_image: ["136", 1],
+      },
+      class_type: "SamplerCustomAdvanced",
+      _meta: { title: "采样" },
+    },
+    "126": {
+      inputs: { model: ["186", 0], conditioning: ["192", 0] },
+      class_type: "BasicGuider",
+      _meta: { title: "引导" },
+    },
+    "127": {
+      inputs: {
+        unet_name: "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+        weight_dtype: "default",
+      },
+      class_type: "UNETLoader",
+      _meta: { title: "MiniMax H3 Ref2VA" },
+    },
+    "129": {
+      inputs: { noise_seed: Math.floor(Math.random() * 9007199254740991) },
+      class_type: "RandomNoise",
+      _meta: { title: "随机噪声" },
+    },
+    "130": {
+      inputs: { fps: 24, bit_depth: 8, images: ["122", 0], audio: ["121", 0] },
+      class_type: "CreateVideo",
+      _meta: { title: "创建原生音画视频" },
+    },
+    "136": {
+      inputs: {
+        prompt: String(config.prompt || "").trim(),
+        width,
+        height,
+        length,
+        ref_image_size: profile.refImageSize,
+        clip: ["195", 0],
+        vae: ["119", 0],
+        audio_vae: ["120", 0],
+      },
+      class_type: "MiniMaxH3ReferenceToVideo",
+      _meta: { title: "MiniMax H3 参考生视频" },
+    },
+    "174": {
+      inputs: {
+        lora_name: "miniMaxH3/minimax_h3_ref2v_lightx2v_turbo_4step_v0.1_resized_avg_rank_20_bf16.safetensors",
+        strength_model: 1,
+        model: ["127", 0],
+      },
+      class_type: "LoraLoaderModelOnly",
+      _meta: { title: "AIEverything 4 步 LoRA" },
+    },
+    "178": {
+      inputs: { shift_video: 12, shift_audio: 3, model: ["174", 0] },
+      class_type: "MiniMaxH3SigmaShift",
+      _meta: { title: "MiniMax H3 Sigma Shift" },
+    },
+    "186": {
+      inputs: { attention: "comfy kitchen attention", model: ["178", 0] },
+      class_type: "ModelAttentionBackend",
+      _meta: { title: "Comfy Kitchen Attention" },
+    },
+    "187": {
+      inputs: {
+        steps: 5,
+        start_at_sigma: 0.9,
+        end_at_sigma: 0,
+        spacing: "linear",
+        sigmas: ["124", 0],
+      },
+      class_type: "ExtendIntermediateSigmas",
+      _meta: { title: "扩展中间 Sigmas" },
+    },
+    "192": {
+      inputs: {
+        refs_counts: Math.max(1, guideItems.length),
+        refs: JSON.stringify(guideItems),
+        positive: ["136", 0],
+        latent: ["136", 1],
+        vae: ["119", 0],
+        audio_vae: ["120", 0],
+      },
+      class_type: "UniversalRef",
+      _meta: { title: "万能参考" },
+    },
+    "195": {
+      inputs: {
+        clip_name: "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        type: "minimax",
+        device: "default",
+      },
+      class_type: "CLIPLoader",
+      _meta: { title: "MiniMax H3 文本编码器" },
+    },
+  };
+
+  imageReferences.forEach((item, index) => {
+    const nodeId = `universal_ref_image_${index}`;
+    workflow[nodeId] = {
+      inputs: { image: `${item.subfolder}/${item.name}` },
+      class_type: "LoadImage",
+      _meta: { title: `参考图 ${index + 1}` },
+    };
+    workflow["136"].inputs[`ref_images.ref_image_${index}`] = [nodeId, 0];
+  });
+  return workflow;
+};
 
 const selectReferenceImages = (references: ReferenceItem[], prompt: string, maxImages = MAX_REFERENCE_IMAGES) => {
   if (references.length <= maxImages) {
@@ -494,6 +821,26 @@ const configureWorkflow = (config: VideoConfig, imageNames: string[], profile: W
   return workflow;
 };
 
+const validateReferenceBindings = (workflow: any, imageNames: string[]) => {
+  const conditioning = workflow["136"];
+  if (!conditioning?.inputs) throw new Error("MiniMax H3 工作流缺少参考条件节点 136");
+  const boundKeys = Object.keys(conditioning.inputs)
+    .filter((key) => /^ref_images\.ref_image_\d+$/.test(key))
+    .sort((left, right) => Number(left.match(/\d+$/)?.[0]) - Number(right.match(/\d+$/)?.[0]));
+  if (boundKeys.length !== imageNames.length) {
+    throw new Error(`MiniMax H3 参考图槽位数量不一致：上传 ${imageNames.length} 张，绑定 ${boundKeys.length} 张`);
+  }
+
+  boundKeys.forEach((key, index) => {
+    const binding = conditioning.inputs[key];
+    const nodeId = Array.isArray(binding) ? String(binding[0]) : "";
+    const imageNode = workflow[nodeId];
+    if (!imageNode || imageNode.class_type !== "LoadImage" || imageNode.inputs?.image !== imageNames[index]) {
+      throw new Error(`MiniMax H3 第 ${index + 1} 张参考图绑定错误`);
+    }
+  });
+};
+
 const findVideoOutput = (value: any): { filename: string; subfolder?: string; type?: string } | null => {
   if (!value || typeof value !== "object") return null;
   if (typeof value.filename === "string" && /\.(mp4|webm|mov|mkv)$/i.test(value.filename)) {
@@ -536,45 +883,85 @@ const videoRequest = async (config: VideoConfig, model: VideoModel): Promise<str
     throw new Error("请先填写视频提示词");
   }
 
-  const profile = getWorkflowProfile(model.modelName);
-  // 画布目前优先传 referenceList；旧版调用方只传 imageBase64 时也保持兼容。
-  const configuredReferences = (config.referenceList || []).filter((item) => item.type === "image");
+  const profile = await resolveRuntimeProfile(baseUrl, getWorkflowProfile(model.modelName));
+  const configuredReferences = config.referenceList || [];
   const fallbackReferences: ReferenceItem[] = (config.imageBase64 || []).map((base64) => ({ type: "image", base64 }));
   const references = configuredReferences.length ? configuredReferences : fallbackReferences;
-  let selected: { references: ReferenceItem[]; originalIndexes: number[] } = { references: [], originalIndexes: [] };
+  const shouldGenerateAudio = model.audio === true || (model.audio === "optional" && config.audio !== false);
+  let workflow: Record<string, any>;
+  let referenceCount = 0;
 
-  if (profile.kind === "reference") {
-    if (references.length < 1) {
-      throw new Error(`MiniMax H3 ${profile.workflowFamily}需要至少 1 张参考图`);
+  if (profile.workflowTemplate === "universal-ref") {
+    if (!references.length) throw new Error("MiniMax H3 万能参考工作流需要至少 1 个图片、视频或音频参考素材");
+    const limits: Record<ReferenceType, number> = { image: 9, video: 3, audio: 3 };
+    const counts: Record<ReferenceType, number> = { image: 0, video: 0, audio: 0 };
+    const selectedReferences = references.filter((item) => {
+      if (counts[item.type] >= limits[item.type]) return false;
+      counts[item.type] += 1;
+      return true;
+    });
+    if (selectedReferences.length < references.length) {
+      logger(
+        `[ComfyUI MiniMax H3] 万能参考上限为 9 图、3 视频、3 音频，` +
+        `本次保留 ${selectedReferences.length}/${references.length} 个素材`,
+      );
     }
-    selected = selectReferenceImages(references, config.prompt, profile.maxImages);
-  } else if (profile.kind === "image") {
-    if (references.length < 1) {
-      throw new Error("MiniMax H3 首尾帧/单图工作流需要至少 1 张图片");
+    const uploadedReferences = await Promise.all(
+      selectedReferences.map((item, index) => uploadUniversalReference(baseUrl, item, index)),
+    );
+    referenceCount = uploadedReferences.length;
+    workflow = configureUniversalRefWorkflow(
+      { ...config, audio: true },
+      uploadedReferences,
+      profile,
+    );
+  } else {
+    const imageReferences = references.filter((item) => item.type === "image");
+    let selected: { references: ReferenceItem[]; originalIndexes: number[] } = { references: [], originalIndexes: [] };
+    if (profile.kind === "reference") {
+      if (imageReferences.length < 1) {
+        throw new Error(`MiniMax H3 ${profile.workflowFamily}需要至少 1 张参考图`);
+      }
+      selected = selectReferenceImages(imageReferences, config.prompt, profile.maxImages);
+    } else if (profile.kind === "image") {
+      if (imageReferences.length < 1) {
+        throw new Error("MiniMax H3 首尾帧/单图工作流需要至少 1 张图片");
+      }
+      selected = {
+        references: imageReferences.slice(0, 2),
+        originalIndexes: imageReferences.slice(0, 2).map((_, i) => i),
+      };
+      if (imageReferences.length > 2) logger("[ComfyUI MiniMax H3] 首尾帧模式最多使用前两张参考图");
     }
-    // UI 的单图、首帧、尾帧三种模式最终都落到同一官方节点；最多取前两张，
-    // 第一张作为 first_frame，第二张作为 last_frame。
-    selected = { references: references.slice(0, 2), originalIndexes: references.slice(0, 2).map((_, i) => i) };
-    if (references.length > 2) logger("[ComfyUI MiniMax H3] 首尾帧模式最多使用前两张参考图");
-  }
-
-  if (selected.references.length < references.length && profile.kind === "reference") {
+    if (selected.references.length < imageReferences.length && profile.kind === "reference") {
+      logger(
+        `[ComfyUI MiniMax H3] 当前工作流最多支持 ${profile.maxImages} 张参考图，` +
+        `本次保留 ${selected.references.length} 张（${imageReferences.length} 张中裁剪），并重排提示词引用`,
+      );
+    }
+    const imageNames = await Promise.all(
+      selected.references.map((item, index) => uploadImage(baseUrl, item.base64, index)),
+    );
+    referenceCount = imageNames.length;
+    const prompt = profile.kind === "reference"
+      ? rewriteReferenceTags(config.prompt, selected.originalIndexes, imageReferences.length)
+      : String(config.prompt || "").trim();
+    workflow = configureWorkflow({ ...config, prompt, audio: shouldGenerateAudio }, imageNames, profile);
+    if (profile.kind === "reference") validateReferenceBindings(workflow, imageNames);
     logger(
-      `[ComfyUI MiniMax H3] 当前工作流最多支持 ${profile.maxImages} 张参考图，` +
-      `本次保留 ${selected.references.length} 张（${references.length} 张中裁剪），并重排提示词引用`,
+      `[ComfyUI MiniMax H3] 参考图绑定：${imageNames.map((name, index) => `${index + 1}:${name}`).join(",")}`,
     );
   }
-  const imageNames = await Promise.all(selected.references.map((item, index) => uploadImage(baseUrl, item.base64, index)));
-  const prompt = profile.kind === "reference"
-    ? rewriteReferenceTags(config.prompt, selected.originalIndexes, references.length)
-    : String(config.prompt || "").trim();
-  const shouldGenerateAudio = model.audio === true || (model.audio === "optional" && config.audio !== false);
-  const workflow = configureWorkflow({ ...config, prompt, audio: shouldGenerateAudio }, imageNames, profile);
   const clientId = String(vendor.inputValues.clientId || "toonflow").trim() || "toonflow";
 
+  const loggedDuration = profile.workflowTemplate === "b36"
+    ? workflow["172"].inputs.value
+    : profile.workflowTemplate === "universal-ref"
+      ? Math.round((workflow["136"].inputs.length - 5) / 24 * 10) / 10
+      : workflow["147"].inputs.value;
   logger(
     `[ComfyUI MiniMax H3] 提交任务：model=${model.modelName}, workflow=${profile.workflowFamily}, ` +
-      `refs=${imageNames.length}, duration=${profile.workflowTemplate === "b36" ? workflow["172"].inputs.value : workflow["147"].inputs.value}s, ` +
+      `refs=${referenceCount}, duration=${loggedDuration}s, ` +
       `audio=${shouldGenerateAudio}`,
   );
   const submitted = await axios.post(

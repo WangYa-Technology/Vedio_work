@@ -206,6 +206,8 @@ export default ({ resTool, msg, toolsNames }: ToolConfig) => {
       execute: async (raw) => {
         ensureContext();
         const thinking = msg.thinking("正在写入正式分镜面板...");
+        // An explicit empty list is authoritative for text-only video generation.
+        // Only infer assets from the storyboard table when the caller leaves it unspecified.
         let assets = normalizeIds(raw.associateAssetsIds);
         const flowData = await buildProductionFlowData(projectId, scriptId);
         const tableBindings = parseStoryboardTableAssetBindings(flowData.storyboardTable || "");
@@ -215,7 +217,7 @@ export default ({ resTool, msg, toolsNames }: ToolConfig) => {
         await u.db.transaction(async (trx) => {
           const maxIndex = await trx("o_storyboard").where({ projectId, scriptId }).max("index as value").first();
           index = Number((maxIndex as any)?.value ?? -1) + 1;
-          if (tableBindings[index]?.length) assets = tableBindings[index];
+          if (raw.associateAssetsIds == null && tableBindings[index]?.length) assets = tableBindings[index];
           const existingAssets = assets.length ? await trx("o_assets").where({ projectId }).whereIn("id", assets).pluck("id") : [];
           if (existingAssets.length !== assets.length) {
             const existing = new Set(existingAssets.map(Number));
@@ -239,6 +241,9 @@ export default ({ resTool, msg, toolsNames }: ToolConfig) => {
             createTime: now,
           });
           storyboardId = Number(inserted[0]);
+          // SQLite may reuse an ID after a failed write. Remove any legacy orphan
+          // relation before inserting this storyboard's authoritative bindings.
+          await trx("o_assets2Storyboard").where({ storyboardId }).del();
           if (assets.length) {
             await trx("o_assets2Storyboard").insert(assets.map((assetId, sort) => ({ storyboardId, assetId, sort })));
           }

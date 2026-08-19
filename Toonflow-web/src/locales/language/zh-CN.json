@@ -493,6 +493,8 @@
         "videoRatio": "影片比例",
         "novelIntro": "小说简介",
         "novelIntroPh": "请输入小说简介",
+        "negativePrompt": "负向提示词",
+        "negativePromptPh": "请输入项目生图时统一使用的负向提示词",
         "editArtStyleTitle": "编辑画风",
         "newArtStyleTitle": "新建画风",
         "artStyleName": "画风名称",

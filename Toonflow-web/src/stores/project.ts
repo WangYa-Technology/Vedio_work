@@ -4,6 +4,7 @@ interface Project {
   intro: string;
   type: string;
   artStyle: string | null;
+  negativePrompt: string | null;
   videoRatio: string | null;
   createTime: number;
   updatedAt: number;

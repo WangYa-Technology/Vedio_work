@@ -488,6 +488,8 @@
         "videoRatio": "Video Ratio",
         "novelIntro": "Novel Synopsis",
         "novelIntroPh": "Please enter novel synopsis",
+        "negativePrompt": "Negative Prompt",
+        "negativePromptPh": "Enter the negative prompt applied to all image generation in this project",
         "editArtStyleTitle": "Edit art style",
         "newArtStyleTitle": "New art style",
         "artStyleName": "Art style name",
