@@ -140,6 +140,14 @@ async function recoverComfyTask(
     return;
   }
   const output = findVideoOutput(history.outputs);
+  if (!output && history.status?.completed === true) {
+    await updateVideoTaskState(
+      video,
+      "生成失败",
+      "ComfyUI 工作流已完成，但没有返回视频文件",
+    );
+    return;
+  }
   if (!output) return;
 
   const query = new URLSearchParams({

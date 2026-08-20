@@ -5,6 +5,11 @@ import u from "@/utils";
 import compileVendorCode from "@/utils/compileVendorCode";
 import { parseModelReference } from "@/utils/modelRef";
 import type { VmRuntimeHooks } from "@/utils/vm";
+import {
+  configuredMirrorUrls,
+  type MirrorAttempt,
+  runWithMirrorFailover,
+} from "@/utils/vendorMirrorPool";
 
 type AiType = "scriptAgent" | "productionAgent" | "universalAi";
 type FnName = "textRequest" | "imageRequest" | "videoRequest" | "ttsRequest";
@@ -34,7 +39,24 @@ async function getVendorTemplateFn(
   const selectedModel = modelList.find((i: any) => i.modelName == name);
   if (!selectedModel) throw new Error(`未找到模型 ${name} id=${vendorId}`);
   const jsCode = compileVendorCode(vendorConfigData.code!);
-  const running = u.vm(jsCode, undefined, runtimeHooks);
+  let activeMirrorAttempt: MirrorAttempt | undefined;
+  const trackedRuntimeHooks: VmRuntimeHooks | undefined = fnName === "videoRequest" && vendorId.toLowerCase().includes("comfyui")
+    ? {
+        ...runtimeHooks,
+        onAxiosResponse: async (response) => {
+          if (
+            activeMirrorAttempt &&
+            response.method === "POST" &&
+            (response.data as any)?.prompt_id &&
+            /\/prompt(?:\?|$)/i.test(response.url)
+          ) {
+            activeMirrorAttempt.promptSubmitted = true;
+          }
+          await runtimeHooks?.onAxiosResponse?.(response);
+        },
+      }
+    : runtimeHooks;
+  const running = u.vm(jsCode, undefined, trackedRuntimeHooks);
   if (running.vendor) {
     Object.assign(running.vendor.inputValues, JSON.parse(vendorConfigData.inputValues ?? "{}"));
     running.vendor.models = modelList;
@@ -42,7 +64,32 @@ async function getVendorTemplateFn(
   const fn = running[fnName];
   if (!fn) throw new Error(`未找到供应商配置中的函数 ${fnName} id=${vendorId}`);
   if (fnName == "textRequest") return fn(selectedModel);
-  else return <T>(input: T) => fn(input, selectedModel);
+  if (fnName === "videoRequest" && vendorId.toLowerCase().includes("comfyui")) {
+    return <T>(input: T) => {
+      return (async () => {
+        const inputValues = running.vendor?.inputValues || {};
+        const urls = configuredMirrorUrls(inputValues);
+        if (urls.length <= 1) return fn(input, selectedModel);
+        const originalBaseUrl = inputValues.baseUrl;
+        return runWithMirrorFailover({
+          vendorId,
+          urls,
+          run: async (attempt) => {
+            inputValues.baseUrl = attempt.url;
+            activeMirrorAttempt = attempt;
+            try {
+              return await fn(input, selectedModel);
+            } finally {
+              activeMirrorAttempt = undefined;
+              inputValues.baseUrl = originalBaseUrl;
+            }
+          },
+          onRetry: (failure) => console.warn(`[ComfyUI 镜像] ${failure}，自动尝试下一台`),
+        });
+      })();
+    };
+  }
+  return <T>(input: T) => fn(input, selectedModel);
 }
 
 async function withTaskRecord<T>(
@@ -181,6 +228,7 @@ interface VideoConfig {
   duration: number; // 视频时长，单位秒
   resolution: string; // 视频分辨率
   audio: boolean; // 是否需要配音
+  parameters?: Record<string, string | number | boolean>; // 供应商工作流的安全可调参数
 }
 
 class AiVideo {

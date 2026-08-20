@@ -46,7 +46,34 @@
                 <span class="requiredText">{{ $t("settings.vendor.required") }}</span>
               </span>
             </template>
-            <t-input v-model="currentVendor.inputValues[input.key]" :type="input.type" clearable @blur="onBlurFn">
+            <div v-if="isComfyUiVendor && input.key === 'baseUrl'" class="mirrorList">
+              <div v-for="(mirror, mirrorIndex) in comfyMirrorUrls" :key="mirrorIndex" class="mirrorRow">
+                <t-input
+                  v-model="comfyMirrorUrls[mirrorIndex]"
+                  :type="input.type"
+                  clearable
+                  @change="persistComfyMirrorUrls"
+                  @blur="persistComfyMirrorUrls">
+                  <template #prefix-icon>
+                    <t-icon name="link" />
+                  </template>
+                </t-input>
+                <t-button
+                  v-if="comfyMirrorUrls.length > 1"
+                  variant="text"
+                  theme="danger"
+                  shape="square"
+                  title="删除云端镜像"
+                  @click="removeComfyMirror(mirrorIndex)">
+                  <template #icon><i-delete theme="outline" /></template>
+                </t-button>
+              </div>
+              <t-button variant="dashed" size="small" title="添加云端镜像" @click="addComfyMirror">
+                <template #icon><i-plus theme="outline" /></template>
+                添加云端镜像
+              </t-button>
+            </div>
+            <t-input v-else v-model="currentVendor.inputValues[input.key]" :type="input.type" clearable @blur="onBlurFn">
               <template #prefix-icon>
                 <t-icon :name="getInputIcon(input.type)" />
               </template>
@@ -357,7 +384,20 @@ interface VideoModel {
   mode: ("singleImage" | "multiImage" | "startEndRequired" | "endFrameOptional" | "startFrameOptional" | "text")[];
   audio: "optional" | false | true;
   durationResolutionMap: { duration: number[]; resolution: string[] }[];
+  parameters?: VideoModelParameter[];
   associationSkills: string;
+}
+
+interface VideoModelParameter {
+  key: string;
+  label: string;
+  type: "select" | "number" | "boolean";
+  default: string | number | boolean;
+  description?: string;
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: Array<{ label: string; value: string | number | boolean; description?: string }>;
 }
 
 type VendorModel = TextModel | ImageModel | VideoModel;
@@ -488,6 +528,8 @@ const audioOptions: { label: string; value: "optional" | false | true }[] = [
 
 // ── 供应商列表 ──
 const vendorList = ref<VendorItem[]>([]);
+const comfyMirrorUrls = ref<string[]>([]);
+const isComfyUiVendor = computed(() => currentVendor.value?.id === "comfyui-minimax-h3");
 
 const loading = ref(false);
 async function getVendorList() {
@@ -524,6 +566,56 @@ const currentVendor = computed(() => vendorList.value.find((v) => v.id === activ
 const vendorModels = computed(() => currentVendor.value?.models || currentVendor.value?.model || []);
 const requiredInputs = computed(() => currentVendor.value?.inputs?.filter((input) => input.required) || []);
 const optionalInputs = computed(() => currentVendor.value?.inputs?.filter((input) => !input.required) || []);
+
+function readComfyMirrorUrls(vendor?: VendorItem): string[] {
+  if (!vendor) return [""];
+  const raw = vendor.inputValues?.baseUrls;
+  let parsed: unknown[] = [];
+  if (typeof raw === "string" && raw.trim()) {
+    try {
+      const value = JSON.parse(raw);
+      if (Array.isArray(value)) parsed = value;
+    } catch {
+      // 旧配置可能没有 baseUrls，回退到单地址。
+    }
+  }
+  const fallback = String(vendor.inputValues?.baseUrl || "").trim();
+  const urls = [
+    ...new Set([...parsed.map((value) => String(value || "").trim()), fallback].filter((url) => url && !/^\[object (?:InputEvent|Event|Object)\]$/i.test(url))),
+  ];
+  const bundledExample = "http://127.0.0.1:16006";
+  if (fallback && fallback !== bundledExample && urls.length === 2 && urls.includes(bundledExample)) {
+    return [fallback];
+  }
+  return urls.length ? urls : [""];
+}
+
+function persistComfyMirrorUrls() {
+  if (!currentVendor.value) return;
+  const urls = comfyMirrorUrls.value.map((url) => url.trim());
+  currentVendor.value.inputValues.baseUrls = JSON.stringify(urls);
+  currentVendor.value.inputValues.baseUrl = urls[0] || "";
+  scheduleAutoSave();
+}
+
+function addComfyMirror() {
+  comfyMirrorUrls.value.push("");
+  persistComfyMirrorUrls();
+}
+
+function removeComfyMirror(index: number) {
+  if (comfyMirrorUrls.value.length <= 1) return;
+  comfyMirrorUrls.value.splice(index, 1);
+  persistComfyMirrorUrls();
+}
+
+watch(
+  currentVendor,
+  (vendor) => {
+    comfyMirrorUrls.value = isComfyUiVendor.value ? readComfyMirrorUrls(vendor) : [];
+  },
+  { immediate: true },
+);
 
 // ── 供应商弹窗 ──
 const vendorDialogVisible = ref(false);
@@ -742,6 +834,7 @@ const modelFormData = ref({
   mixedMode: [] as string[], // otherOptions 选中项，单独存放，构建时作为数组元素加入 mode
   audio: "optional" as "optional" | false | true,
   durationResolutionMap: [{ duration: [] as string[], resolution: [] as string[] }] as DrmRow[],
+  parameters: [] as VideoModelParameter[],
   associationSkills: "",
 });
 
@@ -755,6 +848,7 @@ function resetModelForm(type: "text" | "image" | "video" = "text") {
     mixedMode: [],
     audio: "optional",
     durationResolutionMap: [{ duration: [], resolution: [] }],
+    parameters: [],
     associationSkills: "",
   };
 }
@@ -837,6 +931,7 @@ function buildModelFromForm(): VendorModel | null {
     mode,
     audio: modelFormData.value.audio,
     durationResolutionMap,
+    parameters: modelFormData.value.parameters,
     associationSkills: modelFormData.value.associationSkills,
   };
 }
@@ -894,6 +989,7 @@ function handleEditModel(model: VendorModel) {
       mixedMode: [],
       audio: "optional",
       durationResolutionMap: [{ duration: [], resolution: [] }],
+      parameters: [],
       associationSkills: model.associationSkills || "",
     };
   }
@@ -908,6 +1004,7 @@ function handleEditModel(model: VendorModel) {
       mixedMode: [],
       audio: "optional",
       durationResolutionMap: [{ duration: [], resolution: [] }],
+      parameters: [],
       associationSkills: model.associationSkills || "",
     };
   }
@@ -939,6 +1036,7 @@ function handleEditModel(model: VendorModel) {
       mixedMode,
       audio: model.audio,
       durationResolutionMap: rows,
+      parameters: model.parameters ? [...model.parameters] : [],
       associationSkills: model.associationSkills || "",
     };
   }
@@ -1305,6 +1403,27 @@ function handleFileChange(e: Event) {
 
     .optionalSection {
       margin-bottom: 12px;
+    }
+
+    .mirrorList {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 100%;
+
+      .mirrorRow {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+
+        .t-input {
+          flex: 1;
+        }
+      }
+
+      .t-button {
+        align-self: flex-start;
+      }
     }
   }
 

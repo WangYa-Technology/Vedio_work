@@ -55,6 +55,21 @@ function parseJsonObject(value?: string | null): Record<string, unknown> {
   }
 }
 
+function appendMissingBundledModels(storedModels: unknown[], bundledModels: unknown[]): unknown[] {
+  const modelNames = new Set(
+    storedModels
+      .map((model: any) => String(model?.modelName || ""))
+      .filter(Boolean),
+  );
+  return [
+    ...storedModels,
+    ...bundledModels.filter((model: any) => {
+      const modelName = String(model?.modelName || "");
+      return modelName && !modelNames.has(modelName);
+    }),
+  ];
+}
+
 function readCodeString(value?: string): string {
   if (!value) return "";
   try {
@@ -1202,12 +1217,35 @@ export default async (knex: Knex, forceInit: boolean = false): Promise<void> => 
       const storedModels = parseJsonArray(row.models);
       const storedInputValues = parseJsonObject(row.inputValues);
       const bundledInputValues = bundled?.vendor.inputValues ?? {};
+      // 2.2.1 首次升级时的内置本地示例地址不能覆盖用户已有远程镜像。
+      // 仅当列表正好由示例地址和旧 baseUrl 组成时自动归一化；用户手动配置的多地址保持不变。
+      if (
+        row.id === "comfyui-minimax-h3" &&
+        storedInputValues.baseUrl &&
+        storedInputValues.baseUrl !== "http://127.0.0.1:16006" &&
+        storedInputValues.baseUrls === '["http://127.0.0.1:16006"]'
+      ) {
+        storedInputValues.baseUrls = JSON.stringify([storedInputValues.baseUrl]);
+      }
       const shouldUpgradeBundledCode = Boolean(
         bundled?.source &&
         bundled.vendor.version &&
         codeMeta.version &&
         compareVersions(bundled.vendor.version, codeMeta.version) > 0,
       );
+      let nextModels = row.id === "comfyui-minimax-h3" && shouldUpgradeBundledCode
+        ? appendMissingBundledModels(storedModels, bundled?.vendor.models ?? [])
+        : (storedModels.length ? storedModels : (bundled?.vendor.models ?? []));
+      if (row.id === "comfyui-minimax-h3" && shouldUpgradeBundledCode) {
+        const bundledU05 = (bundled?.vendor.models ?? []).find(
+          (model: any) => model?.modelName === "minimax-h3-zealman-u05",
+        ) as any;
+        if (bundledU05?.mode) {
+          nextModels = nextModels.map((model: any) => model?.modelName === "minimax-h3-zealman-u05"
+            ? { ...model, mode: bundledU05.mode }
+            : model);
+        }
+      }
 
       await knex("o_vendorConfig")
         .where("id", row.id)
@@ -1218,7 +1256,7 @@ export default async (knex: Knex, forceInit: boolean = false): Promise<void> => 
           icon: row.icon || fallback.icon || "",
           inputs: JSON.stringify(storedInputs.length ? storedInputs : (bundled?.vendor.inputs ?? [])),
           inputValues: JSON.stringify({ ...bundledInputValues, ...storedInputValues }),
-          models: JSON.stringify(storedModels.length ? storedModels : (bundled?.vendor.models ?? [])),
+          models: JSON.stringify(nextModels),
           code: shouldUpgradeBundledCode ? bundled?.source : (row.code || bundled?.source || ""),
           createTime: row.createTime || Date.now(),
         });

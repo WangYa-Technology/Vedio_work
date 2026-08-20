@@ -13,6 +13,24 @@ const referenceModeSchema = z.string().regex(
   "引用模式必须是有效类型，可选附带正整数数量",
 );
 
+const workflowParameterValueSchema = z.union([z.string(), z.number(), z.boolean()]);
+
+const videoModelParameterSchema = z.object({
+  key: z.string().min(1),
+  label: z.string().min(1),
+  type: z.enum(["select", "number", "boolean"]),
+  default: workflowParameterValueSchema,
+  description: z.string().optional(),
+  min: z.number().optional(),
+  max: z.number().optional(),
+  step: z.number().positive().optional(),
+  options: z.array(z.object({
+    label: z.string(),
+    value: workflowParameterValueSchema,
+    description: z.string().optional(),
+  })).optional(),
+});
+
 export const vendorModelSchema = z.discriminatedUnion("type", [
   z.object({
     name: z.string(),
@@ -50,6 +68,7 @@ export const vendorModelSchema = z.discriminatedUnion("type", [
       ]),
     ),
     audio: z.union([z.literal("optional"), z.boolean()]),
+    parameters: z.array(videoModelParameterSchema).optional(),
     durationResolutionMap: z.array(
       z.object({
         duration: z.array(z.number()),

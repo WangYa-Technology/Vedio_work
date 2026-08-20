@@ -114,10 +114,8 @@ const imageItems = ref<MediaItem[]>([]);
 
 const extractLines = ref(false);
 const importLoading = ref(false);
-
-onMounted(() => {
-  editFootage();
-});
+const materialsLoading = ref(false);
+let materialRequestId = 0;
 type MediaType = "image" | "video" | "audio" | "unknown";
 type ImportVideoItem = {
   trackId: number;
@@ -129,7 +127,7 @@ const editVideoRef = ref<{ importVideos: (items: ImportVideoItem[]) => Promise<v
 
 function getMediaType(src?: string): MediaType {
   if (!src) return "unknown";
-  const ext = src.split("?")[0].split(".").pop()?.toLowerCase() ?? "";
+  const ext = src.split(/[?#]/)[0].split(".").pop()?.toLowerCase() ?? "";
   if (["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"].includes(ext)) return "image";
   if (["mp4", "webm", "ogg", "mov", "avi", "mkv"].includes(ext)) return "video";
   if (["mp3", "wav", "ogg", "aac", "flac", "m4a"].includes(ext)) return "audio";
@@ -139,24 +137,46 @@ function getMediaType(src?: string): MediaType {
 //切换菜单
 function changeMenu(type: string) {
   activeMenu.value = type;
-  if (type == "editVideo") editFootage();
+  if (type === "editVideo") void editFootage();
 }
-//查询剪辑素材
-function editFootage() {
-  axios
-    .post("/assets/getMaterialData", {
-      projectId: project.value?.id,
-    })
-    .then(({ data }) => {
-      const videoList = data.data.filter((item: any) => getMediaType(item.filePath) === "video");
-      const audioList = data.data.filter((item: any) => getMediaType(item.filePath) === "audio");
-      const imageList = data.data.filter((item: any) => getMediaType(item.filePath) === "image");
 
-      initialVideoItems.value = data.video.map((item: any) => ({
+function resolveMaterialPayload(response: any): { assets: any[]; videos: any[] } {
+  // Axios normally returns the API envelope, but tolerate an already-unwrapped
+  // payload so the editor remains compatible with older local servers.
+  const envelope = response?.data ?? response;
+  const payload = envelope?.data && !Array.isArray(envelope.data) ? envelope.data : envelope;
+  return {
+    assets: Array.isArray(payload?.data) ? payload.data : [],
+    videos: Array.isArray(payload?.video) ? payload.video : [],
+  };
+}
+
+//查询剪辑素材
+async function editFootage() {
+  const projectId = project.value?.id;
+  if (!projectId) return;
+
+  const requestId = ++materialRequestId;
+  materialsLoading.value = true;
+  try {
+    const response = await axios.post("/assets/getMaterialData", {
+      projectId,
+      ...(currentScriptId.value ? { scriptId: currentScriptId.value } : {}),
+    });
+    const { assets, videos } = resolveMaterialPayload(response);
+    if (requestId !== materialRequestId) return;
+
+    const videoList = assets.filter((item: any) => getMediaType(item.filePath) === "video");
+    const audioList = assets.filter((item: any) => getMediaType(item.filePath) === "audio");
+    const imageList = assets.filter((item: any) => getMediaType(item.filePath) === "image");
+
+    initialVideoItems.value = videos
+      .filter((item: any) => item.filePath)
+      .map((item: any) => ({
         id: `video-${item.id}`,
         type: "video",
-        name: $t("workbench.production.wb.storyboardVideoName", { storyboard: item.storyboard }),
-        duration: item.duration || 0,
+        name: item.storyboard || item.name || `分镜视频 #${item.videoTrackId || item.id}`,
+        duration: Number(item.duration || item.time || 0),
         icon: "🎬",
         color: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
         url: item.filePath,
@@ -190,8 +210,27 @@ function editFootage() {
         url: item.filePath,
         loading: true,
       }));
-    });
+  } catch (error) {
+    if (requestId !== materialRequestId) return;
+    // Keep the editor usable when an optional material endpoint is temporarily
+    // unavailable; stale lists are worse than an explicit empty state.
+    initialVideoItems.value = [];
+    mediaItems.value = [];
+    audioItems.value = [];
+    imageItems.value = [];
+    console.warn("剪辑台素材加载失败", error);
+  } finally {
+    if (requestId === materialRequestId) materialsLoading.value = false;
+  }
 }
+
+watch(
+  [() => project.value?.id, () => currentScriptId.value],
+  ([projectId]) => {
+    if (projectId) void editFootage();
+  },
+  { immediate: true },
+);
 
 function createInitialTracks(): Track[] {
   const createTrack = (type: Track["type"], name: string, order: number, isMain: boolean = false): Track => ({
@@ -222,7 +261,7 @@ async function handleBatchDownload(value: ImportVideoItem[]) {
     activeMenu.value = "editVideo";
     await nextTick();
     await editVideoRef.value?.importVideos(value);
-    editFootage();
+    void editFootage();
     window.$message.success(`已导入 ${value.length} 个视频片段到剪辑台`);
   } catch (error: any) {
     window.$message.error(error?.message || "导入剪辑台失败");

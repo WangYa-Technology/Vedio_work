@@ -135,8 +135,8 @@ async function getWorkflowContext(projectIdValue: unknown) {
     : !hasStrategy
       ? "直接制定改编策略，不重复询问已确认项目参数"
         : scripts.length === 0
-        ? targetEpisodeCount === undefined
-          ? "进入剧本编写；如用户未指定本次集数，询问本次生成几集（默认3集，上限5集）"
+          ? targetEpisodeCount === undefined
+          ? "进入剧本编写；根据原著事件密度和目标时长智能推算目标集数与本次生成批次，单次最多5集，不逐项询问用户配置"
           : `进入剧本编写；已确认目标${targetEpisodeCount}集，本次直接生成${Math.min(targetEpisodeCount, 5)}集，不再询问集数`
         : remainingEpisodes === undefined
           ? "剧本已存在，汇报已生成集数并引导用户继续生成后续剧本或进入制作流程"

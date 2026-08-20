@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  enforceVideoPromptOutputConstraints,
   migrateLegacyPromptForH3,
   removeNarrationLipSyncInstructions,
 } from "./videoPromptMigration";
@@ -14,6 +15,36 @@ test("removes negative lip-sync controls from prompts", () => {
     ),
     /lips remain completely closed/i,
   );
+});
+
+test("upgrades saved H3 prompts to the current music, text, and face rules", () => {
+  const prompt = `integrated_multimodal_description:
+[Shot 1] 中远景，人物穿过山林。
+overall_soundscape: 风声与衣料摩擦声。
+non_diegetic_music:
+低沉配乐从开场渐入，在结尾增强。`;
+  const upgraded = enforceVideoPromptOutputConstraints(prompt, {
+    segmentRows: [{ scale: "中远景", description: "人物穿过山林" }],
+  });
+
+  assert.match(upgraded, /画面文字：N\/A，标题：N\/A，对话气泡：N\/A/);
+  assert.match(upgraded, /主要人物面部保持锐利对焦[\s\S]*眼睛、鼻子、嘴部与轮廓清晰可辨/);
+  assert.match(upgraded, /non_diegetic_music:\s*N\/A\s*$/);
+  assert.doesNotMatch(upgraded, /低沉配乐|渐入|增强/);
+});
+
+test("does not duplicate output constraints already present in a saved prompt", () => {
+  const prompt = `integrated_multimodal_description:
+[Shot 1] 中景，主要人物面部锐利对焦，五官细节清晰可辨。画面文字：N/A，标题：N/A，对话气泡：N/A。
+overall_soundscape: 环境风声。
+non_diegetic_music: N/A`;
+  const upgraded = enforceVideoPromptOutputConstraints(prompt, {
+    segmentRows: [{ scale: "中景" }],
+  });
+
+  assert.equal(upgraded.match(/画面文字：N\/A/g)?.length, 1);
+  assert.equal(upgraded.match(/面部锐利对焦/g)?.length, 1);
+  assert.equal(upgraded.match(/non_diegetic_music:/g)?.length, 1);
 });
 
 test("migrates a legacy reference prompt into H3 Ref2VA at generation time", () => {
@@ -38,8 +69,10 @@ test("migrates a legacy reference prompt into H3 Ref2VA at generation time", () 
   assert.match(migrated, /subject_definitions:/);
   assert.match(migrated, /<Subject 3>/);
   assert.match(migrated, /<Subject 3>[\s\S]*detailed_description:/);
-  assert.match(migrated, /moves continuously downward[\s\S]*water surface/);
-  assert.match(migrated, /\[Shot 2\] At 00:03\.000/);
+  assert.match(migrated, /画面上方持续向下[\s\S]*水面/);
+  assert.match(migrated, /\[Shot 2\] 00:03\.000 切至/);
+  assert.match(migrated, /\[reference generation\][^\n]*中文提示词/);
+  assert.doesNotMatch(migrated, /remain consistent|Preserve the supplied|camera cuts to/);
   assert.doesNotMatch(migrated, /\[参考图\]/);
   assert.doesNotMatch(migrated, /角色闭嘴|lips remain completely closed/i);
 });
@@ -91,7 +124,7 @@ test("uses the H3 base protocol for first-last-frame and text-only workflows", (
     },
     referenceToken: "@图",
   });
-  assert.match(firstLast, /^How the reference pictures align/m);
+  assert.match(firstLast, /^参考图与目标视频对齐/m);
   assert.match(firstLast, /integrated_multimodal_description:/);
   assert.match(firstLast, /@图1.*王胜/);
   assert.match(firstLast, /@图2.*湖面/);
@@ -111,4 +144,23 @@ test("uses the H3 base protocol for first-last-frame and text-only workflows", (
   });
   assert.match(textOnly, /^integrated_multimodal_description:/);
   assert.doesNotMatch(textOnly, /<Picture/);
+});
+
+test("migrates the Chinese four-module shell without leaking negative constraints", () => {
+  const prompt = `[参考素材说明]\n@图1：王胜（角色）\n\n[核心创意]\n8秒坠落危机。\n\n[画面过程描述]\n0-3秒：降落伞塌陷，王胜向下坠落。\n3-8秒：湖面不断放大。\n\n[不想要]\n人物远景镜头；反向运动。`;
+  const migrated = migrateLegacyPromptForH3(prompt, {
+    profile: {
+      modelFamily: "minimax-h3",
+      modeKind: "multiReference",
+      referenceToken: "@图",
+      referenceLimit: 9,
+      maxDuration: 15,
+      audioPolicy: "optional",
+      requiresStartEnd: false,
+    },
+    referenceToken: "@图",
+  });
+
+  assert.match(migrated, /detailed_description:[\s\S]*降落伞塌陷/);
+  assert.doesNotMatch(migrated, /人物远景镜头|反向运动/);
 });

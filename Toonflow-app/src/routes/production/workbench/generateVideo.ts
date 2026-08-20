@@ -11,12 +11,11 @@ import {
 } from "@/utils/videoTaskRecovery";
 import { resolveVideoModelPromptProfile } from "@/utils/videoModelPromptProfile";
 import { buildVideoTaskData } from "@/utils/videoTaskData";
-import { collectVideoPromptContractViolations } from "@/utils/videoPromptContract";
 import { auditVideoOutput } from "@/utils/videoOutputAudit";
 import { probeVideoFile } from "@/utils/videoOutputProbe";
 import {
+  enforceVideoPromptOutputConstraints,
   migrateLegacyPromptForH3,
-  removeNarrationLipSyncInstructions,
 } from "@/utils/videoPromptMigration";
 
 const router = express.Router();
@@ -95,6 +94,10 @@ export default router.post(
     resolution: z.string().optional(),
     duration: z.number().optional(),
     audio: z.boolean().optional(),
+    parameters: z.record(
+      z.string(),
+      z.union([z.string(), z.number(), z.boolean()]),
+    ).optional(),
     promptTemplateId: z.number().optional(),
   }),
   async (req, res) => {
@@ -109,6 +112,7 @@ export default router.post(
       resolution,
       duration,
       audio,
+      parameters,
       promptTemplateId,
     } = req.body;
     const track = await u
@@ -131,25 +135,15 @@ export default router.post(
       durationResolutionMap: taskData.projectConfig.durationResolutionMap,
       audio: audio ?? taskData.projectConfig.audio,
     });
-    const effectivePrompt = removeNarrationLipSyncInstructions(migrateLegacyPromptForH3(prompt, {
-      profile: videoPromptProfile,
-      referenceToken: taskData.projectConfig.referenceToken,
-      references: promptTask?.referenceAssets,
-      task: promptTask,
-    }));
-    if (promptTask) {
-      const promptViolations = collectVideoPromptContractViolations(
-        promptTask,
-        effectivePrompt,
-        { ...taskData.projectConfig, videoPromptProfile },
-      );
-      if (promptViolations.length) {
-        return res.status(422).send({
-          message: `视频提示词未通过质量门：${promptViolations.join("；")}`,
-          violations: promptViolations,
-        });
-      }
-    }
+    const effectivePrompt = enforceVideoPromptOutputConstraints(
+      migrateLegacyPromptForH3(prompt, {
+        profile: videoPromptProfile,
+        referenceToken: taskData.projectConfig.referenceToken,
+        references: promptTask?.referenceAssets,
+        task: promptTask,
+      }),
+      promptTask,
+    );
     const promptTemplate = promptTemplateId
       ? await u.db("o_prompt").where({ id: promptTemplateId }).first()
       : null;
@@ -182,6 +176,7 @@ export default router.post(
       resolution: resolution || "864x480",
       duration: effectiveDuration,
       audio: Boolean(audio),
+      parameters: parameters || {},
       videoPromptProfile,
     };
     const referenceSnapshot = uploadData.map((item: any, index: number) => ({
@@ -239,6 +234,7 @@ export default router.post(
               duration: effectiveDuration,
               resolution: resolution || "864x480",
               audio: Boolean(audio),
+              parameters: parameters || {},
             },
             {
               taskClass: "videoGeneration",

@@ -290,7 +290,7 @@ test("requires timing markers when a segment contains multiple shots", () => {
   assert.ok(violations.some((item) => item.includes("逐镜时间分段")));
 });
 
-test("requires a tension hook at the start of a high-stakes segment", () => {
+test("does not hard-fail a high-stakes segment for its opening hook wording", () => {
   const task = {
     segmentRows: [
       { dialogue: "无台词", description: "降落伞骤然塌陷，人物开始下坠" } as any,
@@ -300,22 +300,24 @@ test("requires a tension hook at the start of a high-stakes segment", () => {
   const hookedPrompt = "[视频内容] 0-3s：降落伞骤然塌陷，人物失控下坠；俯拍跟随坠落路线。";
 
   assert.ok(
-    collectVideoPromptContractViolations(task, flatPrompt).some((item) =>
+    !collectVideoPromptContractViolations(task, flatPrompt).some((item) =>
       item.includes("冲突钩子"),
     ),
   );
-  assert.deepEqual(
-    collectVideoPromptContractViolations(task, hookedPrompt),
-    [],
+  assert.ok(
+    !collectVideoPromptContractViolations(task, hookedPrompt).some((item) =>
+      item.includes("冲突钩子"),
+    ),
   );
 
   const twoSentenceNarrativeHook = `[视频内容]
 开场落差钩子：代号独狼的王胜，是身经百战的最强战士、王牌狙击手。
 旁白 VO：上一刻他还在夜间突降，转眼却坠入白昼异界。
 0-3s：王胜从画面上方向下坠落，持续接近湖面。`;
-  assert.deepEqual(
-    collectVideoPromptContractViolations(task, twoSentenceNarrativeHook),
-    [],
+  assert.ok(
+    !collectVideoPromptContractViolations(task, twoSentenceNarrativeHook).some(
+      (item) => item.includes("冲突钩子"),
+    ),
   );
 });
 
@@ -355,4 +357,49 @@ test("accepts either language variant of a current-style anchor", () => {
     );
     assert.deepEqual(violations, []);
   }
+});
+
+test("rejects background music but allows synchronized sound effects", () => {
+  const task = { segmentRows: [{ dialogue: "无台词", description: "人物推门" }] };
+  const violations = collectVideoPromptContractViolations(
+    task,
+    "[视频内容] 人物推门，门轴声与脚步声同步。配乐设计：低沉弦乐渐入。",
+  );
+  assert.ok(violations.some((item) => item.includes("背景音乐或配乐设计")));
+
+  assert.deepEqual(
+    collectVideoPromptContractViolations(
+      task,
+      "[视频内容] 人物推门，门轴声与脚步声同步；全程无背景音乐。",
+    ),
+    [],
+  );
+});
+
+test("rejects generated subtitles", () => {
+  const violations = collectVideoPromptContractViolations(
+    { dialogue: "台词：快走" },
+    "人物喊：快走。画面底部显示中文字幕：快走。",
+  );
+  assert.ok(violations.some((item) => item.includes("生成字幕")));
+});
+
+test("requires a face clarity anchor for medium and medium-long shots", () => {
+  const task = {
+    segmentRows: [
+      { dialogue: "无台词", description: "人物回头", scale: "中远景" },
+    ],
+  };
+  assert.ok(
+    collectVideoPromptContractViolations(task, "人物回头看向门口。").some(
+      (item) => item.includes("人脸清晰度约束"),
+    ),
+  );
+  assert.deepEqual(
+    collectVideoPromptContractViolations(
+      task,
+      "人物回头看向门口，主要人物面部锐利对焦，五官细节清晰可辨。",
+    ),
+    [],
+  );
 });

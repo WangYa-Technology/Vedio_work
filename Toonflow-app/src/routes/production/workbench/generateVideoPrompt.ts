@@ -12,7 +12,6 @@ import {
   buildVideoModelPromptProtocol,
   resolveVideoPromptInstructions,
 } from "@/utils/videoPromptTemplate";
-import { collectVideoPromptContractViolations } from "@/utils/videoPromptContract";
 import {
   migrateLegacyPromptForH3,
   removeNarrationLipSyncInstructions,
@@ -97,7 +96,13 @@ function buildPromptInferenceSnapshot(
         description: row.description || "",
         duration: Number(row.duration) || 0,
         scale: row.scale || "",
+        scaleDescription: row.scaleDescription || "",
+        cameraAngle: row.cameraAngle || "",
         cameraMovement: row.cameraMovement || "",
+        location: row.location || "",
+        dayPart: row.dayPart || "",
+        interiorExterior: row.interiorExterior || "",
+        spatialLayers: row.spatialLayers || "",
         dialogue: row.dialogue || "",
         sound: row.sound || "",
       })),
@@ -152,7 +157,13 @@ function normalizeShot(row: Record<string, any>) {
     visualAndAction: String(row.description || "").trim(),
     durationSeconds: Number(row.duration) || 0,
     shotScale: String(row.scale || "").trim() || "未标注",
+    shotScaleDescription: String(row.scaleDescription || "").trim() || "未标注",
+    cameraAngle: String(row.cameraAngle || "").trim() || "未标注",
     cameraMovement: String(row.cameraMovement || "").trim() || "未标注",
+    location: String(row.location || "").trim() || "未标注",
+    dayPart: String(row.dayPart || "").trim() || "未标注",
+    interiorExterior: String(row.interiorExterior || "").trim() || "未标注",
+    spatialLayers: String(row.spatialLayers || "").trim() || "未标注",
     dialogue,
     onScreenText,
     speechAllowed: dialogue !== "无台词",
@@ -167,7 +178,7 @@ function buildVideoDescription(task: Record<string, any>) {
   return shots
     .map(
       (shot: ReturnType<typeof normalizeShot>) =>
-        `${shot.sequence}. ${shot.visualAndAction}；${shot.durationSeconds}s；${shot.shotScale}；${shot.cameraMovement}；对白：${shot.dialogue}；画内文字：${shot.onScreenText || "无"}；音效：${shot.sound}`,
+        `${shot.sequence}. ${shot.visualAndAction}；地点：${shot.location}；时段：${shot.dayPart}；内外：${shot.interiorExterior}；空间层级：${shot.spatialLayers}；${shot.durationSeconds}s；景别：${shot.shotScale}；景别说明：${shot.shotScaleDescription}；摄影角度：${shot.cameraAngle}；运镜：${shot.cameraMovement}；对白：${shot.dialogue}；画内文字：${shot.onScreenText || "无"}；音效：${shot.sound}`,
     )
     .join("\n");
 }
@@ -216,6 +227,12 @@ export function buildSceneInput(
         ),
       },
       scene: tasks[0]?.sceneTitle || "未标注场次",
+      sceneSpace: {
+        location: tasks[0]?.location || "未标注",
+        dayPart: tasks[0]?.dayPart || "未标注",
+        interiorExterior: tasks[0]?.interiorExterior || "未标注",
+        spatialLayers: tasks[0]?.spatialLayers || "未标注",
+      },
       segments: tasks.map((task) => ({
         trackId: task.id,
         isEpisodeOpening: Boolean(task.isEpisodeOpening),
@@ -249,54 +266,6 @@ export function buildSceneInput(
       })),
     },
   );
-}
-
-function validatePromptReferences(
-  task: Record<string, any>,
-  prompt: string,
-  referenceToken = "@图",
-  profile?: Record<string, any> | null,
-) {
-  const allMedias = task.medias || [];
-  const isH3 = profile?.modelFamily === "minimax-h3";
-  const medias = isH3 && profile?.modeKind === "text"
-    ? []
-    : isH3 && profile?.modeKind === "firstLastFrame"
-      ? allMedias.slice(0, 2)
-      : isH3 && Number(profile?.referenceLimit) > 0
-        ? allMedias.slice(0, Number(profile.referenceLimit))
-        : allMedias;
-  if (!medias.length) return;
-
-  const escapedToken = referenceToken.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const referencedNumbers = Array.from(
-    prompt.matchAll(new RegExp(`${escapedToken}\\s*(\\d+)`, "g")),
-    (match) => Number(match[1]),
-  );
-  const invalidNumbers = Array.from(
-    new Set(referencedNumbers.filter((number) => number < 1 || number > medias.length)),
-  );
-  if (invalidNumbers.length) {
-    throw new Error(
-      `${task.segmentTitle || task.id} 引用了不存在的资产编号：${invalidNumbers.map((number) => `${referenceToken}${number}`).join("、")}`,
-    );
-  }
-
-  const lines = prompt.split(/\r?\n/);
-  const missingMappings: string[] = [];
-  medias.forEach((media: any, index: number) => {
-    const token = `${referenceToken}${index + 1}`;
-    const assetName = String(media.name || "").trim();
-    const mappingLine = lines.find((line) => line.includes(token));
-    if (!mappingLine || (assetName && !mappingLine.includes(assetName))) {
-      missingMappings.push(`${token}=${assetName || "未命名资产"}`);
-    }
-  });
-  if (missingMappings.length) {
-    throw new Error(
-      `${task.segmentTitle || task.id} 的提示词资产映射不完整：${missingMappings.join("、")}`,
-    );
-  }
 }
 
 export default router.post(
@@ -454,11 +423,16 @@ export default router.post(
 12. referenceMap 中每个参考项只能承担其声明类型的职责：角色图锁身份与服装，场景图锁空间与光影，道具图锁外观材质。不得互换用途，不得把普通参考图擅自定义为首帧、尾帧、动作或运镜参考。
 13. 画面可信度来自动作的物理反馈和环境响应，而非画质标签。只为已有动作补充自然产生的惯性、重心、衣发滞后、接触反力、水花、烟尘或碎屑反馈；每镜最多一种轻微镜头真实反馈。禁止默认添加真人实拍、设备品牌、8K、胶片颗粒、无依据手持抖动、失焦、光晕或漂移。
 14. 景别必须承担输入指定的叙事功能，人物位移和摄影机运动必须分开描述；不得为了“电影感”替换景别、叠加冲突运镜或用摄影机移动掩盖动作方向。
-15. shotFacts 没有画内文字时，提示词必须禁止随机文字、字幕、对话气泡、logo、水印和 UI；有画内文字时只能保留输入指定内容。
+15. 无论 shotFacts 是否有对白或画内文字，最终视频都必须全程无字幕、无标题、无对话气泡；对白、旁白只作为声音，绝不渲染为字幕。shotFacts 没有画内文字时还必须禁止随机文字、logo、水印和 UI；有画内文字时只能保留场景中输入明确指定的实体文字，不能把它转成字幕。
 16. creativeVariation 是本次重生成的受控创作方向，必须执行。它只决定同一事实如何制造钩子、如何安排镜头压力和如何措辞，绝不能新增事件或改写分镜。previousPrompt 非空时它是上一稿基线：新稿不得与其完全相同，且首个时间段的冲突呈现、镜头切分或旁白措辞中至少两项必须实质不同；禁止仅替换同义词。没有 previousPrompt 时，仍必须执行本轮 direction。
-17. 声音与表情采用最小可执行集：每镜最多一个主要微表情变化和一至两项声音变化，必须由当前动作或冲突触发，并与镜头推进/切换同步。逐镜把声音拆为“音效设计”（环境底床、动作拟音、声场、触发点、强弱）和“配乐设计”（进入/退出、音色或乐器、慢/中/快节奏或节拍密度、动态、静音/留白、与动作或剪辑的同步点）；无叙事依据时配乐写 N/A，不能用泛化音乐词代替设计。夸张张口、瞪眼、大声喊叫只在输入已有台词/喊声或动作确实达到临界点时使用。
-18. 最终 prompt 只呈现应生成的正向画面、动作、声音、配乐与实际对白；不要复述本约束、资产校验语、禁止项、嘴型控制或其他制作说明。
-19. 不直接输出正文，必须调用 resultTool 一次性返回全部 trackId 的结果。
+17. 声音与表情采用最小可执行集：每镜最多一个主要微表情变化和一至两项声音变化，必须由当前动作或冲突触发，并与镜头推进/切换同步。声音只允许“音效设计”（环境底床、动作拟音、呼吸/喊声、声场、触发点、强弱），可以保留或强化与可见动作同步的音效。固定约束：non_diegetic_music: N/A；只保留同步环境音效和动作音效，不生成背景音乐，不生成字幕。全程禁止背景音乐、配乐、BGM 和非画内音乐；MiniMax H3 的 non_diegetic_music 必须且只能写 N/A。夸张张口、瞪眼、大声喊叫只在输入已有台词/喊声或动作确实达到临界点时使用。
+18. 先在内部按【参考素材说明】【核心创意】【画面过程描述】【不想要】四模块组织，再按当前模型协议序列化。H3 仍严格使用官方字段，不输出模块标题；非 H3 才直接输出四模块。参考素材按输入顺序编号为 @图片N/@视频N/@音频N，每项说明用途、锁定维度和不参考维度；无素材写“无参考素材（纯文字生成视频）”。
+19. 通用四模块中的画面过程必须逐镜写 Shot N（起始秒-结束秒）—小标题，并具备景别、场景、主体/参考项、运镜、动作、台词/旁白、音效、文字、转场字段。中文台词字数÷3 约为最低台词镜头时长，纯画面镜头 2-5 秒，总时长匹配输入，未指定默认 10 秒。人物镜头最宽使用全景，远景/大全景只用于无人空镜；避免连续相同景别。凡输入景别为中景或中远景且主要人物可见，必须逐镜明确“主要人物面部锐利对焦，眼睛、鼻子、嘴部与轮廓清晰可辨，不被景深或运动模糊覆盖”；优先减少背景细节、遮挡和快速运动，不能擅自改成近景。首尾帧模式明确首尾参考且禁止切镜；一镜到底不拆 Shot。
+20. 禁止使用“环绕运镜”，环绕效果统一写 truck left + pan right 或 truck right + pan left。通用【不想要】固定包含“人物远景镜头、背景音乐、字幕”；非画内音乐固定写“非叙事性音乐：N/A”。
+21. H3 的字段名保持官方英文键名，但字段内容、镜头、动作、声音、旁白和对白必须全部使用中文；不要写英文长段落。<Subject N>/<Picture N>、时间字段和协议枚举值按 H3 要求保留。
+22. 视频复盘硬约束：若片段存在关键道具失效、突然失控、身份能力与现实反差或危险逼近，0-1.5 秒必须出现可见故障/威胁及后果；1.5-3 秒写运动突变；3-5 秒写一次主动应对和一次可读表情/视线变化；5 秒后让目标/威胁明显逼近并停在未解决结果。禁止连续稳定跟拍、连续缓推或重复脸部特写填满时长；近景/特写最多占片段三分之一。单镜头不得伪造切镜，但要在同镜内完成状态变化。
+23. 最终 prompt 只呈现应生成的画面、动作、音效与实际对白，并保留“non_diegetic_music: N/A；只保留同步环境音效和动作音效，不生成背景音乐，不生成字幕”这项硬约束；不要复述其他资产校验语、嘴型控制或制作说明。
+24. 不直接输出正文，必须调用 resultTool 一次性返回全部 trackId 的结果。
 `;
     const systemPrompt = `${templateContent}\n\n${modelPromptProtocol ? `${modelPromptProtocol}\n\n` : ""}${styleReasoning}\n\n${contentSafety ? `## 内容安全约束\n${contentSafety}\n` : ""}${batchConstraint}`;
     const templateVersion = hashTemplateContent(systemPrompt);
@@ -468,10 +442,11 @@ export default router.post(
       data.narrativeContext,
       creativeVariation,
     );
-    try {
+    const invokeGeneration = async (messages: Array<{ role: "user"; content: string }>) => {
+      generatedPrompts = [];
       await u.Ai.Text("universalAi").invoke({
         system: systemPrompt,
-        messages: [{ role: "user", content: sceneInput }],
+        messages,
         tools: { resultTool },
         toolChoice: "required",
         stopWhen: stepCountIs(1),
@@ -481,7 +456,8 @@ export default router.post(
         maxOutputTokens: modelPromptProtocol ? 8192 : 4096,
         abortSignal: AbortSignal.timeout(getVideoPromptTimeoutMs()),
       });
-    } catch (caught) {
+    };
+    const respondAiFailure = (caught: unknown) => {
       const normalized = u.error(caught);
       const details = `${normalized.message} ${JSON.stringify(normalized.cause || {})}`;
       const isTimeout =
@@ -492,60 +468,49 @@ export default router.post(
         ? "视频提示词推理超时：上游模型未在时限内返回，请稍后重试或改用更快的文本模型"
         : `视频提示词推理失败：${normalized.message || "上游模型请求失败"}`;
       return res.status(isTimeout ? 504 : 502).send(error(message));
-    }
-
-    // Some older templates still return the pre-H3 reference notation. Normalize it
-    // before validation and persistence so the workbench and provider use one prompt.
-    const returnedMap = new Map(
-      generatedPrompts.map((item) => {
-        const trackId = Number(item.trackId);
-        const task = tasks.find((candidate) => Number(candidate.id) === trackId);
-        return [
-          trackId,
-          removeNarrationLipSyncInstructions(migrateLegacyPromptForH3(item.prompt.trim(), {
-            profile: data.projectConfig.videoPromptProfile,
-            referenceToken: data.projectConfig.referenceToken,
-            references: task?.medias,
-            task,
-          })),
-        ];
-      }),
-    );
-    const missingIds = requestedTrackIds.filter((id) => !returnedMap.get(id));
-    const unexpectedIds = generatedPrompts
-      .map((item) => Number(item.trackId))
-      .filter((id) => !requestedTrackIds.includes(id));
-    try {
+    };
+    const normalizeReturnedPrompts = () =>
+      new Map(
+        generatedPrompts.map((item) => {
+          const trackId = Number(item.trackId);
+          const task = tasks.find((candidate) => Number(candidate.id) === trackId);
+          return [
+            trackId,
+            removeNarrationLipSyncInstructions(migrateLegacyPromptForH3(item.prompt.trim(), {
+              profile: data.projectConfig.videoPromptProfile,
+              referenceToken: data.projectConfig.referenceToken,
+              references: task?.medias,
+              task,
+            })),
+          ];
+        }),
+      );
+    const validateReturnedPrompts = () => {
+      const returnedMap = normalizeReturnedPrompts();
+      const missingIds = requestedTrackIds.filter((id) => !returnedMap.get(id));
+      const unexpectedIds = generatedPrompts
+        .map((item) => Number(item.trackId))
+        .filter((id) => !requestedTrackIds.includes(id));
       if (missingIds.length || unexpectedIds.length) {
         throw new Error(
           `AI 返回的片段对应关系不完整${missingIds.length ? `，缺少 ${missingIds.join("、")}` : ""}`,
         );
       }
 
-      for (const task of tasks) {
-        const prompt = returnedMap.get(Number(task.id)) || "";
-        validatePromptReferences(
-          task,
-          prompt,
-          data.projectConfig.referenceToken,
-          data.projectConfig.videoPromptProfile,
-        );
-        const violations = collectVideoPromptContractViolations(
-          task,
-          prompt,
-          {
-            ...data.projectConfig,
-            audioSupported: Boolean(data.projectConfig.audio),
-          },
-        );
-        if (violations.length) {
-          throw new Error(
-            `${task.segmentTitle || task.id} 提示词契约校验失败：${violations.join("；")}`,
-          );
-        }
-      }
+      return returnedMap;
+    };
+
+    let returnedMap: Map<number, string>;
+    try {
+      await invokeGeneration([{ role: "user", content: sceneInput }]);
     } catch (caught) {
-      return res.status(422).send(error(u.error(caught).message));
+      return respondAiFailure(caught);
+    }
+
+    try {
+      returnedMap = validateReturnedPrompts();
+    } catch (caught) {
+      return respondAiFailure(caught);
     }
 
     try {

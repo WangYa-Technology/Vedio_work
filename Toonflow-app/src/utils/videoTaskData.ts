@@ -3,7 +3,6 @@ import { buildProductionFlowData } from "@/utils/productionFlow";
 import { resolveProjectVideoModel } from "@/services/videoGeneration";
 import { parseModelReference } from "@/utils/modelRef";
 import { resolveVideoModelPromptProfile } from "@/utils/videoModelPromptProfile";
-import { collectVideoPromptContractViolations } from "@/utils/videoPromptContract";
 
 type AnyObject = Record<string, any>;
 
@@ -15,7 +14,13 @@ export interface StoryboardSegmentRow {
   description: string;
   duration: number;
   scale: string;
+  scaleDescription: string;
+  cameraAngle: string;
   cameraMovement: string;
+  location: string;
+  dayPart: string;
+  interiorExterior: string;
+  spatialLayers: string;
   dialogue: string;
   sound: string;
 }
@@ -24,6 +29,10 @@ interface StoryboardSegment {
   sceneTitle: string;
   segmentTitle: string;
   durationLabel: string;
+  location: string;
+  dayPart: string;
+  interiorExterior: string;
+  spatialLayers: string;
   rows: StoryboardSegmentRow[];
 }
 
@@ -117,10 +126,58 @@ function summarizeSegmentField(rows: StoryboardSegmentRow[], field: "dialogue" |
     .join("\n");
 }
 
-function parseStoryboardTable(markdown: string): StoryboardSegment[] {
+function parseScriptSceneMeta(script: string) {
+  return String(script || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .map((line) => line.match(/^\d+-\d+\s+(.+?)\s+(日|夜|清晨|黄昏)\s*\/\s*(内|外|内外|半室外)\s*$/))
+    .filter((match): match is RegExpMatchArray => Boolean(match))
+    .map((match) => ({
+      location: match[1].trim(),
+      dayPart: match[2].trim(),
+      interiorExterior: `${match[3].trim()}景`,
+      spatialLayers: "",
+    }));
+}
+
+function describeShotScale(scale: string) {
+  const descriptions: Record<string, string> = {
+    大全景: "环境占绝大部分，人物为小比例视觉锚点，用于建立整体地理范围与运动方向。",
+    远景: "人物全身及大范围环境同时可见，用于交代主体与落点、对手或地标的距离关系。",
+    全景: "完整人物与周边行动空间同时入画，用于看清站位、朝向和完整动作。",
+    中远景: "人物膝部以上入画并保留前后景，用于兼顾动作幅度与多人空间关系。",
+    中景: "人物腰部以上为主，保留手势和互动对象，用于承载对话与动作反应。",
+    中近景: "人物胸部以上占主要画面，用于强化视线、表情与局部肢体变化。",
+    近景: "人物肩部以上或关键局部占画面约一半，用于突出明确的状态变化。",
+    特写: "面部或关键物件主导画面，背景弱化，用于锁定单一情绪或剧情信息。",
+    大特写: "眼睛、手指或道具细节充满画面，用于强调不可替代的微小变化。",
+  };
+  return descriptions[scale] || "主体比例、前后景关系与叙事功能需和本镜画面内容保持一致。";
+}
+
+function inferSpatialLayers(location: string, sceneTitle: string) {
+  const context = `${location} ${sceneTitle}`;
+  if (/高空/.test(context) && /湖/.test(context)) return "高空→湖面";
+  if (/湖岸/.test(context)) return "湖岸→湖面→湖心";
+  return "";
+}
+
+function splitLegacyCamera(value: string) {
+  const angle = value.match(/^(极高俯拍|微俯拍|俯拍|微仰拍|仰拍|低机位|平视)(?:后)?/)?.[1] || "";
+  return {
+    cameraAngle: angle,
+    cameraMovement: angle ? value.replace(new RegExp(`^${angle}(?:后)?`), "").trim() || "固定" : value,
+  };
+}
+
+export function parseStoryboardTable(markdown: string, script = ""): StoryboardSegment[] {
   const segments: StoryboardSegment[] = [];
+  const scriptSceneMeta = parseScriptSceneMeta(script);
   let sceneTitle = "";
+  let sceneMeta = { location: "", dayPart: "", interiorExterior: "", spatialLayers: "" };
+  let sceneIndex = -1;
   let current: StoryboardSegment | null = null;
+  let tableColumns: string[] = [];
   const finish = () => {
     if (current?.rows.length) segments.push(current);
     current = null;
@@ -132,6 +189,31 @@ function parseStoryboardTable(markdown: string): StoryboardSegment[] {
     if (line.startsWith("## ")) {
       finish();
       sceneTitle = line.slice(3).trim();
+      sceneIndex += 1;
+      sceneMeta = scriptSceneMeta[sceneIndex] || { location: "", dayPart: "", interiorExterior: "", spatialLayers: "" };
+      sceneMeta = {
+        ...sceneMeta,
+        spatialLayers: sceneMeta.spatialLayers || inferSpatialLayers(sceneMeta.location, sceneTitle),
+      };
+      continue;
+    }
+    if (line.startsWith("**空间信息**")) {
+      const values = line
+        .replace(/^\*\*空间信息\*\*[：:]\s*/, "")
+        .split(/[；;]/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .reduce<Record<string, string>>((result, item) => {
+          const match = item.match(/^([^：:]+)[：:]\s*(.*)$/);
+          if (match) result[match[1].trim()] = match[2].trim();
+          return result;
+        }, {});
+      sceneMeta = {
+        location: values["地点"] || "",
+        dayPart: values["时段"] || "",
+        interiorExterior: values["内外"] || "",
+        spatialLayers: values["空间层级"] || "",
+      };
       continue;
     }
     const match = line.match(/^###\s*(片段[^\s（(]+)(?:[（(]([^）)]+)[）)])?/);
@@ -141,30 +223,42 @@ function parseStoryboardTable(markdown: string): StoryboardSegment[] {
         sceneTitle,
         segmentTitle: match[1],
         durationLabel: match[2] || "",
+        ...sceneMeta,
         rows: [],
       };
+      tableColumns = [];
       continue;
     }
-    if (
-      !current ||
-      !line.startsWith("|") ||
-      line.includes("---") ||
-      line.includes("序号")
-    )
-      continue;
+    if (!current || !line.startsWith("|") || line.includes("---")) continue;
     const cells = line
       .split("|")
       .slice(1, -1)
       .map((cell) => cell.trim());
+    if (cells.includes("序号")) {
+      tableColumns = cells;
+      continue;
+    }
     if (cells.length < 7) continue;
+    const value = (name: string, fallbackIndex: number) => {
+      const index = tableColumns.indexOf(name);
+      return cells[index >= 0 ? index : fallbackIndex] || "";
+    };
+    const expanded = tableColumns.includes("景别说明");
+    const legacyCamera = splitLegacyCamera(value("运镜", expanded ? 6 : 4));
     current.rows.push({
-      serial: cells[0],
-      description: cells[1],
-      duration: parseDuration(cells[2]),
-      scale: cells[3],
-      cameraMovement: cells[4],
-      dialogue: stripStoryboardFieldLabel(cells[5], "台词"),
-      sound: stripStoryboardFieldLabel(cells[6], "音效"),
+      serial: value("序号", 0),
+      description: value("画面描述", 1),
+      duration: parseDuration(value("时长", 2)),
+      scale: value("景别", 3),
+      scaleDescription: value("景别说明", -1) || describeShotScale(value("景别", 3)),
+      cameraAngle: value("摄影角度", -1) || legacyCamera.cameraAngle,
+      cameraMovement: value("摄影角度", -1) ? value("运镜", expanded ? 6 : 4) : legacyCamera.cameraMovement,
+      location: current.location,
+      dayPart: current.dayPart,
+      interiorExterior: current.interiorExterior,
+      spatialLayers: current.spatialLayers,
+      dialogue: stripStoryboardFieldLabel(value("台词", expanded ? 7 : 5), "台词"),
+      sound: stripStoryboardFieldLabel(value("音效", expanded ? 8 : 6), "音效"),
     });
   }
   finish();
@@ -336,7 +430,7 @@ export async function buildVideoTaskData(
     .orderBy("chapterIndex", "asc")
     .select("id", "chapterIndex", "chapter", "chapterData");
   const narrativeContext = selectNarrativeContext(flow.script, chapterRows);
-  const segments = parseStoryboardTable(flow.storyboardTable || "");
+  const segments = parseStoryboardTable(flow.storyboardTable || "", flow.script || "");
   const storyboardList = await u
     .db("o_storyboard")
     .where({ projectId, scriptId })
@@ -468,22 +562,6 @@ export async function buildVideoTaskData(
         src: fileUrl(video.filePath),
         state: video.state === "生成成功" ? "已完成" : video.state || "未生成",
       }));
-    const promptAudit = collectVideoPromptContractViolations(
-      {
-        segmentTitle: segment?.segmentTitle || `片段 ${index + 1}`,
-        duration: segmentDuration,
-        dialogue: summarizeSegmentField(segment?.rows || [], "dialogue"),
-        segmentRows: segment?.rows || [],
-      },
-      prompt,
-      {
-        artStyle: project?.artStyle || "",
-        videoRatio: project?.videoRatio || "16:9",
-        referenceToken,
-        visualStyleManual,
-      },
-    );
-
     return {
       id: Number(storyboard.trackId),
       storyboardId: Number(storyboard.id),
@@ -495,6 +573,10 @@ export async function buildVideoTaskData(
         : `片段 ${index + 1}`,
       sceneTitle: segment?.sceneTitle || "",
       segmentTitle: segment?.segmentTitle || `片段 ${index + 1}`,
+      location: segment?.location || "",
+      dayPart: segment?.dayPart || "",
+      interiorExterior: segment?.interiorExterior || "",
+      spatialLayers: segment?.spatialLayers || "",
       segmentRows: segment?.rows || [],
       dialogue: summarizeSegmentField(segment?.rows || [], "dialogue"),
       sound: summarizeSegmentField(segment?.rows || [], "sound"),
@@ -508,7 +590,6 @@ export async function buildVideoTaskData(
       promptTemplateId: Number(track?.promptTemplateId) || null,
       promptTemplateVersion: track?.promptTemplateVersion || null,
       promptInferenceSnapshot: track?.promptInferenceSnapshot || null,
-      promptAudit,
       promptSource:
         generatedPrompt && !stalePrompt ? "videoTrack" : "storyboard.videoDesc",
       state: track?.state || "未生成",

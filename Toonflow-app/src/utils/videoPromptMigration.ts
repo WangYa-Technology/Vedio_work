@@ -8,6 +8,10 @@ interface MigrationContext {
   task?: VideoPromptContractTask;
 }
 
+const FACE_CLARITY_ANCHOR = /(?:面部|脸部|人脸)[^。；\n]{0,36}(?:清晰|锐利|对焦|五官可辨|细节可辨)|五官[^。；\n]{0,24}(?:清晰|可辨|锐利)|(?:face|facial (?:features|details?))[^.\n]{0,42}(?:clear|sharp|readable|in focus|well-defined)/i;
+const VISUAL_TEXT_NA = "画面文字：N/A，标题：N/A，对话气泡：N/A。";
+const FACE_CLARITY_REQUIREMENT = "中景和中远景中的主要人物面部保持锐利对焦，眼睛、鼻子、嘴部与轮廓清晰可辨，不被景深、焦点漂移或运动模糊覆盖。";
+
 /** Strip internal lip-sync controls before a prompt reaches the video model. */
 export function removeNarrationLipSyncInstructions(value: string) {
   return String(value || "")
@@ -19,6 +23,54 @@ export function removeNarrationLipSyncInstructions(value: string) {
     .replace(/[；;，,]?\s*角色嘴部紧闭不动(?:（或角色不在画面中）)?/g, "")
     .replace(/[ \t]+\n/g, "\n")
     .trim();
+}
+
+function hasMediumOrMediumLongCharacterShot(
+  task: VideoPromptContractTask | undefined,
+  prompt: string,
+) {
+  return (task?.segmentRows || []).some((row) =>
+    /中景|中远景|medium(?:[- ]long)? shot/i.test(
+      String(row.scale || row.shotScale || ""),
+    ),
+  ) || /(?:景别[：:]?\s*)?(?:中景|中远景)|medium(?:[- ]long)? shot/i.test(prompt);
+}
+
+/** Bring saved prompts created by older templates up to the current output rules. */
+export function enforceVideoPromptOutputConstraints(
+  value: string,
+  task?: VideoPromptContractTask,
+) {
+  let prompt = removeNarrationLipSyncInstructions(value);
+
+  // This is the final official H3 field, so replacing through EOF cannot remove
+  // any subsequent protocol section.
+  prompt = prompt.replace(
+    /(^\s*non[-_ ]diegetic[_ ]music\s*[：:]\s*)[\s\S]*$/im,
+    "$1N/A",
+  );
+  prompt = prompt.replace(
+    /(^\s*(?:背景音乐|背景配乐|非画内配乐|非叙事性音乐|BGM)\s*[：:]\s*)[^\n]*/gim,
+    "$1N/A",
+  );
+
+  const additions: string[] = [];
+  if (!/画面文字\s*[：:]\s*N\/?A/i.test(prompt)) additions.push(VISUAL_TEXT_NA);
+  if (
+    hasMediumOrMediumLongCharacterShot(task, prompt) &&
+    !FACE_CLARITY_ANCHOR.test(prompt)
+  ) {
+    additions.push(FACE_CLARITY_REQUIREMENT);
+  }
+  if (!additions.length) return prompt.trim();
+
+  const outputRules = additions.join("\n");
+  if (/^\s*overall_soundscape\s*:/im.test(prompt)) {
+    return prompt
+      .replace(/^\s*overall_soundscape\s*:/im, `${outputRules}\noverall_soundscape:`)
+      .trim();
+  }
+  return `${prompt}\n${outputRules}`.trim();
 }
 
 function isH3Profile(profile?: VideoModelPromptProfile | null) {
@@ -63,7 +115,7 @@ function splitLegacyShots(body: string) {
     const content = timing ? part.slice(timing[0].length).trim() : part;
     if (index === 0) return `[Shot 1] ${[prelude, content].filter(Boolean).join(" ")}`.trim();
     const start = Number(timing?.[1] || 0).toFixed(3).padStart(6, "0");
-    return `[Shot ${index + 1}] At 00:${start}, the camera cuts to ${content}`.trim();
+    return `[Shot ${index + 1}] 00:${start} 切至 ${content}`.trim();
   });
 }
 
@@ -76,17 +128,17 @@ function migrateLegacyPromptForH3Base(
   const pictureReferences = activeReferences(references, profile);
   const hasAudio = profile?.audioPolicy !== "unsupported";
   const alignment = profile?.modeKind === "firstLastFrame" && pictureReferences.length
-    ? `How the reference pictures align with the target video — ${pictureReferences
-        .map((reference, index) => `<Picture ${index + 1}> from ${context.referenceToken || "@图"}${reference.index} (${reference.label}) aligns with the ${index === 0 ? "0.00" : "final"}-second mark of the target video.`)
+    ? `参考图与目标视频对齐：${pictureReferences
+        .map((reference, index) => `<Picture ${index + 1}> 来自 ${context.referenceToken || "@图"}${reference.index}（${reference.label}），对应目标视频${index === 0 ? " 0.00 秒" : "末帧"}。`)
         .join(" ")}\n\n`
     : "";
   const pictureBindings = pictureReferences.length
     ? `${pictureReferences
-        .map((reference, index) => `<Picture ${index + 1}> is the stable image from ${context.referenceToken || "@图"}${reference.index} (${reference.label}).`)
+        .map((reference, index) => `<Picture ${index + 1}> 是 ${context.referenceToken || "@图"}${reference.index}（${reference.label}）的稳定图像参考。`)
         .join(" ")}\n`
     : "";
   const soundscape = hasAudio
-    ? "Preserve only the physical ambience and action sounds explicitly described in the timeline."
+    ? "仅保留时间线中明确描述的环境声和动作拟音。"
     : "N/A";
   return `${alignment}integrated_multimodal_description:\n${pictureBindings}${splitLegacyShots(rawBody).join("\n")}\noverall_soundscape: ${soundscape}\nnon_diegetic_music: N/A`;
 }
@@ -105,10 +157,13 @@ export function migrateLegacyPromptForH3(prompt: string, context: MigrationConte
         index: index + 1,
         label: String(reference.name || `reference ${index + 1}`),
       }));
-  const contentMarker = prompt.match(/\[视频内容\]/i);
-  const rawBody = contentMarker
+  const contentMarker = prompt.match(/\[(?:视频内容|画面过程描述)\]/i);
+  const rawBodyWithTrailingSections = contentMarker
     ? prompt.slice((contentMarker.index || 0) + contentMarker[0].length).trim()
     : prompt.trim();
+  const rawBody = rawBodyWithTrailingSections
+    .split(/\n\s*\[(?:不想要|整体要求补充)\]\s*/i)[0]
+    .trim();
   if (!isH3ReferenceMode(context.profile)) {
     return removeNarrationLipSyncInstructions(
       migrateLegacyPromptForH3Base(rawBody, references, context),
@@ -122,16 +177,16 @@ export function migrateLegacyPromptForH3(prompt: string, context: MigrationConte
     /坠落|坠入|下坠|自由落体|落向|降落|向下落/.test(String(row.description || row.visualAndAction || "")),
   );
   const directionAnchor = hasDownwardMotion
-    ? " The subject moves continuously downward from the upper part of the frame toward the ground or water surface; the ground or water surface grows larger, and the camera only follows the descent."
+    ? " 人物从画面上方持续向下接近地面或水面，地面或水面在画面中不断放大，摄影机只跟随下降。"
     : "";
   const subjectDefinitions = selectedReferences
-    .map((reference) => `<Subject ${reference.index}> is the stable ${reference.label} reference from ${referenceToken}${reference.index}; preserve its identity, appearance, material, and spatial role.`)
+    .map((reference) => `<Subject ${reference.index}> 是来自 ${referenceToken}${reference.index} 的稳定参考“${reference.label}”；保持身份、外观、材质和空间职责一致。`)
     .join("\n");
   const retention = selectedReferences
-    .map((reference) => `<Subject ${reference.index}> (appears throughout the shot timeline): fully_preserved - identity and visual role retained.`)
+    .map((reference) => `<Subject ${reference.index}>（在对应镜头中出现）：fully_preserved - 保持身份和视觉职责。`)
     .join("\n");
-  const detailed = `${labels.join(", ")} remain consistent with their supplied references while the subject suddenly faces the visible obstacle already present in the original timeline.${directionAnchor}\n${shots.join("\n")}`;
+  const detailed = `${labels.join("、")} 与各自参考保持一致；人物突然遭遇原时间线中已经存在的可见阻碍。${directionAnchor}\n${shots.join("\n")}`;
   return removeNarrationLipSyncInstructions(
-    `subject_definitions:\n${subjectDefinitions}\nsummary:\n[reference generation] Preserve the supplied subjects and the original shot timeline while adapting this legacy prompt to MiniMax H3 Ref2VA.\nretention_analysis:\n${retention}\ndetailed_description:\n${detailed}\noverall_soundscape: Preserve the physical ambience, action sounds, breathing, wind, impacts, and other diegetic sounds described in the timeline.\nnon_diegetic_music: N/A`,
+    `subject_definitions:\n${subjectDefinitions}\nsummary:\n[reference generation] 保持参考主体和原分镜时间线，将旧版提示词适配为 MiniMax H3 Ref2VA 中文提示词。\nretention_analysis:\n${retention}\ndetailed_description:\n${detailed}\noverall_soundscape: 保留时间线中明确描述的环境底床、动作拟音、呼吸、风声、撞击及其他镜内声音。\nnon_diegetic_music: N/A`,
   );
 }

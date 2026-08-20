@@ -261,6 +261,43 @@
                 aria-label="片段时长"
                 @change="handleDurationSelect" />
             </t-tooltip>
+            <t-popup v-if="modelParameters.length" trigger="click" placement="bottom-left">
+              <t-tooltip content="工作流参数" placement="top">
+                <t-button class="workflowParameterButton" size="small" variant="outline" shape="square" aria-label="工作流参数">
+                  <template #icon><SettingIcon size="16" /></template>
+                </t-button>
+              </t-tooltip>
+              <template #content>
+                <div class="workflowParameterPanel">
+                  <div v-for="parameter in modelParameters" :key="parameter.key" class="workflowParameterItem">
+                    <div class="workflowParameterHeader">
+                      <span class="workflowParameterLabel">
+                        <span>{{ parameter.label }}</span>
+                        <t-tooltip v-if="parameter.description" :content="parameter.description" placement="top">
+                          <span class="workflowParameterHelp" tabindex="0" :aria-label="`${parameter.label} 参数说明`">!</span>
+                        </t-tooltip>
+                      </span>
+                      <small v-if="parameter.description">{{ parameter.description }}</small>
+                    </div>
+                    <t-select
+                      v-if="parameter.type === 'select'"
+                      v-model="workflowParameters[parameter.key]"
+                      size="small"
+                      :options="parameter.options || []" />
+                    <t-input-number
+                      v-else-if="parameter.type === 'number'"
+                      :value="Number(workflowParameters[parameter.key])"
+                      size="small"
+                      :min="parameter.min"
+                      :max="parameter.max"
+                      :step="parameter.step || 1"
+                      :allowInputOverLimit="false"
+                      @change="(value) => setWorkflowNumber(parameter.key, value)" />
+                    <t-switch v-else v-model="workflowParameters[parameter.key]" size="small" />
+                  </div>
+                </div>
+              </template>
+            </t-popup>
           </div>
           <div class="genBtn">
             <t-button size="small" :loading="generating" @click="generateVideo">{{ $t("workbench.generate.generate") }}</t-button>
@@ -393,7 +430,7 @@ import type { Ref } from "vue";
 import promptEditor from "@/components/promptEditor.vue";
 import assetsCheck, { type AssetType, type ClipMediaType } from "@/utils/assetsCheck";
 import { DialogPlugin } from "tdesign-vue-next";
-import { FullscreenIcon, PauseIcon, PlayIcon, SoundIcon, SoundMuteIcon } from "tdesign-icons-vue-next";
+import { FullscreenIcon, PauseIcon, PlayIcon, SettingIcon, SoundIcon, SoundMuteIcon } from "tdesign-icons-vue-next";
 import axios from "@/utils/axios";
 import projectStore from "@/stores/project";
 
@@ -472,7 +509,7 @@ function getRequestErrorMessage(caught: any) {
   const message = payload?.message ?? payload?.error?.message ?? caught?.message;
   if (typeof message === "string" && message.trim()) return message.trim();
   if (typeof payload === "string" && payload.trim()) return payload.trim();
-  return "视频提示词推理失败，请稍后重试";
+  return "请求失败，请稍后重试";
 }
 
 async function loadVideoPromptTemplates() {
@@ -519,6 +556,15 @@ async function generateScenePrompts(scene: SceneGroup, requestedIds?: number[]) 
   } catch (caught: any) {
     const message = getRequestErrorMessage(caught);
     scenePromptErrorMap.value[scene.key] = message;
+    // Do not leave an older English result looking like the failed request
+    // succeeded. The saved server version remains recoverable on refresh.
+    for (const id of trackIds) {
+      const targetTrack = trackList.value.find((item) => item.id === Number(id));
+      if (targetTrack) {
+        targetTrack.prompt = "";
+        targetTrack.promptSource = undefined;
+      }
+    }
     window.$message.error(message);
   } finally {
     trackIds.forEach((id) => (genTextLoadingMap.value[id] = false));
@@ -769,8 +815,29 @@ interface VideoModel {
   associationSkills?: string; // 关联技能，多个技能用逗号分隔
   audio: "optional" | false | true; // 音频配置
   durationResolutionMap: { duration: number[]; resolution: string[] }[];
+  parameters?: VideoModelParameter[];
+}
+
+type WorkflowParameterValue = string | number | boolean;
+interface VideoModelParameter {
+  key: string;
+  label: string;
+  type: "select" | "number" | "boolean";
+  default: WorkflowParameterValue;
+  description?: string;
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: Array<{ label: string; value: WorkflowParameterValue; description?: string }>;
 }
 const modeOptions = ref<VideoModel>({} as VideoModel);
+const workflowParameters = ref<Record<string, WorkflowParameterValue>>({});
+const modelParameters = computed(() => modeOptions.value.parameters || []);
+
+function setWorkflowNumber(key: string, value: string | number | undefined) {
+  const number = Number(value);
+  if (Number.isFinite(number)) workflowParameters.value[key] = number;
+}
 const B36_MODEL_ID = "comfyui-minimax-h3:minimax-h3-reference-to-video";
 const B36_MEGAPIXEL_RESOLUTIONS = new Map<number, [number, number]>([
   [0.2, [608, 352]],
@@ -1298,7 +1365,14 @@ function clearUpload(index: number) {
 
 async function generateVideo() {
   const trackId = trackList.value[activeTrackIndex.value]?.id;
-  if (trackId == null || generatingMap.value[trackId]) return;
+  if (trackId == null) {
+    window.$message.warning("当前视频片段尚未加载，请稍后重试");
+    return;
+  }
+  if (generatingMap.value[trackId]) {
+    window.$message.warning("当前视频片段正在生成中");
+    return;
+  }
   const dlg = DialogPlugin.confirm({
     header: $t("workbench.generate.generateConfirm"),
     body: $t("workbench.generate.generateConfirmBody"),
@@ -1316,12 +1390,15 @@ async function generateVideo() {
           resolution: selectedResolution.value,
           duration: effectiveDuration.value,
           audio: selectedAudio.value,
+          parameters: workflowParameters.value,
           promptTemplateId: selectedVideoPromptTemplateId.value,
           trackId,
         };
-        const { data } = await axios.post("/production/workbench/generateVideo", payload);
+        await axios.post("/production/workbench/generateVideo", payload);
         window.$message.success($t("workbench.generate.generateStarted"));
         getVideoList();
+      } catch (caught: any) {
+        window.$message.error(getRequestErrorMessage(caught));
       } finally {
         generatingMap.value[trackId] = false;
       }
@@ -1337,11 +1414,15 @@ watch(selectModel, (val) => {
     modeOptions.value = {} as VideoModel;
     selectMode.value = undefined;
     selectedAudio.value = false;
+    workflowParameters.value = {};
     return;
   }
   axios.post("/modelSelect/getModelDetail", { modelId: val }).then(({ data }) => {
     modeOptions.value = data;
     selectedAudio.value = data.audio === true || data.audio === "optional";
+    workflowParameters.value = Object.fromEntries(
+      (data.parameters || []).map((parameter: VideoModelParameter) => [parameter.key, parameter.default]),
+    );
     const preferredMode = projectConfig.value.mode || selectMode.value || project.value?.mode || "";
     selectMode.value = resolvePreferredMode(data.mode || [], String(preferredMode));
     // 重置分辨率和时长为第一个可选项
@@ -1476,13 +1557,16 @@ function batchGenVideo() {
               mode: selectMode.value,
               resolution: selectedResolution.value,
               audio: selectedAudio.value,
+              parameters: workflowParameters.value,
               promptTemplateId: selectedVideoPromptTemplateId.value,
               trackId,
             };
             if (payload.prompt === "") return window.$message.warning($t("workbench.generate.skipDataWithEmptyVideoPromptWords"));
-            const { data } = await axios.post("/production/workbench/generateVideo", payload);
+            await axios.post("/production/workbench/generateVideo", payload);
             window.$message.success($t("workbench.generate.generateStarted"));
             getVideoList();
+          } catch (caught: any) {
+            window.$message.error(getRequestErrorMessage(caught));
           } finally {
             generatingMap.value[trackId] = false;
           }
@@ -2168,6 +2252,10 @@ async function downloadVideo(value: HistoryVideoItem) {
           .durationSelect {
             width: 84px;
           }
+          .workflowParameterButton {
+            width: 32px;
+            min-width: 32px;
+          }
         }
       }
       .history {
@@ -2308,6 +2396,53 @@ async function downloadVideo(value: HistoryVideoItem) {
           }
         }
       }
+    }
+  }
+}
+
+.workflowParameterPanel {
+  width: 300px;
+  padding: 12px;
+  display: grid;
+  gap: 14px;
+  background: var(--td-bg-color-container);
+  .workflowParameterItem {
+    display: grid;
+    gap: 7px;
+  }
+  .workflowParameterHeader {
+    display: grid;
+    gap: 3px;
+    font-size: 13px;
+    color: var(--td-text-color-primary);
+    .workflowParameterLabel {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-width: 0;
+    }
+    .workflowParameterHelp {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 15px;
+      height: 15px;
+      border: 1px solid var(--td-brand-color);
+      border-radius: 50%;
+      color: var(--td-brand-color);
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1;
+      cursor: help;
+      outline: none;
+      &:focus-visible {
+        box-shadow: 0 0 0 2px var(--td-brand-color-focus);
+      }
+    }
+    small {
+      font-size: 12px;
+      line-height: 1.45;
+      color: var(--td-text-color-secondary);
     }
   }
 }
