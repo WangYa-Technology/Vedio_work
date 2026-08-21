@@ -23,6 +23,7 @@
 import { ref, onMounted } from "vue";
 import { type FormRules } from "tdesign-vue-next";
 import settingStore from "@/stores/setting";
+import { getDefaultApiBaseUrl, resolveApiBaseUrl } from "@/utils/backendUrl";
 const { baseUrl } = storeToRefs(settingStore());
 
 interface RequestForm {
@@ -49,12 +50,13 @@ function loadSettings() {
 }
 
 function handleSubmit() {
-  baseUrl.value = formData.value.baseUrl;
+  baseUrl.value = resolveApiBaseUrl(formData.value.baseUrl);
+  formData.value.baseUrl = baseUrl.value;
   window.$message.success($t("settings.request.msg.saved"));
 }
 
 function handleReset() {
-  formData.value.baseUrl = "http://127.0.0.1:10588";
+  formData.value.baseUrl = getDefaultApiBaseUrl();
   baseUrl.value = formData.value.baseUrl;
   window.$message.success($t("settings.request.msg.reset"));
 }

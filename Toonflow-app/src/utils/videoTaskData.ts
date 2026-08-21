@@ -1,5 +1,5 @@
 import u from "@/utils";
-import { buildProductionFlowData } from "@/utils/productionFlow";
+import { buildProductionFlowData, parseStoryboardTableAssetBindings } from "@/utils/productionFlow";
 import { resolveProjectVideoModel } from "@/services/videoGeneration";
 import { parseModelReference } from "@/utils/modelRef";
 import { resolveVideoModelPromptProfile } from "@/utils/videoModelPromptProfile";
@@ -25,7 +25,7 @@ export interface StoryboardSegmentRow {
   sound: string;
 }
 
-interface StoryboardSegment {
+export interface StoryboardSegment {
   sceneTitle: string;
   segmentTitle: string;
   durationLabel: string;
@@ -34,6 +34,70 @@ interface StoryboardSegment {
   interiorExterior: string;
   spatialLayers: string;
   rows: StoryboardSegmentRow[];
+}
+
+function normalizedSceneTitle(value: unknown) {
+  return String(value || "")
+    .split(/\s*｜\s*参演角色/)[0]
+    .replace(/\s+/g, "")
+    .trim();
+}
+
+function storyboardSegmentKey(value: unknown) {
+  const match = String(value || "").match(
+    /^\s*([^｜\n]+?)\s*｜\s*(片段[^｜\n]+?)\s*｜\s*序号/u,
+  );
+  if (!match) return "";
+  return `${normalizedSceneTitle(match[1])}::${match[2].replace(/\s+/g, "")}`;
+}
+
+function segmentKey(segment: StoryboardSegment) {
+  return `${normalizedSceneTitle(segment.sceneTitle)}::${segment.segmentTitle.replace(/\s+/g, "")}`;
+}
+
+export function groupStoryboardRowsBySegments(
+  storyboardList: AnyObject[],
+  segments: StoryboardSegment[],
+) {
+  if (!segments.length) {
+    return storyboardList.map((storyboard) => ({
+      segment: undefined,
+      storyboards: [storyboard],
+    }));
+  }
+
+  const rowsByKey = new Map<string, AnyObject[]>();
+  const unmatched: AnyObject[] = [];
+  for (const storyboard of storyboardList) {
+    const key = storyboardSegmentKey(storyboard.videoDesc);
+    if (!key) {
+      unmatched.push(storyboard);
+      continue;
+    }
+    const rows = rowsByKey.get(key) || [];
+    rows.push(storyboard);
+    rowsByKey.set(key, rows);
+  }
+
+  const used = new Set<AnyObject>();
+  const groups = segments.map((segment) => {
+    const storyboards = rowsByKey.get(segmentKey(segment)) || [];
+    storyboards.forEach((storyboard) => used.add(storyboard));
+    return { segment, storyboards };
+  });
+  for (const storyboard of storyboardList) {
+    if (!used.has(storyboard) && !unmatched.includes(storyboard)) {
+      unmatched.push(storyboard);
+    }
+  }
+
+  return [
+    ...groups.filter((group) => group.storyboards.length),
+    ...unmatched.map((storyboard) => ({
+      segment: undefined,
+      storyboards: [storyboard],
+    })),
+  ];
 }
 
 function parseDuration(value: unknown): number {
@@ -461,11 +525,63 @@ export async function buildVideoTaskData(
           "o_image.errorReason",
         )
     : [];
+  // Older writes persisted explicit asset IDs in videoDesc without creating
+  // relation rows. Use those IDs as a read-only fallback for the workbench.
+  const fallbackBindingMap = new Map<number, number[]>();
+  for (const storyboard of storyboardList) {
+    const ids = [...String(storyboard.videoDesc || "").matchAll(/引用资产ID\s*[：:]\s*[\[［]([^\]］]*)[\]］]/g)]
+      .flatMap((match) => (match[1].match(/\d+/g) || []).map(Number))
+      .filter(Number.isFinite);
+    if (ids.length) fallbackBindingMap.set(Number(storyboard.id), [...new Set(ids)]);
+  }
+  const roleRelationIds = [...new Set(relations.filter((row) => row.type === "role").map((row) => Number(row.id)))].filter(Number.isFinite);
+  const fallbackAssetIds = [...new Set([...fallbackBindingMap.values()].flat())].filter(Number.isFinite);
+  if (fallbackAssetIds.length) {
+    const fallbackRoles = await u.db("o_assets").where({ projectId, type: "role" }).whereIn("id", fallbackAssetIds).pluck("id");
+    roleRelationIds.push(...fallbackRoles.map(Number));
+  }
+  const uniqueRoleRelationIds = [...new Set(roleRelationIds)];
+  const voiceMap = new Map<number, AnyObject>();
+  if (uniqueRoleRelationIds.length) {
+    const voiceRows = await u
+      .db("o_assetsRole2Audio")
+      .join("o_assets as audioAsset", "o_assetsRole2Audio.assetsAudioId", "audioAsset.id")
+      .leftJoin("o_image as audioImage", "audioAsset.imageId", "audioImage.id")
+      .whereIn("o_assetsRole2Audio.assetsRoleId", uniqueRoleRelationIds)
+      .andWhere("audioAsset.projectId", projectId)
+      .andWhere("audioAsset.type", "clip")
+      .select(
+        "o_assetsRole2Audio.assetsRoleId",
+        "audioAsset.id as assetId",
+        "audioAsset.name",
+        "audioImage.id as imageId",
+        "audioImage.filePath",
+        "audioImage.state",
+      );
+    await Promise.all(
+      voiceRows.map(async (voice) => {
+        const src = voice.filePath ? await u.oss.getFileUrl(voice.filePath) : "";
+        if (!src) return;
+        voiceMap.set(Number(voice.assetsRoleId), {
+          id: Number(voice.assetId),
+          assetId: Number(voice.assetId),
+          imageId: Number(voice.imageId),
+          name: voice.name || "声音参考",
+          type: "audio",
+          fileType: "audio",
+          sources: "assets",
+          src,
+          state: voice.state || "已完成",
+        });
+      }),
+    );
+  }
   const relationMap = new Map<number, AnyObject[]>();
   for (const row of relations) {
     const storyboardId = Number(row.storyboardId);
     const list = relationMap.get(storyboardId) || [];
     if (!list.some((item) => Number(item.id) === Number(row.id))) {
+      const voiceReference = row.type === "role" ? voiceMap.get(Number(row.id)) || null : null;
       list.push({
         id: Number(row.id),
         name: row.name || `资产 ${row.id}`,
@@ -477,9 +593,64 @@ export async function buildVideoTaskData(
         src: fileUrl(row.filePath),
         state: row.state || (row.filePath ? "已完成" : "未生成"),
         errorReason: row.errorReason || "",
+        voiceReference,
+        voicePath: voiceReference?.src || "",
+        voiceAssetId: voiceReference?.assetId || null,
       });
     }
     relationMap.set(storyboardId, list);
+  }
+  if (fallbackAssetIds.length) {
+    const relationAssetIds = new Set(relations.map((row) => Number(row.id)));
+    const fallbackRows = await u
+      .db("o_assets")
+      .leftJoin("o_image", "o_assets.imageId", "o_image.id")
+      .where("o_assets.projectId", projectId)
+      .whereIn("o_assets.id", fallbackAssetIds)
+      .select("o_assets.id", "o_assets.name", "o_assets.type", "o_assets.describe", "o_assets.prompt", "o_image.filePath", "o_image.state", "o_image.errorReason");
+    const fallbackRowMap = new Map(fallbackRows.map((row) => [Number(row.id), row]));
+    for (const [storyboardId, ids] of fallbackBindingMap) {
+      const list = relationMap.get(storyboardId) || [];
+      for (const assetId of ids) {
+        if (relationAssetIds.has(assetId) || list.some((item) => Number(item.id) === assetId)) continue;
+        const row = fallbackRowMap.get(assetId);
+        if (!row) continue;
+        const voiceReference = row.type === "role" ? voiceMap.get(assetId) || null : null;
+        list.push({
+          id: assetId,
+          name: row.name || `资产 ${assetId}`,
+          type: row.type || "asset",
+          describe: row.describe || "",
+          prompt: row.prompt || "",
+          fileType: "image",
+          sources: "assets",
+          src: fileUrl(row.filePath),
+          state: row.state || (row.filePath ? "已完成" : "未生成"),
+          errorReason: row.errorReason || "",
+          voiceReference,
+          voicePath: voiceReference?.src || "",
+          voiceAssetId: voiceReference?.assetId || null,
+        });
+      }
+      relationMap.set(storyboardId, list);
+    }
+    // Persist the recovered bindings so later generation, review and reload
+    // paths see the same assets instead of relying on this compatibility path.
+    await u.db.transaction(async (trx) => {
+      for (const [storyboardId, ids] of fallbackBindingMap) {
+        const validIds = ids.filter((assetId) => fallbackRowMap.has(assetId));
+        if (!validIds.length) continue;
+        const existing = new Set(
+          (await trx("o_assets2Storyboard").where({ storyboardId }).pluck("assetId")).map(Number),
+        );
+        const missing = validIds.filter((assetId) => !existing.has(assetId));
+        if (missing.length) {
+          await trx("o_assets2Storyboard").insert(
+            missing.map((assetId, offset) => ({ storyboardId, assetId, sort: existing.size + offset })),
+          );
+        }
+      }
+    });
   }
 
   const videoRows = trackData.length
@@ -502,23 +673,32 @@ export async function buildVideoTaskData(
   )?.count;
   const referenceMode = mode === "multiImage" || capabilities.some((item) => item.type === "imageReference");
 
-  const tasks = storyboardList.map((storyboard, index) => {
-    const segment = segments[index];
-    const assets = relationMap.get(Number(storyboard.id)) || [];
+  const storyboardGroups = groupStoryboardRowsBySegments(storyboardList, segments);
+  const tasks = storyboardGroups.map(({ storyboards, segment }, index) => {
+    const storyboard = storyboards[0];
+    const assets = storyboards
+      .flatMap((item) => relationMap.get(Number(item.id)) || [])
+      .filter(
+        (asset, assetIndex, list) =>
+          list.findIndex((candidate) => Number(candidate.id) === Number(asset.id)) ===
+          assetIndex,
+      );
+    const storyboardWithImage =
+      storyboards.find((item) => item.filePath) || storyboard;
     const storyboardMedia = {
-      id: Number(storyboard.id),
+      id: Number(storyboardWithImage.id),
       name: `分镜图 ${index + 1}`,
       type: "storyboard",
       fileType: "image",
       sources: "storyboard",
-      src: fileUrl(storyboard.filePath),
-      prompt: storyboard.prompt || "",
-      state: storyboard.state || "未生成",
+      src: fileUrl(storyboardWithImage.filePath),
+      prompt: storyboardWithImage.prompt || "",
+      state: storyboardWithImage.state || "未生成",
     };
     const excludesStoryboard =
       referenceMode ||
       /不使用(?:本分镜已生成的)?故事板图|不使用分镜图/.test(
-        String(storyboard.videoDesc || ""),
+        storyboards.map((item) => String(item.videoDesc || "")).join("\n"),
       );
     let selectedMedias: AnyObject[] = [];
     if (referenceMode) {
@@ -533,15 +713,39 @@ export async function buildVideoTaskData(
     const segmentDuration =
       segment?.rows.reduce((sum, row) => sum + row.duration, 0) ||
       parseDuration(storyboard.duration);
-    const track = trackMap.get(Number(storyboard.trackId));
+    const groupTracks = storyboards
+      .map((item) => trackMap.get(Number(item.trackId)))
+      .filter(Boolean);
+    const promptMatchesSegment = (candidate: AnyObject | undefined) => {
+      const raw = String(candidate?.promptInferenceSnapshot || "").trim();
+      if (!raw || !segment) return true;
+      try {
+        const snapshot = JSON.parse(raw);
+        return (
+          normalizedSceneTitle(snapshot?.track?.sceneTitle) ===
+            normalizedSceneTitle(segment.sceneTitle) &&
+          String(snapshot?.track?.segmentTitle || "").replace(/\s+/g, "") ===
+            segment.segmentTitle.replace(/\s+/g, "")
+        );
+      } catch {
+        return true;
+      }
+    };
+    const track =
+      groupTracks.find(
+        (candidate) =>
+          String(candidate?.prompt || "").trim() && promptMatchesSegment(candidate),
+      ) || groupTracks[0];
     const videoDescription = String(
-      storyboard.videoDesc ||
+      storyboards.map((item) => item.videoDesc).filter(Boolean).join("\n") ||
         segment?.rows.map((row) => row.description).join("\n") ||
         "",
     ).trim();
+    const mismatchedPrompt = Boolean(track?.prompt) && !promptMatchesSegment(track);
     const stalePrompt =
-      excludesStoryboard &&
-      /分镜图|storyboard/i.test(String(track?.prompt || ""));
+      mismatchedPrompt ||
+      (excludesStoryboard &&
+        /分镜图|storyboard/i.test(String(track?.prompt || "")));
     const generatedPrompt = String(track?.prompt || "").trim();
     const prompt =
       generatedPrompt && !stalePrompt
@@ -555,7 +759,10 @@ export async function buildVideoTaskData(
       .map((asset) => asset.name);
     const videos = videoRows
       .filter(
-        (video) => Number(video.videoTrackId) === Number(storyboard.trackId),
+        (video) =>
+          storyboards.some(
+            (item) => Number(video.videoTrackId) === Number(item.trackId),
+          ),
       )
       .map((video) => ({
         ...video,
@@ -565,6 +772,7 @@ export async function buildVideoTaskData(
     return {
       id: Number(storyboard.trackId),
       storyboardId: Number(storyboard.id),
+      storyboardIds: storyboards.map((item) => Number(item.id)),
       index,
       isEpisodeOpening: index === 0,
       shotNumber: index + 1,
@@ -621,12 +829,102 @@ export async function buildVideoTaskData(
             ? [`${missingAssetNames.join("、")}尚无可用图片`]
             : []),
           ...(stalePrompt
-            ? ["已忽略仍引用故事板图的旧视频提示词，并按当前片段重新装配"]
+            ? [
+                mismatchedPrompt
+                  ? "已忽略与当前场次片段不匹配的旧视频提示词，并按正确镜头和资产重新装配"
+                  : "已忽略仍引用故事板图的旧视频提示词，并按当前片段重新装配",
+              ]
             : []),
         ],
       },
     };
   });
+
+  // The storyboard-table stage is intentionally saved before the formal
+  // storyboard panel is materialized. Keep that saved work visible in the
+  // workbench instead of presenting an empty state. Draft rows use negative
+  // in-memory IDs and are explicitly blocked from video submission until the
+  // user writes the panel, so they can never be mistaken for database tracks.
+  const draftBindings = parseStoryboardTableAssetBindings(flow.storyboardTable || "");
+  const draftAssetIds = [...new Set(draftBindings.flat())].filter(Number.isFinite);
+  const draftAssetRows = draftAssetIds.length
+    ? await u
+        .db("o_assets")
+        .leftJoin("o_image", "o_assets.imageId", "o_image.id")
+        .where("o_assets.projectId", projectId)
+        .whereIn("o_assets.id", draftAssetIds)
+        .select("o_assets.id", "o_assets.name", "o_assets.type", "o_assets.describe", "o_assets.prompt", "o_image.filePath", "o_image.state", "o_image.errorReason")
+    : [];
+  const draftAssetMap = new Map(draftAssetRows.map((row) => [Number(row.id), row]));
+  const draftTasks = !storyboardList.length
+    ? segments.map((segment, index) => {
+        const videoDescription = segment.rows.map((row) => row.description).filter(Boolean).join("\n");
+        const duration = segment.rows.reduce((sum, row) => sum + row.duration, 0);
+        const draftAssets = (draftBindings[index] || [])
+          .map((assetId) => draftAssetMap.get(assetId))
+          .filter(Boolean)
+          .map((asset: any) => ({
+            id: Number(asset.id),
+            name: asset.name || `资产 ${asset.id}`,
+            type: asset.type || "asset",
+            describe: asset.describe || "",
+            prompt: asset.prompt || "",
+            fileType: "image",
+            sources: "assets",
+            src: fileUrl(asset.filePath),
+            state: asset.state || (asset.filePath ? "已完成" : "未生成"),
+            errorReason: asset.errorReason || "",
+          }));
+        return {
+          id: -(index + 1),
+          storyboardId: null,
+          index,
+          isEpisodeOpening: index === 0,
+          shotNumber: index + 1,
+          title: `${segment.sceneTitle || "分镜表"} / ${segment.segmentTitle}`,
+          sceneTitle: segment.sceneTitle || "",
+          segmentTitle: segment.segmentTitle,
+          location: segment.location || "",
+          dayPart: segment.dayPart || "",
+          interiorExterior: segment.interiorExterior || "",
+          spatialLayers: segment.spatialLayers || "",
+          segmentRows: segment.rows,
+          dialogue: summarizeSegmentField(segment.rows, "dialogue"),
+          sound: summarizeSegmentField(segment.rows, "sound"),
+          summary: videoDescription,
+          duration,
+          imagePrompt: "",
+          videoDesc: videoDescription,
+          prompt: "",
+          promptSource: "storyboard.videoDesc",
+          promptTemplateId: null,
+          promptTemplateVersion: null,
+          promptInferenceSnapshot: null,
+          state: "待写入",
+          reason: "分镜表已保存，尚未写入正式分镜面板",
+          selectVideoId: null,
+          medias: draftAssets,
+          availableMedias: draftAssets,
+          referenceAssets: draftAssets,
+          storyboard: null,
+          excludesStoryboard: true,
+          videoList: [],
+          isDraft: true,
+          readiness: {
+            ready: Boolean(draftAssets.some((asset) => asset.src)),
+            hasPrompt: false,
+            referenceCount: draftAssets.filter((asset) => asset.src).length,
+            referenceLimit: null,
+            missingAssetNames: draftAssets.filter((asset) => !asset.src).map((asset) => asset.name),
+            messages: [
+              "分镜表已保存，请先写入正式分镜面板",
+              ...(draftAssets.length && !draftAssets.some((asset) => asset.src) ? ["缺少可用参考图"] : []),
+            ],
+          },
+        };
+      })
+    : [];
+  const visibleTasks = tasks.length ? tasks : draftTasks;
 
   return {
     narrativeContext,
@@ -653,6 +951,6 @@ export async function buildVideoTaskData(
       segmentTitle: task.segmentTitle,
       sceneTitle: task.sceneTitle,
     })),
-    trackList: tasks,
+    trackList: visibleTasks,
   };
 }

@@ -11,6 +11,7 @@ const requestSchema = {
   model: z.string(),
   resolution: z.string(),
   concurrentCount: z.number().int().min(1).optional(),
+  templateId: z.number().optional().nullable(),
   items: z.array(
     z.object({
       id: z.number(),
@@ -18,11 +19,16 @@ const requestSchema = {
       name: z.string(),
       prompt: z.string(),
       base64: z.string().optional().nullable(),
+      referenceImageId: z.number().optional().nullable(),
     }),
   ),
 };
 
-export default router.post("/", validateFields(requestSchema), async (req, res) => {
-  const data = await queueAssetImages(req.body);
-  return res.status(200).send(success(data));
-});
+export default router.post(
+  "/",
+  validateFields(requestSchema),
+  async (req, res) => {
+    const data = await queueAssetImages(req.body);
+    return res.status(200).send(success(data));
+  },
+);

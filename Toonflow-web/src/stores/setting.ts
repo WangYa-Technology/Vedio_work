@@ -1,3 +1,5 @@
+import { getDefaultApiBaseUrl } from "@/utils/backendUrl";
+
 export default defineStore(
   "setting",
   () => {
@@ -5,7 +7,7 @@ export default defineStore(
     const canvasWheelEvent = ref("zoom");
     const activeMenu = ref("language");
 
-    const baseUrl = ref<string>("http://127.0.0.1:10588/api");
+    const baseUrl = ref<string>(getDefaultApiBaseUrl());
 
     const otherSetting = ref({
       axiosTimeOut: 60 * 10 * 1000,

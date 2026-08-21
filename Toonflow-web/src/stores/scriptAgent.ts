@@ -1,6 +1,7 @@
 import axios from "@/utils/axios";
 import settingStore from "@/stores/setting";
 import { useChat } from "@/utils/useChat";
+import { resolveApiBaseUrl } from "@/utils/backendUrl";
 
 interface PlanData {
   storySkeleton: string;
@@ -41,7 +42,7 @@ export default defineStore(
     });
 
     const { connected, messages, renderableMessages, chat, stopGenerate, socket, status, workflowStatus, connect, reconnect, disconnect, clearMessages } = useChat({
-      url: `${settingStore().baseUrl}/socket/scriptAgent`,
+      url: `${resolveApiBaseUrl(settingStore().baseUrl)}/socket/scriptAgent`,
       auth: chatAuth,
       manageLifecycle: false,
       xmlTags: [

@@ -92,6 +92,7 @@ interface PromptItem {
 const templateTypeOptions = [
   { label: "图片提示词生成", value: "imagePromptGeneration" },
   { label: "视频提示词生成", value: "videoPromptGeneration" },
+  { label: "图片资产推理模板", value: "assetInferenceTemplate" },
 ];
 const promptToolbars: ToolbarNames[] = [
   "bold",

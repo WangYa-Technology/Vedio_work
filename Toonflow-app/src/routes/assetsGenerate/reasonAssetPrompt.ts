@@ -4,14 +4,31 @@ import u from "@/utils";
 import { error, success } from "@/lib/responseFormat";
 import { validateFields } from "@/middleware/middleware";
 import { resolveStylePromptReasoning } from "@/utils/stylePromptReasoning";
+import {
+  ASSET_FACTS_PRIORITY_RULES,
+  buildAssetPromptFactsMessage,
+  hasPhotorealisticDirection,
+} from "@/utils/imagePrompt";
+import {
+  buildAssetInferenceTemplatePrompt,
+  isAssetInferenceTemplateApplicable,
+  parseAssetInferenceTemplate,
+} from "@/utils/assetInferenceTemplate";
 
 const router = express.Router();
 
-function renderTemplate(source: string, asset: { name?: string; type?: string; describe?: string; prompt?: string }) {
+function renderTemplate(
+  source: string,
+  asset: { name?: string; type?: string; describe?: string; prompt?: string },
+) {
   const name = asset.name || "未命名";
   const type = asset.type || "未标注";
   const describe = asset.describe || "无";
-  const input = [`资产名称：${name}`, `资产类型：${type}`, `资产描述：${describe}`].join("\n");
+  const input = [
+    `资产名称：${name}`,
+    `资产类型：${type}`,
+    `资产描述：${describe}`,
+  ].join("\n");
   return source
     .replace(/\{\{(?:输入文本|文本|测试文本|输入内容|提示词)\}\}/g, input)
     .replace(/\{\{名称\}\}/g, name)
@@ -26,72 +43,148 @@ export default router.post(
     projectId: z.number(),
     assetsId: z.number(),
     templateId: z.number(),
+    referenceImageId: z.number().optional().nullable(),
   }),
   async (req, res) => {
-    const { projectId, assetsId, templateId } = req.body;
+    const { projectId, assetsId, templateId, referenceImageId } = req.body;
     const asset = await u
       .db("o_assets")
       .where({ id: assetsId, projectId })
-      .select("id", "type", "name", "describe", "originalPrompt", "prompt")
+      .select("id", "type", "name", "describe", "originalPrompt", "prompt", "imageId")
       .first();
-    if (!asset) return res.status(404).send(error("资产不存在或不属于当前项目"));
+    if (!asset)
+      return res.status(404).send(error("资产不存在或不属于当前项目"));
 
     const template = await u
       .db("o_prompt")
-      .where({ id: templateId, type: "imagePromptGeneration" })
-      .select("id", "name", "data")
+      .where({ id: templateId })
+      .whereIn("type", ["assetInferenceTemplate", "imagePromptGeneration"])
+      .select("id", "name", "data", "useData")
       .first();
-    if (!template || !String(template.data || "").trim()) {
+    const templateSource = String(template?.useData || template?.data || "").trim();
+    if (!template || !templateSource) {
       return res.status(400).send(error("请选择有效且非空的图片推理模版"));
     }
 
     try {
-      const renderedTemplate = renderTemplate(String(template.data), asset);
+      await u.db("o_assets").where({ id: assetsId, projectId }).update({ promptState: "生成中", promptErrorReason: null });
+      const structuredTemplate = parseAssetInferenceTemplate(templateSource);
+      if (structuredTemplate && !isAssetInferenceTemplateApplicable(structuredTemplate, asset.type as "role" | "scene" | "tool")) {
+        return res.status(400).send(error(`推理模板“${structuredTemplate.name}”不适用于当前资产类型`));
+      }
+      const renderedTemplate = structuredTemplate
+        ? buildAssetInferenceTemplatePrompt(structuredTemplate)
+        : renderTemplate(templateSource, asset);
       const project = await u
         .db("o_project")
         .where({ id: projectId })
-        .select("artStyle")
+        .select("artStyle", "intro")
         .first();
       const visualStyleManual = project?.artStyle
-        ? u.getArtPromptFile(project.artStyle, "art_skills", "art_storyboard_video")
+        ? u.getArtPromptFile(
+            project.artStyle,
+            "art_skills",
+            "art_storyboard_video",
+          )
         : "";
       const styleReasoning = resolveStylePromptReasoning(
         project?.artStyle || "",
         visualStyleManual,
       );
-      const result = (await u.Ai.Text("universalAi").invoke({
-        system: [
-          "你是图片提示词推理执行器。下面的推理模板是本次生成的最高优先规则，必须严格遵守其角色、结构、版式、风格和输出要求。",
+      const effectiveStyleReasoning = hasPhotorealisticDirection(renderedTemplate)
+        ? "当前图片推理模板明确要求真人写实/实拍/超写实媒介。项目全局风格只能提供非冲突的构图、色彩和光影参考，禁止引入动漫、卡通、二次元、赛璐珞、手绘平涂或动画渲染媒介。"
+        : styleReasoning;
+      let referenceImage: string | null = null;
+      let referenceImageBytes: Uint8Array | null = null;
+      const selectedReferenceId = referenceImageId || asset.imageId;
+      if (selectedReferenceId) {
+        const image = await u.db("o_image").where({ id: selectedReferenceId }).select("filePath").first();
+        if (image?.filePath) {
+          try {
+            referenceImage = await u.oss.getImageBase64(image.filePath);
+            const encoded = referenceImage.split(",")[1];
+            if (encoded) referenceImageBytes = Buffer.from(encoded, "base64");
+          } catch {
+            referenceImage = null;
+            referenceImageBytes = null;
+          }
+        }
+      }
+      const system = [
+          "你是图片提示词推理执行器。剧本资产事实是本次生成的最高优先规则；推理模板只定义结构、版式和视觉表达。",
+          ASSET_FACTS_PRIORITY_RULES,
           "不要沿用、润色或复述数据库中的旧提示词；必须根据本次资产信息从头推理。",
+          referenceImage
+            ? "参考图只用于提取可见的主体特征、轮廓、材质、色彩和构图元素；若与剧本事实冲突，必须服从剧本事实。"
+            : "当前没有可读取的参考图，只能依据剧本资产事实和模板规则推理。",
           "<推理模板>",
           renderedTemplate,
           "</推理模板>",
           "<风格推理规则>",
-          styleReasoning,
+          effectiveStyleReasoning,
           "</风格推理规则>",
-        ].join("\n"),
-        messages: [
+          ASSET_FACTS_PRIORITY_RULES,
+        ].join("\n");
+      const factsMessage = {
+        role: "user" as const,
+        content: [
           {
-            role: "user",
-            content: [
-              `资产名称：${asset.name || "未命名"}`,
-              `资产类型：${asset.type || "未标注"}`,
-              `资产描述：${asset.describe || "无"}`,
-              "请严格按照推理模板处理以上输入。只输出模板要求的最终结果，不要解释，不要复述输入。",
+            type: "text" as const,
+            text: [
+              buildAssetPromptFactsMessage({
+                assetLabel: asset.type || "资产",
+                name: asset.name || "未命名",
+                description: asset.describe,
+                projectIntro: project?.intro,
+              }),
+              "\n【任务】结合剧本事实、模板规则和参考图中可见元素，生成一条适用于当前资产的完整图片提示词。只输出提示词正文。",
             ].join("\n"),
           },
+          ...(referenceImageBytes ? [{ type: "image" as const, image: referenceImageBytes }] : []),
         ],
-        maxRetries: 0,
-        maxOutputTokens: 4096,
-      })) as any;
+      };
+      let result: any;
+      try {
+        result = await u.Ai.Text("universalAi").invoke({
+          system,
+          messages: [factsMessage],
+          maxRetries: 0,
+          maxOutputTokens: 4096,
+        });
+      } catch (visionError) {
+        if (!referenceImageBytes) throw visionError;
+        result = await u.Ai.Text("universalAi").invoke({
+          system: `${system}\n参考图视觉输入不可用，请仅依据剧本资产事实和模板规则完成推理。`,
+          messages: [{
+            role: "user",
+            content: factsMessage.content.filter((part) => part.type === "text"),
+          }],
+          maxRetries: 0,
+          maxOutputTokens: 4096,
+        });
+      }
       const prompt = String(result.text || result._output || "").trim();
-      if (!prompt) return res.status(502).send(error("图片推理未返回有效提示词"));
+      if (!prompt)
+        return res.status(502).send(error("图片推理未返回有效提示词"));
 
-      const originalPrompt = String(asset.originalPrompt || asset.prompt || "").trim();
-      await u.db("o_assets").where({ id: assetsId, projectId }).update({ originalPrompt, prompt });
-      return res.status(200).send(success({ originalPrompt, prompt, assetsId, templateId }));
+      const originalPrompt = String(
+        asset.originalPrompt || asset.prompt || "",
+      ).trim();
+      await u
+        .db("o_assets")
+        .where({ id: assetsId, projectId })
+        .update({ originalPrompt, prompt, promptState: "已完成", promptErrorReason: null });
+      return res
+        .status(200)
+        .send(success({ originalPrompt, prompt, assetsId, templateId }));
     } catch (caught) {
-      return res.status(502).send(error(`图片提示词推理失败：${u.error(caught).message}`));
+      await u
+        .db("o_assets")
+        .where({ id: assetsId, projectId })
+        .update({ promptState: "失败", promptErrorReason: u.error(caught).message });
+      return res
+        .status(502)
+        .send(error(`图片提示词推理失败：${u.error(caught).message}`));
     }
   },
 );

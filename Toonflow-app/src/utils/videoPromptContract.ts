@@ -25,6 +25,10 @@ export interface VideoPromptContractTask {
   }>;
   isEpisodeOpening?: boolean;
   requiresNarrativeVoiceover?: boolean;
+  medias?: Array<{
+    name?: unknown;
+    type?: unknown;
+  }>;
 }
 
 const STYLE_CONTAMINATION = /真人|实拍|IMAX|Arri\s*Alexa|2\.39\s*:\s*1|\b8K\b/i;
@@ -81,7 +85,7 @@ const ACTION_ANCHOR_TRANSLATIONS: Record<string, RegExp> = {
   摇头: /shakes? (?:his|her|their) head/i,
 };
 const DOWNWARD_MOTION = /坠落|坠入|下坠|自由落体|落向|降落|向下落/;
-const DOWNWARD_PROMPT = /坠落|坠入|下坠|自由落体|向下落|向下坠|接近(?:湖面|水面|地面)|冲入湖面|砸入湖面|falls? downward|falls? (?:vertically|straight down)|drops? (?:downward|vertically|straight down)|(?:is |continues? )?(?:falling|descending|dropping)(?: toward| toward the| downward| vertically| straight down)?|descends? toward|plunges? toward|free-?falls?|continues? falling|approaches? (?:the )?(?:lake|water|ground)|moves? from (?:the )?top of (?:the )?frame toward (?:the )?(?:lake|water|ground)/i;
+const DOWNWARD_PROMPT = /坠落|坠入|下坠|自由落体|落向|降落|向下落|向下坠|接近(?:湖面|水面|地面)|冲入湖面|砸入湖面|falls? (?:downward|into|toward)|falls? (?:vertically|straight down)|drops? (?:downward|into|toward|vertically|straight down)|(?:is |continues? )?(?:falling|descending|dropping)(?: into| toward| toward the| downward| vertically| straight down)?|descends? (?:into|toward)|plunges? (?:into|toward)|plummets?|plummeting|tumbles? (?:downward|into|toward)|tumbling (?:downward|into|toward)|hurtl(?:e|es|ing) (?:downward|into|toward)|dives? (?:downward|into|toward)|free-?falls?|continues? falling|approaches? (?:the )?(?:lake|water|ground)|moves? from (?:the )?top of (?:the )?frame toward (?:the )?(?:lake|water|ground)|(?:lake|water|ground)(?: surface)? (?:rapidly )?(?:expands|grows larger|rushes closer) (?:below|beneath)/i;
 // Only reject a reverse movement performed by the subject itself. Camera rises or
 // ambient elements moving upward must not invalidate a correctly descending actor.
 const REVERSED_DOWNWARD_MOTION = /(?:人物|角色|主体|王胜|他|她)(?:的身体)?[^。；\n]{0,18}(?:向上飞|向上升|上升|升空|倒飞(?:回|向)?高处|飞回高空)|(?:从|由)(?:地面|水面|湖面)[^。；\n]{0,12}(?:飞向|冲向|升向)(?:天空|高空)|\b(?:character|subject|he|she|wang\s+sheng)\b(?:\s+(?:is|was|begins? to|starts? to|continues? to|then|suddenly|abruptly|quickly|slowly|straight|directly|back|upward|up|into|toward|the|a|an|his|her|their|body|figure|whole|entire)){0,12}\s+(?:flies?\s+upward|rises?|ascends?|returns?\s+to\s+the\s+sky)\b|(?:from|off) (?:the )?(?:ground|water|lake)[^.\n]{0,30}(?:toward|into) (?:the )?(?:sky|air|high altitude)/i;
@@ -201,6 +205,188 @@ function hasH3SpokenDialogue(prompt: string) {
   return false;
 }
 
+function parseExpectedDialogue(value: unknown) {
+  const raw = String(value || "")
+    .trim()
+    .replace(/^台词[：:]\s*/, "");
+  if (!raw || /^(?:无|无台词|无对白|暂无|-)$/i.test(raw)) return null;
+  const withoutType = raw
+    .replace(/^(?:普通对白|对白|内心独白|画外音|旁白)\s*(?:OS|VO)?\s*[：:]?\s*/i, "")
+    .trim();
+  const match = withoutType.match(/^([^：:\n]{1,24})[：:]\s*([\s\S]+)$/);
+  return {
+    speaker: match?.[1]?.trim() || "",
+    text: (match?.[2] || withoutType)
+      .replace(/^[“"「『]|[”"」』]$/g, "")
+      .trim(),
+  };
+}
+
+function normalizeSpokenText(value: unknown) {
+  return String(value || "")
+    .normalize("NFKC")
+    .replace(/[\s，。！？、；：,.!?;:'"“”‘’「」『』]/g, "")
+    .toLowerCase();
+}
+
+function validateH3DialogueAndIdentity(
+  task: VideoPromptContractTask,
+  prompt: string,
+  config: VideoPromptContractConfig,
+) {
+  if (
+    config.videoPromptProfile?.modelFamily !== "minimax-h3" ||
+    !["multiReference", "multimodal"].includes(
+      String(config.videoPromptProfile.modeKind || ""),
+    )
+  ) {
+    return [];
+  }
+
+  const violations: string[] = [];
+  const expected = (task.segmentRows || [])
+    .map((row) => parseExpectedDialogue(row.dialogue))
+    .filter(Boolean) as Array<{ speaker: string; text: string }>;
+  const spoken = Array.from(
+    prompt.matchAll(/<d>\[([^\]]+)\]\s*([\s\S]*?)<\/d>/gi),
+    (match) => ({ language: match[1], text: match[2].trim() }),
+  );
+  const expectedCounts = new Map<string, number>();
+  for (const item of expected) {
+    const key = normalizeSpokenText(item.text);
+    expectedCounts.set(key, (expectedCounts.get(key) || 0) + 1);
+    if (item.speaker && new RegExp(`^${item.speaker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*[：:]`).test(item.text)) {
+      violations.push(`台词内容仍包含说话人前缀：${item.speaker}`);
+    }
+  }
+  const actualCounts = new Map<string, number>();
+  for (const item of spoken) {
+    const key = normalizeSpokenText(item.text);
+    actualCounts.set(key, (actualCounts.get(key) || 0) + 1);
+    if (/^[^：:\n]{1,24}[：:]/.test(item.text)) {
+      violations.push("H3 <d> 内包含说话人前缀，可能导致角色名被朗读");
+    }
+  }
+  for (const [key, count] of expectedCounts) {
+    if ((actualCounts.get(key) || 0) !== count) {
+      const source = expected.find((item) => normalizeSpokenText(item.text) === key);
+      violations.push(`台词必须逐字且仅出现 ${count} 次：${source?.text || key}`);
+    }
+  }
+  const unexpected = [...actualCounts.keys()].filter(
+    (key) => !expectedCounts.has(key),
+  );
+  if (unexpected.length && !task.requiresNarrativeVoiceover) {
+    violations.push("提示词新增、改写或串入了分镜中不存在的台词");
+  }
+
+  const roleReferences = (task.medias || [])
+    .map((media, index) => ({
+      index: index + 1,
+      name: String(media.name || "").trim(),
+      type: String(media.type || "").toLowerCase(),
+    }))
+    .filter((media) => /role|character|人物|角色/.test(media.type) && media.name);
+  const subjectDefinitions = prompt.split(/^\s*summary\s*:/im)[0];
+  const subjectBlocks = Array.from(
+    subjectDefinitions.matchAll(
+      /(<Subject\s+\d+>)[\s\S]*?(?=<Subject\s+\d+>|$)/gi,
+    ),
+    (match) => ({ tag: match[1], body: match[0] }),
+  );
+  const subjectByRole = new Map<string, string>();
+  for (const role of roleReferences) {
+    const referenceToken = String(config.referenceToken || "@图").replace(
+      /[.*+?^${}()|[\]\\]/g,
+      "\\$&",
+    );
+    const referencePattern = new RegExp(`${referenceToken}\\s*${role.index}(?!\\d)`, "i");
+    const block =
+      subjectBlocks.find((candidate) => referencePattern.test(candidate.body)) ||
+      // Some H3 responses spell the reference as "reference image 1" or
+      // omit the token while still naming the role. Keep the identity check
+      // useful without rejecting an otherwise unique Subject mapping.
+      subjectBlocks.find((candidate) =>
+        new RegExp(`(?:^|[^\\p{L}])${role.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:$|[^\\p{L}])`, "u").test(
+          candidate.body,
+        ),
+      ) ||
+      // If the model omitted all reference tokens but preserved one Subject
+      // block per role, use the stable input order as a compatibility mapping.
+      (subjectBlocks.length === roleReferences.length
+        ? subjectBlocks[roleReferences.indexOf(role)]
+        : undefined);
+    const tag = block?.tag || "";
+    if (!tag) {
+      violations.push(`角色参考未建立独立 Subject：${role.name}`);
+      continue;
+    }
+    subjectByRole.set(role.name, tag);
+  }
+  const assignedTags = [...subjectByRole.values()].map((tag) => tag.toLowerCase());
+  if (new Set(assignedTags).size !== assignedTags.length) {
+    violations.push("多个角色被映射到同一个 Subject，存在复制脸或身份混用风险");
+  }
+  for (const item of expected.filter((dialogue) => dialogue.speaker)) {
+    const subject = subjectByRole.get(item.speaker);
+    if (!subject) {
+      violations.push(`说话角色缺少独立参考主体：${item.speaker}`);
+      continue;
+    }
+    const escapedSubject = subject.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const escapedDialogue = item.text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (
+      !new RegExp(
+        `${escapedSubject}\\s*\\(S\\d+\\)[\\s\\S]{0,320}<d>\\[Chinese\\]\\s*${escapedDialogue}\\s*<\\/d>`,
+        "i",
+      ).test(prompt)
+    ) {
+      violations.push(`台词未绑定到正确的 H3 说话主体：${item.speaker}`);
+    }
+  }
+  return violations;
+}
+
+function validateH3ShotTiming(
+  task: VideoPromptContractTask,
+  prompt: string,
+  config: VideoPromptContractConfig,
+) {
+  if (config.videoPromptProfile?.modelFamily !== "minimax-h3") return [];
+  const rows = task.segmentRows || [];
+  if (rows.length <= 1) return [];
+  let elapsed = 0;
+  let cumulativeTimingKnown = true;
+  const violations: string[] = [];
+  for (let index = 0; index < rows.length; index += 1) {
+    if (index > 0) {
+      const marker = prompt.match(
+        new RegExp(
+          `\\[Shot\\s+${index + 1}\\]\\s+At\\s+(\\d{2}):(\\d{2}\\.\\d{3})`,
+          "i",
+        ),
+      );
+      const actual = marker
+        ? Number(marker[1]) * 60 + Number(marker[2])
+        : Number.NaN;
+      if (
+        !Number.isFinite(actual) ||
+        (cumulativeTimingKnown && Math.abs(actual - elapsed) > 0.05)
+      ) {
+        violations.push(
+          `Shot ${index + 1} 的 H3 切镜时间必须是累计时间 ${String(
+            Math.floor(elapsed / 60),
+          ).padStart(2, "0")}:${(elapsed % 60).toFixed(3).padStart(6, "0")}`,
+        );
+      }
+    }
+    const duration = Number(rows[index].duration);
+    if (!Number.isFinite(duration) || duration <= 0) cumulativeTimingKnown = false;
+    else elapsed += duration;
+  }
+  return violations;
+}
+
 function validateH3Structure(prompt: string, config: VideoPromptContractConfig) {
   if (config.videoPromptProfile?.modelFamily !== "minimax-h3") return [];
 
@@ -229,6 +415,19 @@ function validateH3Structure(prompt: string, config: VideoPromptContractConfig) 
       modeKind === "multiReference" || modeKind === "multimodal"
         ? "MiniMax H3 Ref2VA 提示词缺少官方六段结构或字段顺序错误"
         : "MiniMax H3 基础模式提示词缺少官方三段结构或字段顺序错误",
+    ];
+  }
+
+  const musicBody = prompt
+    .slice(positions[positions.length - 1] + fields[fields.length - 1].length)
+    .trim();
+  const allowedMusicBodies = new Set([
+    "N/A",
+    "N/A\n只保留同步环境音效和动作音效，不生成背景音乐，不生成字幕。",
+  ]);
+  if (!allowedMusicBodies.has(musicBody)) {
+    return [
+      "MiniMax H3 的 non_diegetic_music 只能写 N/A，并可追加指定的同步音效固定句",
     ];
   }
 
@@ -296,6 +495,8 @@ export function collectVideoPromptContractViolations(
 ) {
   const violations: string[] = [];
   violations.push(...validateH3Structure(prompt, config));
+  violations.push(...validateH3DialogueAndIdentity(task, prompt, config));
+  violations.push(...validateH3ShotTiming(task, prompt, config));
   const artStyle = String(config.artStyle || "").toLowerCase();
   const isRealisticStyle = /realpeople|realistic|documentary|写实|真人/.test(artStyle);
   if (!isRealisticStyle && STYLE_CONTAMINATION.test(prompt)) {
@@ -341,7 +542,11 @@ export function collectVideoPromptContractViolations(
   if (NARRATION_LIP_SYNC_NEGATIVE.test(prompt)) {
     violations.push("提示词泄露了负向嘴型控制词：旁白应使用非画内叙述，不写闭嘴或 lip-sync 指令");
   }
-  if (SUBTITLE_INSTRUCTION.test(prompt)) {
+  const promptWithoutRequestedSoundSuffix = prompt.replace(
+    /N\/A\s*\n只保留同步环境音效和动作音效，不生成背景音乐，不生成字幕。\s*$/,
+    "N/A",
+  );
+  if (SUBTITLE_INSTRUCTION.test(promptWithoutRequestedSoundSuffix)) {
     violations.push("提示词要求生成字幕：视频必须全程无字幕，对白和旁白只能作为声音");
   }
   if (hasAffirmativeBackgroundMusic(prompt)) {

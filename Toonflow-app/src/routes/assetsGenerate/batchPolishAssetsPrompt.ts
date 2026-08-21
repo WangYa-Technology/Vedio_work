@@ -4,6 +4,16 @@ import pLimit from "p-limit";
 import * as zod from "zod";
 import { error, success } from "@/lib/responseFormat";
 import { validateFields } from "@/middleware/middleware";
+import {
+  ASSET_FACTS_PRIORITY_RULES,
+  buildAssetPromptFactsMessage,
+  hasPhotorealisticDirection,
+} from "@/utils/imagePrompt";
+import {
+  buildAssetInferenceTemplatePrompt,
+  isAssetInferenceTemplateApplicable,
+  parseAssetInferenceTemplate,
+} from "@/utils/assetInferenceTemplate";
 const router = express.Router();
 interface OutlineItem {
   description: string;
@@ -32,8 +42,14 @@ interface ResultItem {
   name: string;
   chapterRange: number[];
 }
-function findItemByName(items: ResultItem[], name: string, type?: ItemType): ResultItem | undefined {
-  return items.find((item) => (!type || item.type === type) && item.name === name);
+function findItemByName(
+  items: ResultItem[],
+  name: string,
+  type?: ItemType,
+): ResultItem | undefined {
+  return items.find(
+    (item) => (!type || item.type === type) && item.name === name,
+  );
 }
 function mergeNovelText(novelData: NovelChapter[]): string {
   if (!Array.isArray(novelData)) return "";
@@ -57,16 +73,28 @@ export default router.post(
     ),
     projectId: zod.number(),
     concurrentCount: zod.number().int().min(1).optional(),
+    templateId: zod.number().optional(),
   }),
   async (req, res) => {
-    const { projectId, items, concurrentCount } = req.body;
+    const { projectId, items, concurrentCount, templateId } = req.body;
     //获取风格
-    const project = await u.db("o_project").where("id", projectId).select("artStyle", "type", "intro").first();
+    const project = await u
+      .db("o_project")
+      .where("id", projectId)
+      .select("artStyle", "type", "intro")
+      .first();
     //如果没有找到对应的项目，返回错误
     if (!project) return res.status(500).send(success({ message: "项目为空" }));
+    const inferenceTemplate = templateId
+      ? await u.db("o_prompt").where({ id: templateId }).select("data", "useData").first()
+      : null;
+    const structuredTemplate = parseAssetInferenceTemplate(inferenceTemplate?.useData || inferenceTemplate?.data);
 
     // 预加载公共数据
-    const allOutlineDataList: { data: string }[] = await u.db("o_outline").where("projectId", projectId).select("data");
+    const allOutlineDataList: { data: string }[] = await u
+      .db("o_outline")
+      .where("projectId", projectId)
+      .select("data");
     const itemMap: Record<string, ResultItem> = {};
     if (allOutlineDataList.length > 0)
       allOutlineDataList.forEach((row) => {
@@ -75,9 +103,18 @@ export default router.post(
           (data[type] || []).forEach((item) => {
             const key = `${type}-${item.name}`;
             if (!itemMap[key]) {
-              itemMap[key] = { type, name: item.name, chapterRange: [...(data.chapterRange || [])] };
+              itemMap[key] = {
+                type,
+                name: item.name,
+                chapterRange: [...(data.chapterRange || [])],
+              };
             } else {
-              itemMap[key].chapterRange = Array.from(new Set([...itemMap[key].chapterRange, ...(data.chapterRange || [])]));
+              itemMap[key].chapterRange = Array.from(
+                new Set([
+                  ...itemMap[key].chapterRange,
+                  ...(data.chapterRange || []),
+                ]),
+              );
             }
           });
         });
@@ -85,21 +122,50 @@ export default router.post(
     const result: ResultItem[] = Object.values(itemMap);
     const assetsIds = items.map((item: { assetsId: number }) => item.assetsId);
     //查询所有资产，用于判断每个资产是否是衍生资产
-    const assetsDataList = await u.db("o_assets").whereIn("id", assetsIds).select("id", "assetsId");
-    if (!assetsDataList || assetsDataList.length === 0) return res.status(500).send(error("资产不存在"));
+    const assetsDataList = await u
+      .db("o_assets")
+      .where({ projectId })
+      .whereIn("id", assetsIds)
+      .select("id", "assetsId", "name", "describe", "type");
+    if (structuredTemplate) {
+      const invalidAsset = assetsDataList.find((asset) => !isAssetInferenceTemplateApplicable(structuredTemplate, asset.type as "role" | "scene" | "tool"));
+      if (invalidAsset) {
+        return res.status(400).send(error(`推理模板“${structuredTemplate.name}”不适用于当前资产类型`));
+      }
+    }
+    const requestedAssetIds = [...new Set(assetsIds.map(Number))];
+    if (assetsDataList.length !== requestedAssetIds.length)
+      return res
+        .status(400)
+        .send(error("待生成提示词的资产不存在或不属于当前项目"));
     const assetsDataMap = new Map(assetsDataList.map((a: any) => [a.id, a]));
     // 所有前置检测通过后，再批量更新状态为生成中
-    await u.db("o_assets").whereIn("id", assetsIds).update({ promptState: "生成中" });
+    await u
+      .db("o_assets")
+      .where({ projectId })
+      .whereIn("id", assetsIds)
+      .update({ promptState: "生成中" });
 
     const getTypeConfig = (
       isDerivative: boolean,
-    ): Record<string, { promptKey: string; itemType: ItemType; label: string; nameLabel: string; visualManual: string }> => ({
+    ): Record<
+      string,
+      {
+        promptKey: string;
+        itemType: ItemType;
+        label: string;
+        nameLabel: string;
+        visualManual: string;
+      }
+    > => ({
       role: {
         promptKey: "role-polish",
         itemType: "characters",
         label: "角色标准四视图",
         nameLabel: "角色",
-        visualManual: isDerivative ? "art_character_derivative" : "art_character",
+        visualManual: isDerivative
+          ? "art_character_derivative"
+          : "art_character",
       },
       scene: {
         promptKey: "scene-polish",
@@ -119,52 +185,93 @@ export default router.post(
 
     // 后台异步并发生成，不阻塞响应
     const limit = pLimit(concurrentCount ?? 1);
-    const tasks = items.map((item: { assetsId: number; type: string; name: string; describe: string }) =>
-      limit(async () => {
-        const assetData = assetsDataMap.get(item.assetsId);
-        if (!assetData) return;
-        const typeConfig = getTypeConfig(!!assetData.assetsId);
-        const config = typeConfig[item.type];
-        if (!config) return;
-        //获取到视觉手册
-        const visualManual = await u.getArtPrompt(project.artStyle as string, "art_skills", config.visualManual);
-        if (!visualManual) {
-          await u.db("o_assets").where("id", item.assetsId).update({ promptState: "生成失败", promptErrorReason: "视觉手册未定义" });
-          return;
-        }
-        findItemByName(result, item.name, config.itemType);
-        const systemPrompt = visualManual;
-        try {
-          const { _output } = (await u.Ai.Text("universalAi").invoke({
-            system: systemPrompt,
-            messages: [
-              {
-                role: "user",
-                content: `
-                    **基础参数：**
-      **${config.nameLabel}设定：**
-      - ${config.nameLabel}名称:${item.name},
-      - ${config.nameLabel}描述:${item.describe},`,
-              },
-            ],
-          })) as any;
-
-          if (!_output) {
-            await u.db("o_assets").where("id", item.assetsId).update({ promptState: "生成失败" });
+    const tasks = items.map(
+      (item: {
+        assetsId: number;
+        type: string;
+        name: string;
+        describe: string;
+      }) =>
+        limit(async () => {
+          const assetData = assetsDataMap.get(item.assetsId);
+          if (!assetData) return;
+          if (assetData.type !== item.type) {
+            await u.db("o_assets").where("id", item.assetsId).update({
+              promptState: "生成失败",
+              promptErrorReason: "资产类型不匹配",
+            });
             return;
           }
+          const typeConfig = getTypeConfig(!!assetData.assetsId);
+          const config = typeConfig[item.type];
+          if (!config) return;
+          //获取到视觉手册
+          const visualManual = await u.getArtPrompt(
+            project.artStyle as string,
+            "art_skills",
+            config.visualManual,
+          );
+          if (!visualManual) {
+            await u.db("o_assets").where("id", item.assetsId).update({
+              promptState: "生成失败",
+              promptErrorReason: "视觉手册未定义",
+            });
+            return;
+          }
+          const assetName = String(assetData.name || item.name);
+          const assetDescription = String(
+            assetData.describe || item.describe || "",
+          );
+          findItemByName(result, assetName, config.itemType);
+          const templatePrompt = structuredTemplate ? buildAssetInferenceTemplatePrompt(structuredTemplate) : "";
+          const effectiveVisualManual = hasPhotorealisticDirection(templatePrompt)
+            ? "当前图片推理模板明确要求真人写实/实拍/超写实媒介。项目视觉手册只能提供非冲突的构图、色彩和光影参考，禁止引入动漫、卡通、二次元、赛璐珞、手绘平涂或动画渲染媒介。"
+            : visualManual;
+          const systemPrompt = [
+            ASSET_FACTS_PRIORITY_RULES,
+            templatePrompt,
+            effectiveVisualManual,
+            ASSET_FACTS_PRIORITY_RULES,
+          ].join("\n\n");
+          try {
+            const { _output } = (await u.Ai.Text("universalAi").invoke({
+              system: systemPrompt,
+              messages: [
+                {
+                  role: "user",
+                  content: buildAssetPromptFactsMessage({
+                    assetLabel: config.nameLabel,
+                    name: assetName,
+                    description: assetDescription,
+                    projectIntro: project.intro,
+                  }),
+                },
+              ],
+            })) as any;
 
-          await u
-            .db("o_assets")
-            .where("id", item.assetsId)
-            .update({ originalPrompt: _output, prompt: _output, promptState: "已完成" });
-        } catch (e: any) {
-          await u
-            .db("o_assets")
-            .where("id", item.assetsId)
-            .update({ promptState: "失败", promptErrorReason: u.error(e).message });
-        }
-      }),
+            if (!_output) {
+              await u
+                .db("o_assets")
+                .where("id", item.assetsId)
+                .update({ promptState: "生成失败" });
+              return;
+            }
+
+            await u.db("o_assets").where("id", item.assetsId).update({
+              originalPrompt: _output,
+              prompt: _output,
+              promptState: "已完成",
+            });
+          } catch (e: any) {
+            await u
+              .db("o_assets")
+              .where("id", item.assetsId)
+              .update({
+                promptState: "失败",
+                promptErrorReason: u.error(e).message,
+              });
+          }
+        }),
     );
 
     // 后台执行，不等待结果

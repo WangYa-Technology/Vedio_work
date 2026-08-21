@@ -41,10 +41,49 @@ export default router.post(
             filePath: img.filePath && (await u.oss.getFileUrl(img.filePath)),
           })),
         );
+        const voice =
+          parent.type === "role"
+            ? await u
+                .db("o_assetsRole2Audio")
+                .join("o_assets as audioAsset", "o_assetsRole2Audio.assetsAudioId", "audioAsset.id")
+                .leftJoin("o_image as audioImage", "audioAsset.imageId", "audioImage.id")
+                .where({
+                  "o_assetsRole2Audio.assetsRoleId": parent.id,
+                  "audioAsset.projectId": parent.projectId,
+                  "audioAsset.type": "clip",
+                })
+                .select(
+                  "audioAsset.id as assetId",
+                  "audioAsset.name",
+                  "audioAsset.imageId",
+                  "audioImage.filePath",
+                  "audioImage.state",
+                )
+                .first()
+            : null;
+        const voicePath = voice?.filePath ? await u.oss.getFileUrl(voice.filePath) : "";
         return {
           ...parent,
           filePath: parent.filePath && (await u.oss.getFileUrl(parent.filePath!)),
           historyImages: historyImagesWithUrl,
+          voiceAssetId: voice?.assetId ? Number(voice.assetId) : null,
+          voiceImageId: voice?.imageId ? Number(voice.imageId) : null,
+          voiceName: voice?.name || "",
+          voicePath,
+          voiceState: voice?.state || "未绑定",
+          voiceReference: voicePath
+            ? {
+                id: Number(voice.assetId),
+                assetId: Number(voice.assetId),
+                imageId: Number(voice.imageId),
+                name: voice.name || "声音参考",
+                type: "audio",
+                fileType: "audio",
+                sources: "assets",
+                src: voicePath,
+                state: voice.state || "已完成",
+              }
+            : null,
         };
       }),
     );

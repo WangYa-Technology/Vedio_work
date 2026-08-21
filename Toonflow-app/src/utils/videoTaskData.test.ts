@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseStoryboardTable, selectNarrativeContext } from "./videoTaskData";
+import {
+  groupStoryboardRowsBySegments,
+  parseStoryboardTable,
+  selectNarrativeContext,
+} from "./videoTaskData";
 
 test("selects the source chapter that overlaps the current episode", () => {
   const context = selectNarrativeContext(
@@ -66,4 +70,33 @@ test("enriches legacy storyboard rows from script scene headings", () => {
   assert.equal(segments[0].rows[0].cameraAngle, "俯拍");
   assert.equal(segments[0].rows[0].cameraMovement, "缓降");
   assert.match(segments[0].rows[0].scaleDescription, /落点/);
+});
+
+test("groups one formal storyboard row per shot into one task per segment", () => {
+  const segments = parseStoryboardTable(`
+## 场1：湖岸 ｜ 参演角色：王胜、宋嫣
+### 片段一（约5s）
+| 序号 | 画面描述 | 时长 | 景别 | 运镜 | 台词 | 音效 |
+|---|---|---|---|---|---|---|
+| 1 | 王胜浮出水面。 | 2 | 中景 | 固定 | 王胜：这是哪里？ | 水声 |
+| 2 | 宋嫣举起玉令。 | 3 | 近景 | 缓推 | 宋嫣：别碰他！ | 玉令震鸣 |
+### 片段二（约2s）
+| 序号 | 画面描述 | 时长 | 景别 | 运镜 | 台词 | 音效 |
+|---|---|---|---|---|---|---|
+| 1 | 戴欢停下手。 | 2 | 中景 | 固定 | 无台词 | 风声 |
+`);
+  const groups = groupStoryboardRowsBySegments(
+    [
+      { id: 1, videoDesc: "场1：湖岸｜片段一｜序号1" },
+      { id: 2, videoDesc: "场1：湖岸｜片段一｜序号2" },
+      { id: 3, videoDesc: "场1：湖岸｜片段二｜序号1" },
+    ],
+    segments,
+  );
+
+  assert.equal(groups.length, 2);
+  assert.deepEqual(groups.map((group) => group.storyboards.map((row) => row.id)), [
+    [1, 2],
+    [3],
+  ]);
 });

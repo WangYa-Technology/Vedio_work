@@ -53,18 +53,8 @@
                   <div class="shotMeta f ac" style="gap: 8px; margin-top: 4px; flex-wrap: wrap">
                     <t-tag size="small" variant="outline">{{ segment.durationLabel }}</t-tag>
                     <t-tag size="small" variant="light">{{ segment.rows.length }} 镜</t-tag>
-                    <t-tag v-if="segment.dayPart" size="small" variant="light">{{ segment.dayPart }}</t-tag>
-                    <t-tag v-if="segment.interiorExterior" size="small" variant="light">{{ segment.interiorExterior }}</t-tag>
                   </div>
                   <div class="shotFields">
-                    <div v-if="segment.location" class="shotField">
-                      <span class="shotFieldLabel">地点</span>
-                      <span class="shotFieldValue">{{ segment.location }}</span>
-                    </div>
-                    <div v-if="segment.spatialLayers" class="shotField">
-                      <span class="shotFieldLabel">空间</span>
-                      <span class="shotFieldValue">{{ segment.spatialLayers }}</span>
-                    </div>
                     <div v-if="segment.assetNames" class="shotField">
                       <span class="shotFieldLabel">参考</span>
                       <span class="shotFieldValue">{{ segment.assetNames }}</span>
@@ -74,11 +64,9 @@
                         <t-tag size="small" variant="outline">镜头 {{ row.serial }}</t-tag>
                         <t-tag v-if="row.duration" size="small" variant="light">{{ row.duration }}s</t-tag>
                         <t-tag v-if="row.scale" size="small" variant="light">{{ row.scale }}</t-tag>
-                        <t-tag v-if="row.cameraAngle" size="small" variant="light">{{ row.cameraAngle }}</t-tag>
                         <t-tag v-if="row.cameraMovement" size="small" variant="light">{{ row.cameraMovement }}</t-tag>
                       </div>
                       <div class="segmentShotDesc">{{ row.description }}</div>
-                      <div v-if="row.scaleDescription" class="segmentShotLine">景别说明：{{ row.scaleDescription }}</div>
                       <div v-if="row.dialogue" class="segmentShotLine">台词：{{ row.dialogue }}</div>
                       <div v-if="row.sound" class="segmentShotLine">音效：{{ row.sound }}</div>
                     </div>
@@ -165,6 +153,9 @@
           <t-button size="small" theme="primary" :disabled="workflowBusy || loadingData || loadingHistory" @click="runNextAction">
             {{ nextAction.label }}
           </t-button>
+          <t-button v-if="nextAction.openAssets" size="small" variant="outline" :disabled="workflowBusy || loadingData || loadingHistory" @click="openAssetLibrary">
+            打开资产库
+          </t-button>
         </div>
 
         <t-chat-sender
@@ -191,10 +182,12 @@ import productionAgentStore from "@/stores/productionAgent";
 import workbench from "./components/workbench/index.vue";
 import { MdPreview } from "md-editor-v3";
 import "md-editor-v3/lib/preview.css";
+import { useRouter } from "vue-router";
 
 const projectState = projectStore();
 const { project, allProject } = storeToRefs(projectState);
 const productionStore = productionAgentStore();
+const router = useRouter();
 const { flowData, connected, renderableMessages, status, workflowStatus, loadingHistory, thinkLevel } = storeToRefs(productionStore);
 
 const inputValue = ref("");
@@ -210,17 +203,13 @@ const thinkLevelOptions = [
 ];
 const storyboardShots = computed(() => (Array.isArray(flowData.value?.storyboard) ? flowData.value.storyboard : []));
 const storyboardSegments = computed(() => {
-  const segments = parseStoryboardTable(flowData.value?.storyboardTable || "", flowData.value?.script || "");
+  const segments = parseStoryboardTable(flowData.value?.storyboardTable || "");
   if (segments.length) return segments;
   return storyboardShots.value.map((shot: any, index: number) => ({
     id: `shot-${shot.id ?? index}`,
     sceneTitle: "分镜表",
     segmentTitle: `第 ${shot.shotNumber ?? index + 1} 镜`,
     durationLabel: shot.duration ? `${shot.duration}s` : "未标注时长",
-    location: "",
-    dayPart: "",
-    interiorExterior: "",
-    spatialLayers: "",
     assetNames: shot.associateAssetsIds?.length ? `#${shot.associateAssetsIds.join(", #")}` : "",
     rows: [
       {
@@ -228,8 +217,6 @@ const storyboardSegments = computed(() => {
         description: shot.content || shot.description || shot.videoDesc || "",
         duration: shot.duration,
         scale: shot.scale,
-        scaleDescription: shot.scaleDescription,
-        cameraAngle: shot.cameraAngle,
         cameraMovement: shot.cameraMovement,
         dialogue: shot.dialogue,
         sound: shot.sound,
@@ -290,6 +277,7 @@ const nextAction = computed(() => {
         description: "继续构建分镜表，完成后会进入正式分镜面板。",
         label: failed ? "重新构建" : "构建分镜表",
         prompt: "继续构建分镜表",
+        openAssets: true,
       };
     case "assetImages": {
       const names = missingRequiredAssets.value.map((asset) => `${asset.name}（${asset.id}）`).join("、");
@@ -302,6 +290,7 @@ const nextAction = computed(() => {
         label: generating ? "刷新素材状态" : failed ? "重新生成素材" : "生成缺失素材",
         prompt: generating ? "" : `分镜引用的素材未就绪，请先生成这些缺失素材：${names}。素材就绪前不要进入分镜面板或视频生成。`,
         refresh: generating,
+        openAssets: !generating,
       };
     }
     case "storyboardPanel":
@@ -440,57 +429,10 @@ function stateTheme(state: string) {
   return "default";
 }
 
-function parseScriptSceneMeta(script: string) {
-  return String(script || "")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .map((line) => line.match(/^\d+-\d+\s+(.+?)\s+(日|夜|清晨|黄昏)\s*\/\s*(内|外|内外|半室外)\s*$/))
-    .filter((match): match is RegExpMatchArray => Boolean(match))
-    .map((match) => ({
-      location: match[1].trim(),
-      dayPart: match[2].trim(),
-      interiorExterior: `${match[3].trim()}景`,
-      spatialLayers: "",
-    }));
-}
-
-function describeShotScale(scale: string) {
-  const descriptions: Record<string, string> = {
-    大全景: "环境占绝大部分，人物为小比例视觉锚点，用于建立整体地理范围与运动方向。",
-    远景: "人物全身及大范围环境同时可见，用于交代主体与落点、对手或地标的距离关系。",
-    全景: "完整人物与周边行动空间同时入画，用于看清站位、朝向和完整动作。",
-    中远景: "人物膝部以上入画并保留前后景，用于兼顾动作幅度与多人空间关系。",
-    中景: "人物腰部以上为主，保留手势和互动对象，用于承载对话与动作反应。",
-    中近景: "人物胸部以上占主要画面，用于强化视线、表情与局部肢体变化。",
-    近景: "人物肩部以上或关键局部占画面约一半，用于突出明确的状态变化。",
-    特写: "面部或关键物件主导画面，背景弱化，用于锁定单一情绪或剧情信息。",
-    大特写: "眼睛、手指或道具细节充满画面，用于强调不可替代的微小变化。",
-  };
-  return descriptions[scale] || "主体比例、前后景关系与叙事功能需和本镜画面内容保持一致。";
-}
-
-function inferSpatialLayers(location: string, sceneTitle: string) {
-  const context = `${location} ${sceneTitle}`;
-  if (/高空/.test(context) && /湖/.test(context)) return "高空→湖面";
-  if (/湖岸/.test(context)) return "湖岸→湖面→湖心";
-  return "";
-}
-
-function splitLegacyCamera(value: string) {
-  const angle = value.match(/^(极高俯拍|微俯拍|俯拍|微仰拍|仰拍|低机位|平视)(?:后)?/i)?.[1] || "";
-  return {
-    cameraAngle: angle,
-    cameraMovement: angle ? value.replace(new RegExp(`^${angle}(?:后)?`), "").trim() || "固定" : value,
-  };
-}
-
-function parseStoryboardTable(markdown: string, script = "") {
+function parseStoryboardTable(markdown: string) {
   const lines = markdown.split(/\r?\n/);
-  const scriptSceneMeta = parseScriptSceneMeta(script);
   const segments: any[] = [];
   let currentScene = "";
-  let currentSceneMeta = { location: "", dayPart: "", interiorExterior: "", spatialLayers: "" };
-  let currentSceneIndex = -1;
   let currentSegment: any = null;
   let tableColumns: string[] = [];
 
@@ -505,31 +447,6 @@ function parseStoryboardTable(markdown: string, script = "") {
     if (line.startsWith("## ")) {
       finishSegment();
       currentScene = line.replace(/^##\s*/, "").trim();
-      currentSceneIndex += 1;
-      currentSceneMeta = scriptSceneMeta[currentSceneIndex] || { location: "", dayPart: "", interiorExterior: "", spatialLayers: "" };
-      currentSceneMeta = {
-        ...currentSceneMeta,
-        spatialLayers: currentSceneMeta.spatialLayers || inferSpatialLayers(currentSceneMeta.location, currentScene),
-      };
-      continue;
-    }
-    if (line.startsWith("**空间信息**")) {
-      const values = line
-        .replace(/^\*\*空间信息\*\*[：:]\s*/, "")
-        .split(/[；;]/)
-        .map((item) => item.trim())
-        .filter(Boolean)
-        .reduce<Record<string, string>>((result, item) => {
-          const match = item.match(/^([^：:]+)[：:]\s*(.*)$/);
-          if (match) result[match[1].trim()] = match[2].trim();
-          return result;
-        }, {});
-      currentSceneMeta = {
-        location: values["地点"] || "",
-        dayPart: values["时段"] || "",
-        interiorExterior: values["内外"] || "",
-        spatialLayers: values["空间层级"] || "",
-      };
       continue;
     }
     const segmentMatch = line.match(/^###\s*(片段[^\s（(]+)(?:[（(]([^）)]+)[）)])?/);
@@ -540,7 +457,6 @@ function parseStoryboardTable(markdown: string, script = "") {
         sceneTitle: currentScene || "未命名场景",
         segmentTitle: segmentMatch[1],
         durationLabel: segmentMatch[2] || "未标注时长",
-        ...currentSceneMeta,
         assetNames: "",
         assetIds: "",
         rows: [],
@@ -577,18 +493,15 @@ function parseStoryboardTable(markdown: string, script = "") {
       const index = tableColumns.indexOf(name);
       return cells[index >= 0 ? index : fallbackIndex] || "";
     };
-    const isExpanded = tableColumns.includes("景别说明");
-    const legacyCamera = splitLegacyCamera(value("运镜", isExpanded ? 6 : 4));
+    const legacyCamera = value("运镜", 4);
     currentSegment.rows.push({
       serial: value("序号", 0),
       description: value("画面描述", 1),
       duration: value("时长", 2),
       scale: value("景别", 3),
-      scaleDescription: value("景别说明", -1) || describeShotScale(value("景别", 3)),
-      cameraAngle: value("摄影角度", -1) || legacyCamera.cameraAngle,
-      cameraMovement: value("摄影角度", -1) ? value("运镜", isExpanded ? 6 : 4) : legacyCamera.cameraMovement,
-      dialogue: value("台词", isExpanded ? 7 : 5).replace(/^台词[：:]\s*/, "").trim(),
-      sound: value("音效", isExpanded ? 8 : 6).replace(/^音效[：:]\s*/, "").trim(),
+      cameraMovement: legacyCamera,
+      dialogue: value("台词", 5).replace(/^台词[：:]\s*/, "").trim(),
+      sound: value("音效", 6).replace(/^音效[：:]\s*/, "").trim(),
     });
   }
   finishSegment();
@@ -664,6 +577,17 @@ function runNextAction() {
     return;
   }
   productionStore.chat(action.prompt);
+}
+
+function writeStoryboardFromWorkbench() {
+  workbenchVisible.value = false;
+  productionStore.chat("继续写入正式分镜面板");
+}
+
+provide("writeStoryboardFromWorkbench", writeStoryboardFromWorkbench);
+
+function openAssetLibrary() {
+  router.push({ path: "/assets", query: { from: "production" } });
 }
 
 function handleThinkLevelChange(value: unknown) {

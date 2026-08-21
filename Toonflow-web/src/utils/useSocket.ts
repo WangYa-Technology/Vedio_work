@@ -1,5 +1,6 @@
 import { ref } from "vue";
 import { io, Socket } from "socket.io-client";
+import { resolveApiBaseUrl } from "@/utils/backendUrl";
 
 export interface SocketEventMap {
   //scriptAgent
@@ -17,7 +18,7 @@ export interface SocketEventMap {
   thinkMessage: { type: "start" | "content" | "end"; messageId: string; delta: string | null; role: "assistant"; name: string };
 }
 
-export function useSocket<T extends SocketEventMap = SocketEventMap>(url = "http://localhost:10588", authOptions?: Record<string, any>) {
+export function useSocket<T extends SocketEventMap = SocketEventMap>(url = "", authOptions?: Record<string, any>) {
   let socket: Socket | null = null;
   const connected = ref(false);
 
@@ -27,7 +28,7 @@ export function useSocket<T extends SocketEventMap = SocketEventMap>(url = "http
       return;
     }
 
-    socket = io(url, {
+    socket = io(url || resolveApiBaseUrl().replace(/\/api\/?$/, ""), {
       transports: ["websocket", "polling"],
       reconnection: true,
       reconnectionAttempts: 10,

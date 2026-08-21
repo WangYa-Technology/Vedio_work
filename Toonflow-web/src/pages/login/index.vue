@@ -50,6 +50,7 @@ import axios from "@/utils/axios";
 import settingStore from "@/stores/setting";
 import { storeToRefs } from "pinia";
 import { languageList, cachedLocale } from "@/locales";
+import { resolveApiBaseUrl } from "@/utils/backendUrl";
 
 const { locale } = useI18n();
 const langOptions = languageList.map((item) => ({
@@ -69,7 +70,8 @@ const tempBaseUrl = ref(baseUrl.value);
 
 // 保存设置
 const handleSaveSetting = () => {
-  baseUrl.value = tempBaseUrl.value;
+  baseUrl.value = resolveApiBaseUrl(tempBaseUrl.value);
+  tempBaseUrl.value = baseUrl.value;
   showSettingModal.value = false;
   window.$message.success($t("login.settingsSaved"));
 };

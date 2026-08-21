@@ -9,6 +9,7 @@ const router = express.Router();
 const PromptTypeSchema = z.enum([
   "imagePromptGeneration",
   "videoPromptGeneration",
+  "assetInferenceTemplate",
 ]);
 
 export default router.post(

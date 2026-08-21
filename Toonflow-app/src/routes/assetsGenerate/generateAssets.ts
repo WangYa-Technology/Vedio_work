@@ -5,7 +5,15 @@ import { v4 as uuidv4 } from "uuid";
 import { error, success } from "@/lib/responseFormat";
 import { validateFields } from "@/middleware/middleware";
 import { parseModelReference } from "@/utils/modelRef";
-import { appendNegativePrompt } from "@/utils/imagePrompt";
+import {
+  appendNegativePrompt,
+  buildAssetGenerationPrompt,
+} from "@/utils/imagePrompt";
+import {
+  buildAssetInferenceTemplatePrompt,
+  isAssetInferenceTemplateApplicable,
+  parseAssetInferenceTemplate,
+} from "@/utils/assetInferenceTemplate";
 
 const router = express.Router();
 
@@ -55,23 +63,6 @@ const assetTypeConfig: Record<AssetType, AssetTypeConfig> = {
 
 // ─── 构建生成提示词 ──────────────────────────────────────────
 
-function buildPrompt(cfg: AssetTypeConfig, artStyle: string, name: string, prompt: string): string {
-  return `
-    请根据以下参数生成${cfg.promptTitle}：
-
-    **基础参数：**
-    - 画风风格: ${artStyle || "未指定"}
-
-    **${cfg.label}设定：**
-    - 名称:${name},
-    - 提示词:${prompt},
-
-    ${cfg.promptGuidance?.length ? `**生成硬性要求：**\n${cfg.promptGuidance.map((item) => `    - ${item}`).join("\n")}` : ""}
-
-    请严格按照系统规范生成${cfg.promptEnd}。
-  `;
-}
-
 // ─── 生成资产图片 ────────────────────────────────────────────
 
 const requestSchema = {
@@ -83,76 +74,160 @@ const requestSchema = {
   name: z.string(),
   prompt: z.string(),
   base64: z.string().optional().nullable(),
+  referenceImageId: z.number().optional().nullable(),
+  templateId: z.number().optional().nullable(),
 };
 
-export default router.post("/", validateFields(requestSchema), async (req, res) => {
-  const { projectId, model, resolution, id, type, name, prompt, base64 } = req.body;
+export default router.post(
+  "/",
+  validateFields(requestSchema),
+  async (req, res) => {
+    const {
+      projectId,
+      model,
+      resolution,
+      id,
+      type,
+      name,
+      prompt,
+      base64,
+      referenceImageId,
+      templateId,
+    } = req.body;
 
-  // 1. 查询项目 & 获取类型配置
-  const project = await u.db("o_project").where("id", projectId).select("artStyle", "negativePrompt", "type", "intro").first();
-  if (!project) return res.status(500).send(success({ message: "项目为空" }));
+    // 1. 查询项目 & 获取类型配置
+    const project = await u
+      .db("o_project")
+      .where("id", projectId)
+      .select("artStyle", "negativePrompt", "type", "intro")
+      .first();
+    if (!project) return res.status(500).send(success({ message: "项目为空" }));
 
-  const cfg = assetTypeConfig[type as AssetType];
-  if (!cfg) return res.status(400).send(error("不支持的类型"));
+    const cfg = assetTypeConfig[type as AssetType];
+    if (!cfg) return res.status(400).send(error("不支持的类型"));
 
-  // 2. 创建图片占位记录
-  const [imageId] = await u.db("o_image").insert({
-    type,
-    state: "生成中",
-    assetsId: id,
-  });
-  await u.db("o_assets").where("id", id).update({ imageId });
+    const asset = await u
+      .db("o_assets")
+      .where({ id, projectId })
+      .select("id", "type", "name", "describe")
+      .first();
+    if (!asset) return res.status(404).send(error("资产不存在"));
+    if (asset.type !== type)
+      return res.status(400).send(error("资产类型不匹配"));
 
-  // 3. 准备生成参数
-  const imagePath = `/${projectId}/${cfg.dir}/${uuidv4()}.jpg`;
-  const userPrompt = appendNegativePrompt(
-    buildPrompt(cfg, project.artStyle!, name, prompt),
-    project.negativePrompt,
-  );
-  const describe = `生成${cfg.label}图，名称：${name}，提示词：${prompt}`;
-  const relatedObjects = { id, projectId, type: cfg.label };
+    const selectedTemplate = templateId
+      ? await u.db("o_prompt").where({ id: templateId }).select("data", "useData").first()
+      : null;
+    const selectedTemplateRaw = String(selectedTemplate?.useData || selectedTemplate?.data || "");
+    const selectedStructuredTemplate = parseAssetInferenceTemplate(selectedTemplateRaw);
+    if (selectedStructuredTemplate && !isAssetInferenceTemplateApplicable(selectedStructuredTemplate, type)) {
+      return res.status(400).send(error(`推理模板“${selectedStructuredTemplate.name}”不适用于${cfg.label}资产`));
+    }
+    const selectedAspectRatio = selectedStructuredTemplate?.canvas.aspectRatio || selectedTemplateRaw.match(/\b(?:9:16|16:9|1:1|4:3)\b/)?.[0] || prompt.match(/\b(?:9:16|16:9|1:1|4:3)\b/)?.[0] || "16:9";
+    const customTemplateGuidance = templateId
+      ? [
+          selectedStructuredTemplate
+            ? buildAssetInferenceTemplatePrompt(selectedStructuredTemplate)
+            : "严格遵循当前图片提示词中明确的画布比例、视图数量、细节面板和版式，不得追加角色标准四视图或道具四宫格规则。",
+          "当前已选择自定义图片推理模板；模板版式优先于默认资产类型版式。",
+        ]
+      : cfg.promptGuidance;
 
-  try {
-    const aiImage = u.Ai.Image(model);
-    await aiImage.run(
-      {
-        prompt: userPrompt,
-        imageBase64: base64 ? [base64] : [],
-        size: resolution,
-        aspectRatio: "16:9",
-      },
-      {
-        taskClass: cfg.taskClass,
-        describe,
-        projectId,
-        relatedObjects: JSON.stringify(relatedObjects),
-      },
-    );
-    await aiImage.save(imagePath);
-    // 5. 更新记录 & 返回结果
-    const imageData = await u.db("o_image").where("id", imageId).select("*").first();
-    if (!imageData) return res.status(500).send("资产已被删除");
-    if (imageData.state === "生成失败") return;
-    await u
-      .db("o_image")
-      .where("id", imageId)
-      .update({
-        state: "已完成",
-        filePath: imagePath,
-        type,
-        model: parseModelReference(model).modelName || model,
-        resolution,
-      });
+    let referenceBase64 = base64 || "";
+    if (!referenceBase64 && referenceImageId != null) {
+      const referenceImage = await u
+        .db("o_image")
+        .where({ id: referenceImageId, assetsId: id, state: "已完成" })
+        .whereNotNull("filePath")
+        .select("filePath")
+        .first();
+      if (!referenceImage)
+        return res.status(400).send(error("所选参考图不属于当前资产或不可用"));
+      referenceBase64 = await u.oss.getImageBase64(referenceImage.filePath);
+    }
 
-    const path = await u.oss.getFileUrl(imagePath);
+    // 2. 创建图片占位记录
+    const [imageId] = await u.db("o_image").insert({
+      type,
+      state: "生成中",
+      assetsId: id,
+    });
     await u.db("o_assets").where("id", id).update({ imageId });
 
-    return res.status(200).send(success({ path, assetsId: id }));
-  } catch (e) {
-    await u
-      .db("o_image")
-      .where("id", imageId)
-      .update({ state: "生成失败", errorReason: u.error(e).message });
-    return res.status(400).send(error(u.error(e).message || "图片生成失败"));
-  }
-});
+    // 3. 准备生成参数
+    const imagePath = `/${projectId}/${cfg.dir}/${uuidv4()}.jpg`;
+    const userPrompt = appendNegativePrompt(
+      buildAssetGenerationPrompt({
+        promptTitle: selectedTemplateRaw ? "自定义模板资产图" : cfg.promptTitle,
+        promptEnd: selectedTemplateRaw ? "符合所选模板版式的资产图" : cfg.promptEnd,
+        assetLabel: cfg.label,
+        artStyle: project.artStyle,
+        name: String(asset.name || name),
+        description: asset.describe,
+        prompt,
+        hasReference: Boolean(referenceBase64),
+        guidance: customTemplateGuidance,
+        customTemplate: Boolean(selectedTemplateRaw),
+      }),
+      project.negativePrompt,
+    );
+    const describe = `生成${cfg.label}图，名称：${name}，提示词：${prompt}`;
+    const relatedObjects = {
+      id,
+      projectId,
+      type: cfg.label,
+      templateId: templateId ?? null,
+    };
+
+    try {
+      const aiImage = u.Ai.Image(model);
+      await aiImage.run(
+        {
+          prompt: userPrompt,
+          imageBase64: referenceBase64 ? [referenceBase64] : [],
+          referenceList: referenceBase64
+            ? [{ type: "image", base64: referenceBase64 }]
+            : [],
+          size: resolution,
+          aspectRatio: selectedAspectRatio as `${number}:${number}`,
+        },
+        {
+          taskClass: cfg.taskClass,
+          describe,
+          projectId,
+          relatedObjects: JSON.stringify(relatedObjects),
+        },
+      );
+      await aiImage.save(imagePath);
+      // 5. 更新记录 & 返回结果
+      const imageData = await u
+        .db("o_image")
+        .where("id", imageId)
+        .select("*")
+        .first();
+      if (!imageData) return res.status(500).send("资产已被删除");
+      if (imageData.state === "生成失败") return;
+      await u
+        .db("o_image")
+        .where("id", imageId)
+        .update({
+          state: "已完成",
+          filePath: imagePath,
+          type,
+          model: parseModelReference(model).modelName || model,
+          resolution,
+        });
+
+      const path = await u.oss.getFileUrl(imagePath);
+      await u.db("o_assets").where("id", id).update({ imageId });
+
+      return res.status(200).send(success({ path, assetsId: id }));
+    } catch (e) {
+      await u
+        .db("o_image")
+        .where("id", imageId)
+        .update({ state: "生成失败", errorReason: u.error(e).message });
+      return res.status(400).send(error(u.error(e).message || "图片生成失败"));
+    }
+  },
+);

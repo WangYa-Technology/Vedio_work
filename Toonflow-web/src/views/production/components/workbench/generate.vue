@@ -9,9 +9,9 @@
         <div class="sceneToolbarActions f ac">
           <t-checkbox v-model="checkAll" @change="handleCheckAll">{{ $t("workbench.generate.selectAll") }}</t-checkbox>
           <span class="selectedCount" v-if="selectedSceneCount">已选 {{ selectedSceneCount }} 场 · {{ selectedSegmentCount }} 段</span>
-          <t-button size="small" variant="outline" @click="batchGenText">{{ $t("workbench.generate.batchGenerateText") }}</t-button>
-          <t-button size="small" variant="outline" @click="batchGenVideo">{{ $t("workbench.generate.batchGenerateVideo") }}</t-button>
-          <t-button size="small" :disabled="!selectedSegmentCount" @click="importVideo">
+          <t-button size="small" variant="outline" :disabled="!selectedSegmentCount" @click="batchGenText">{{ $t("workbench.generate.batchGenerateText") }}</t-button>
+          <t-button size="small" variant="outline" :disabled="!selectedSegmentCount || selectedHasDraftTracks" @click="batchGenVideo">{{ $t("workbench.generate.batchGenerateVideo") }}</t-button>
+          <t-button size="small" :disabled="!selectedSegmentCount || selectedHasDraftTracks || !selectedImportableCount" @click="importVideo">
             {{ $t("workbench.generate.importVideo") }}
           </t-button>
         </div>
@@ -103,8 +103,12 @@
               <span>{{ row.scale || "—" }} / {{ row.cameraMovement || "—" }}</span>
             </div>
           </div>
-          <div class="taskNotice" v-if="activeTrack.readiness?.messages?.length">
+          <div class="taskNotice" v-if="activeTrack.readiness?.messages?.length && !activeTrack.isDraft">
             {{ activeTrack.readiness.messages.join("；") }}
+          </div>
+          <div class="taskNotice taskNoticeWarning draftActionNotice" v-if="activeTrack.isDraft">
+            <span>分镜表已保存，请先写入正式分镜面板</span>
+            <t-button size="small" theme="primary" @click="requestStoryboardWrite">写入正式分镜面板</t-button>
           </div>
           <div class="taskNotice taskNoticeWarning" v-if="activeTrack.promptAudit?.length">
             提示词质量门：{{ activeTrack.promptAudit.join("；") }}
@@ -300,7 +304,7 @@
             </t-popup>
           </div>
           <div class="genBtn">
-            <t-button size="small" :loading="generating" @click="generateVideo">{{ $t("workbench.generate.generate") }}</t-button>
+            <t-button size="small" :disabled="!activeTrack || activeTrack.isDraft" :loading="generating" @click="generateVideo">{{ $t("workbench.generate.generate") }}</t-button>
           </div>
         </div>
         <div class="history">
@@ -435,8 +439,19 @@ import axios from "@/utils/axios";
 import projectStore from "@/stores/project";
 
 const episodesId = inject<Ref<number>>("episodesId")!;
+const writeStoryboardAction = inject<() => void>("writeStoryboardFromWorkbench");
 
 const { project } = storeToRefs(projectStore());
+
+// Keep the state refs above computed values that read them. The workbench can
+// mount asynchronously when the dialog opens, so a computed getter must never
+// close over a still-uninitialized binding.
+const trackList = ref<TrackItem[]>([]);
+const activeTrackIndex = ref(0);
+const activeTrack = computed(() => trackList.value[activeTrackIndex.value] || null);
+const projectConfig = ref<Record<string, any>>({});
+const trackSelectedVideoMap = ref<Record<number, number>>({});
+const modeOptions = ref<VideoModel>({} as VideoModel);
 
 const promptText = computed({
   get: () => {
@@ -481,9 +496,6 @@ const generating = computed(() => {
 });
 const genTextLoadingMap = ref<Record<number, boolean>>({});
 const scenePromptErrorMap = ref<Record<string, string>>({});
-const activeTrackGenTextLoading = computed(() => {
-  return Boolean(activeSceneGroup.value?.entries.some((entry) => genTextLoadingMap.value[entry.track.id]));
-});
 
 interface VideoPromptTemplate {
   id: number;
@@ -496,6 +508,10 @@ const videoPromptTemplates = ref<VideoPromptTemplate[]>([]);
 const selectedVideoPromptTemplateId = ref<number>();
 const videoPromptTemplateLoading = ref(false);
 const videoPromptTemplateOptions = computed(() => videoPromptTemplates.value.map((item) => ({ label: item.name, value: item.id })));
+
+function requestStoryboardWrite() {
+  writeStoryboardAction?.();
+}
 
 function displaySegmentField(value: string | undefined, label: string) {
   return String(value || "")
@@ -539,6 +555,7 @@ async function generateScenePrompts(scene: SceneGroup, requestedIds?: number[]) 
   try {
     const { data } = await axios.post("/production/workbench/generateVideoPrompt", {
       projectId: project.value?.id,
+      scriptId: episodesId.value,
       sceneTitle: scene.key === "__unassigned__" ? "" : scene.key,
       trackIds,
       templateId: selectedVideoPromptTemplateId.value,
@@ -830,7 +847,6 @@ interface VideoModelParameter {
   step?: number;
   options?: Array<{ label: string; value: WorkflowParameterValue; description?: string }>;
 }
-const modeOptions = ref<VideoModel>({} as VideoModel);
 const workflowParameters = ref<Record<string, WorkflowParameterValue>>({});
 const modelParameters = computed(() => modeOptions.value.parameters || []);
 
@@ -1046,6 +1062,7 @@ interface TrackItem {
   promptTemplateVersion?: string | null;
   promptInferenceSnapshot?: string | null;
   promptAudit?: string[];
+  isDraft?: boolean;
   segmentRows?: Array<{
     serial: string;
     description: string;
@@ -1072,12 +1089,6 @@ interface SceneGroup {
   duration: number;
   entries: Array<{ track: TrackItem; index: number }>;
 }
-const trackList = ref<TrackItem[]>([]);
-const activeTrackIndex = ref(0);
-const activeTrack = computed(() => trackList.value[activeTrackIndex.value] || null);
-const projectConfig = ref<Record<string, any>>({});
-const trackSelectedVideoMap = ref<Record<number, number>>({});
-
 function inferenceAssetTypeLabel(media: TrackMedia) {
   const type = String(media.type || "").toLowerCase();
   if (type === "role" || type === "character") return "角色";
@@ -1152,6 +1163,9 @@ const activeSceneIndex = computed(() =>
   ),
 );
 const activeSceneGroup = computed(() => sceneGroups.value[activeSceneIndex.value] || null);
+const activeTrackGenTextLoading = computed(() => {
+  return Boolean(activeSceneGroup.value?.entries.some((entry) => genTextLoadingMap.value[entry.track.id]));
+});
 const activeScenePromptError = computed(() => {
   const key = activeSceneGroup.value?.key;
   return key ? scenePromptErrorMap.value[key] || "" : "";
@@ -1472,6 +1486,14 @@ const selectedSceneCount = computed(
   () => sceneGroups.value.filter((scene) => scene.entries.some((entry) => checkedTrackIds.value.includes(entry.track.id))).length,
 );
 const selectedSegmentCount = computed(() => checkedTrackIds.value.length);
+const selectedTracks = computed(() => trackList.value.filter((track) => checkedTrackIds.value.includes(track.id)));
+const selectedHasDraftTracks = computed(() => selectedTracks.value.some((track) => track.isDraft));
+const selectedImportableCount = computed(
+  () => selectedTracks.value.filter((track) => {
+    const selectedVideoId = trackSelectedVideoMap.value[track.id] ?? track.selectVideoId;
+    return selectedVideoId != null && track.videoList.some((video) => video.id === selectedVideoId && isVideoPlayable(video));
+  }).length,
+);
 
 function handleCheckAll(val: boolean) {
   const allTrackIds = trackList.value.map((track) => track.id).filter((id): id is number => id != null);
@@ -1851,11 +1873,13 @@ async function downloadVideo(value: HistoryVideoItem) {
       align-items: center;
       gap: 5px 8px;
       min-width: 0;
+      height: 62px;
       min-height: 62px;
       padding: 8px 10px;
       border: 1px solid var(--td-component-border);
       border-left: 3px solid var(--td-component-border);
       border-radius: 4px;
+      overflow: hidden;
       cursor: pointer;
       &:hover {
         border-color: var(--td-brand-color);
@@ -1892,8 +1916,10 @@ async function downloadVideo(value: HistoryVideoItem) {
     .sceneGroupSegments {
       grid-column: 2;
       display: flex;
+      max-height: 28px;
       flex-wrap: wrap;
       gap: 4px 8px;
+      overflow: hidden;
       span {
         color: var(--td-text-color-secondary);
         font-size: 9px;

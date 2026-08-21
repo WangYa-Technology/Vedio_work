@@ -48,13 +48,50 @@ async function loadAssets(projectId: number, scriptId: number) {
   }
   const rows = baseRows;
 
+  const roleIds = rows.filter((item) => item.type === "role").map((item) => Number(item.id)).filter(Number.isFinite);
+  const voiceMap = new Map<number, AnyObject>();
+  if (roleIds.length) {
+    const voiceRows = await u
+      .db("o_assetsRole2Audio")
+      .join("o_assets as audioAsset", "o_assetsRole2Audio.assetsAudioId", "audioAsset.id")
+      .leftJoin("o_image as audioImage", "audioAsset.imageId", "audioImage.id")
+      .whereIn("o_assetsRole2Audio.assetsRoleId", roleIds)
+      .andWhere("audioAsset.projectId", projectId)
+      .andWhere("audioAsset.type", "clip")
+      .select(
+        "o_assetsRole2Audio.assetsRoleId",
+        "audioAsset.id as assetId",
+        "audioAsset.name",
+        "audioImage.id as imageId",
+        "audioImage.filePath",
+        "audioImage.state",
+      );
+    await Promise.all(
+      voiceRows.map(async (voice) => {
+        const src = voice.filePath ? await u.oss.getFileUrl(voice.filePath) : "";
+        if (!src) return;
+        voiceMap.set(Number(voice.assetsRoleId), {
+          id: Number(voice.assetId),
+          assetId: Number(voice.assetId),
+          imageId: Number(voice.imageId),
+          name: voice.name || "声音参考",
+          type: "audio",
+          fileType: "audio",
+          sources: "assets",
+          src,
+          state: voice.state || "已完成",
+        });
+      }),
+    );
+  }
+
   const childMap = new Map<number, AnyObject[]>();
   const parents = rows.filter((item) => item.assetsId == null);
   const children = rows.filter((item) => item.assetsId != null);
 
   await Promise.all(
     children.map(async (child) => {
-      const normalized = await withSrc({
+      const normalized: AnyObject = await withSrc({
         id: child.id,
         name: child.name || "",
         desc: child.describe || "",
@@ -67,6 +104,15 @@ async function loadAssets(projectId: number, scriptId: number) {
         flowId: child.flowId ?? undefined,
         errorReason: child.promptErrorReason || child.imageErrorReason || "",
       });
+      if (child.type === "role") {
+        const voiceReference = voiceMap.get(Number(child.id)) || null;
+        normalized.voiceReference = voiceReference;
+        normalized.voicePath = voiceReference?.src || "";
+        normalized.voiceAssetId = voiceReference?.assetId || null;
+        normalized.voiceImageId = voiceReference?.imageId || null;
+        normalized.voiceName = voiceReference?.name || "";
+        normalized.voiceState = voiceReference?.state || "未绑定";
+      }
       const parentId = Number(child.assetsId);
       const list = childMap.get(parentId) || [];
       list.push(normalized);
@@ -76,7 +122,7 @@ async function loadAssets(projectId: number, scriptId: number) {
 
   return Promise.all(
     parents.map(async (parent) => {
-      const normalized = await withSrc({
+      const normalized: AnyObject = await withSrc({
         id: parent.id,
         name: parent.name || "",
         desc: parent.describe || "",
@@ -90,6 +136,15 @@ async function loadAssets(projectId: number, scriptId: number) {
         errorReason: parent.promptErrorReason || parent.imageErrorReason || "",
         derive: childMap.get(parent.id) || [],
       });
+      if (parent.type === "role") {
+        const voiceReference = voiceMap.get(Number(parent.id)) || null;
+        normalized.voiceReference = voiceReference;
+        normalized.voicePath = voiceReference?.src || "";
+        normalized.voiceAssetId = voiceReference?.assetId || null;
+        normalized.voiceImageId = voiceReference?.imageId || null;
+        normalized.voiceName = voiceReference?.name || "";
+        normalized.voiceState = voiceReference?.state || "未绑定";
+      }
       return normalized;
     }),
   );

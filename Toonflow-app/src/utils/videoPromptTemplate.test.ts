@@ -29,7 +29,7 @@ test("official default video template includes the high-conflict core", () => {
   assert.match(prompt, /严格短于契约上限/);
   assert.match(prompt, /声音与表情采用最小可执行集/);
   assert.match(prompt, /全程禁止背景音乐、配乐和 BGM/);
-  assert.match(prompt, /背景音乐固定为 N\/A/);
+  assert.match(prompt, /non_diegetic_music: N\/A/);
   assert.match(prompt, /全程禁止字幕/);
   assert.match(prompt, /non_diegetic_music: N\/A/);
   assert.match(prompt, /只保留同步环境音效和动作音效，不生成背景音乐，不生成字幕/);
@@ -44,7 +44,7 @@ test("official default video template includes the high-conflict core", () => {
   assert.match(prompt, /中文台词字数/);
   assert.match(prompt, /人物远景镜头/);
   assert.match(prompt, /truck left \+ pan right/);
-  assert.match(prompt, /高张力中文提示词/);
+  assert.match(prompt, /结构字段和正文使用英文/);
   assert.match(prompt, /四拍节奏/);
   assert.match(prompt, /近景\/特写只在表情或状态真正改变时使用/);
   assert.doesNotMatch(prompt, /角色闭嘴/);
@@ -104,8 +104,11 @@ test("MiniMax H3 multi-reference mode uses the official Ref2VA six-section proto
   }
   assert.match(protocol, /<Subject N>/);
   assert.match(protocol, /<Picture N>/);
+  assert.match(protocol, /定义了 <Picture N>，必须在 detailed_description/);
+  assert.match(protocol, /partially_preserved/);
+  assert.match(protocol, /effect residue visible/);
   assert.match(protocol, /\[Shot 1\] 不加时间戳/);
-  assert.match(protocol, /<d>\[中文\]/);
+  assert.match(protocol, /<d>\[Chinese\]/);
   assert.match(protocol, /non_diegetic_music 无条件写 N\/A/);
   assert.match(protocol, /只保留同步环境音效和动作音效，不生成背景音乐，不生成字幕/);
   assert.match(protocol, /全程禁止字幕/);
@@ -114,9 +117,20 @@ test("MiniMax H3 multi-reference mode uses the official Ref2VA six-section proto
   assert.match(protocol, /四模块规划与 H3 映射/);
   assert.match(protocol, /不新增 H3 字段/);
   assert.match(protocol, /首尾帧模式必须显式标记/);
-  assert.match(protocol, /字段内容、镜头说明、声音设计、旁白和对白全部使用中文/);
+  assert.match(protocol, /六个字段名.*正文全部使用英文/);
   assert.match(protocol, /高冲突四拍节奏/);
   assert.match(protocol, /不能用 8 秒连续跟拍或连续推脸/);
+  assert.match(protocol, /抽象风格词/);
+  assert.match(protocol, /不能仅因参考图是照片就擅自改成真人实拍/);
+  assert.match(protocol, /只允许概括 detailed_description 中已经明确写出的同步音效/);
+  assert.match(protocol, /叙事增强只条件触发/);
+  assert.match(protocol, /不存在这些事实时，保持原有开场/);
+  assert.match(protocol, /不得新增声音类型/);
+  assert.match(protocol, /不得输出分析注释、改变景别、重排镜头时长/);
+  assert.match(protocol, /镜头信息密度只通过可观察内容提升/);
+  assert.match(protocol, /只有 shotFacts、对白或动作明确提供情绪信号时/);
+  assert.match(protocol, /任务推进、发现\/揭露或情绪转折/);
+  assert.match(protocol, /不得添加“本不该出现”等未被输入确认的判断/);
 });
 
 test("MiniMax H3 base mode uses the official three-field protocol", () => {
@@ -131,7 +145,7 @@ test("MiniMax H3 base mode uses the official three-field protocol", () => {
   assert.match(protocol, /overall_soundscape:/);
   assert.match(protocol, /non_diegetic_music:/);
   assert.doesNotMatch(protocol, /subject_definitions:/);
-  assert.match(protocol, /00\.00 秒/);
+  assert.match(protocol, /00\.00 seconds/);
   assert.match(protocol, /两位小数时长/);
   assert.match(protocol, /四模块规划与通用 Shot 规范/);
   assert.match(protocol, /禁止“环绕运镜”/);

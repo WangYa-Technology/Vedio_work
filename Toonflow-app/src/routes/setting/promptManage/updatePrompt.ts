@@ -5,7 +5,11 @@ import { success } from "@/lib/responseFormat";
 import { validateFields } from "@/middleware/middleware";
 import { isUserPromptId } from "@/utils/promptTemplate";
 const router = express.Router();
-const userPromptTypes = ["imagePromptGeneration", "videoPromptGeneration"];
+const userPromptTypes = [
+  "imagePromptGeneration",
+  "videoPromptGeneration",
+  "assetInferenceTemplate",
+];
 
 export default router.post(
   "/",

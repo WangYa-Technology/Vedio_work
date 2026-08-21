@@ -3,12 +3,13 @@ import router from "@/router/index";
 import { storeToRefs } from "pinia";
 import { MessagePlugin } from "tdesign-vue-next";
 import settingStore from "@/stores/setting";
+import { resolveApiBaseUrl } from "@/utils/backendUrl";
 
 const instance = axios.create();
 
 instance.interceptors.request.use(function (config) {
   const { baseUrl, otherSetting } = storeToRefs(settingStore());
-  config.baseURL = baseUrl.value;
+  config.baseURL = resolveApiBaseUrl(baseUrl.value);
   config.timeout = otherSetting.value.axiosTimeOut;
   const token = localStorage.getItem("token");
   if (token) {

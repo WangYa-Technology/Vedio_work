@@ -256,6 +256,17 @@ function projectModelInfo(project: any) {
   ].join("\n");
 }
 
+function buildChoiceDirective(text: string) {
+  const choice = String(text || "").trim();
+  if (!/^(?:(?:\d+\s*)?[A-C](?:\s*\+?\s*(?:\d+\s*)?[A-C])*)$/i.test(choice)) return "";
+  return [
+    "[系统执行约束] 用户正在回复上一条审核报告中的选项。必须按用户选择逐项执行，不得只复述选择或再次提出同一问题。",
+    "涉及分镜时长的 A/B/C：必须调用分镜表执行层，按对应方案修改并保存 storyboardTable，回读确认保存成功后才能再次审核；如果未发生实际保存，必须明确报告未完成。",
+    "涉及资产的 A/B：若资产已存在，必须用真实资产 ID 修改片段引用并保存；若不存在，必须明确引导用户到资产库新增并生成图片，禁止虚构 ID。",
+    "涉及字段结构的 3A：必须输出标准七列表（序号、画面描述、时长、景别、运镜、台词、音效），并删除额外字段审核；不要把 3A 当作保留扩展字段。",
+  ].join("\n");
+}
+
 export async function decisionAI(ctx: AgentContext) {
   const { isolationKey, text, userMessageTime, abortSignal, resTool } = ctx;
   const memory = new Memory("productionAgent", isolationKey);
@@ -284,6 +295,7 @@ export async function decisionAI(ctx: AgentContext) {
   const safety = await getContentSafetyConstraint();
   const mem = buildMemPrompt(await memory.get(text));
   const workflowContext = await getWorkflowContext(Number(resTool.data.projectId), Number(resTool.data.scriptId));
+  const choiceDirective = buildChoiceDirective(text);
 
   const { textStream } = await u.Ai.Text(
     "productionAgent:decisionAgent",
@@ -291,7 +303,7 @@ export async function decisionAI(ctx: AgentContext) {
     messages: [
       { role: "system", content: withContentSafety(prompt, safety) },
       { role: "assistant", content: `${workflowContext}\n\n${mem}\n\n${projectModelInfo(project)}` },
-      { role: "user", content: text },
+      { role: "user", content: choiceDirective ? `${text}\n\n${choiceDirective}` : text },
     ],
     abortSignal,
     tools: {

@@ -4,6 +4,7 @@ import settingStore from "@/stores/setting";
 import { useChat } from "@/utils/useChat";
 import type { FlowData } from "@/views/production/types";
 import type { ChatMessagesData } from "@tdesign-vue-next/chat";
+import { resolveApiBaseUrl } from "@/utils/backendUrl";
 
 export default defineStore(
   "productionAgent",
@@ -46,7 +47,7 @@ export default defineStore(
     });
 
     const { connected, messages, renderableMessages, chat, stopGenerate, socket, status, workflowStatus, reconnect, connect, disconnect } = useChat({
-      url: `${settingStore().baseUrl}/socket/productionAgent`,
+      url: `${resolveApiBaseUrl(settingStore().baseUrl)}/socket/productionAgent`,
       auth: chatAuth,
       manageLifecycle: false,
       autoConnect: false,
@@ -153,8 +154,12 @@ export default defineStore(
           ...ctx,
         };
       }
-      if (!connected.value) connect();
-      socket.value?.emit("updateContext", ctx);
+      if (!connected.value) {
+        connect();
+        socket.value?.once("connect", () => socket.value?.emit("updateContext", ctx));
+      } else {
+        socket.value?.emit("updateContext", ctx);
+      }
     }
 
     function setDataContext(projectId: number, scriptId: number) {

@@ -185,7 +185,7 @@ async function handleDeleteScript(scriptId: number) {
     theme: "warning",
     onConfirm: async () => {
       try {
-        await axios.post("/script/delScript", { id: [scriptId] });
+        await axios.post("/script/delScript", { ids: [scriptId] });
         window.$message.success($t("workbench.script.msg.deleteSuccess"));
         searchScripts();
         dialog.destroy();
@@ -241,7 +241,7 @@ async function handleBatchDelete() {
     theme: "warning",
     onConfirm: async () => {
       try {
-        await axios.post("/script/delScript", { id: selectedIds.value });
+        await axios.post("/script/delScript", { ids: selectedIds.value });
         window.$message.success($t("workbench.script.msg.batchDeleteSuccess"));
         searchScripts();
         dialog.destroy();

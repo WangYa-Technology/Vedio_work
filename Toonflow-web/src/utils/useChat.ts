@@ -556,13 +556,16 @@ export function useChat(options: UseChatOptions) {
     socket.value.on("connect", () => {
       connected.value = true;
       connecting.value = false;
+      if (workflowStatus.value.state === "error" && workflowStatus.value.label === "连接已断开，当前任务可重新继续") {
+        workflowStatus.value = { state: "idle", label: "" };
+      }
       onConnect?.();
     });
 
     socket.value.on("disconnect", (reason) => {
       connected.value = false;
       connecting.value = false;
-      if (workflowStatus.value.state === "working" || workflowStatus.value.state === "retrying") {
+      if (reason !== "io client disconnect" && (workflowStatus.value.state === "working" || workflowStatus.value.state === "retrying")) {
         workflowStatus.value = { state: "error", label: "连接已断开，当前任务可重新继续" };
       }
       onDisconnect?.();
@@ -591,7 +594,7 @@ export function useChat(options: UseChatOptions) {
       socket.value = io(url, {
         transports: ["websocket", "polling"],
         reconnection: true,
-        reconnectionAttempts: 10,
+        reconnectionAttempts: Infinity,
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
         timeout: 10000,

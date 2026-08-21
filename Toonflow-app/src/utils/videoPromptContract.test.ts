@@ -159,6 +159,45 @@ non_diegetic_music: N/A`;
   );
 });
 
+test("accepts multiline role subjects and an explicit English downward anchor", () => {
+  const prompt = `subject_definitions:
+<Subject 1>
+Reference @图1, preserving the source character identity.
+name: 王胜
+summary:
+[reference generation] Wang Sheng loses control above the lake.
+retention_analysis:
+<Subject 1> is fully_preserved.
+detailed_description:
+[Shot 1] <Subject 1> is plummeting toward the water as the lake surface rapidly grows larger beneath him.
+overall_soundscape:
+Synchronized wind and snapping fabric only.
+non_diegetic_music:
+N/A
+只保留同步环境音效和动作音效，不生成背景音乐，不生成字幕。`;
+
+  assert.deepEqual(
+    collectVideoPromptContractViolations(
+      {
+        medias: [{ name: "王胜", type: "role" }],
+        segmentRows: [
+          { dialogue: "无台词", description: "王胜失控坠落并持续接近水面" },
+        ],
+      },
+      prompt,
+      {
+        referenceToken: "@图",
+        audio: true,
+        videoPromptProfile: {
+          modelFamily: "minimax-h3",
+          modeKind: "multiReference",
+        },
+      },
+    ),
+    [],
+  );
+});
+
 test("rejects an incomplete MiniMax H3 Ref2VA structure", () => {
   const violations = collectVideoPromptContractViolations(
     { segmentRows: [] },
@@ -402,4 +441,149 @@ test("requires a face clarity anchor for medium and medium-long shots", () => {
     ),
     [],
   );
+});
+
+test("accepts exact H3 dialogue bound to distinct role subjects on cumulative cuts", () => {
+  const task = {
+    medias: [
+      { name: "王胜", type: "role" },
+      { name: "宋嫣", type: "role" },
+      { name: "宋家禁地湖", type: "scene" },
+    ],
+    segmentRows: [
+      { duration: 3, dialogue: "王胜：这什么地方？", description: "王胜浮出水面", scale: "近景" },
+      { duration: 4, dialogue: "宋嫣：都别碰他！", description: "宋嫣举起玉令", scale: "近景" },
+    ],
+  };
+  const prompt = `subject_definitions:
+<Subject 1> is the character from @图1 (王胜), preserving his identity.
+<Subject 2> is the character from @图2 (宋嫣), preserving her identity.
+<Subject 3> is the lake environment from @图3 (宋家禁地湖).
+summary:
+[reference generation] Two distinct characters confront each other by the lake.
+retention_analysis:
+<Subject 1> (appears in [Shot 1]): fully_preserved - identity retained.
+<Subject 2> (appears in [Shot 2]): fully_preserved - identity retained.
+<Subject 3> (appears in [Shot 1], [Shot 2]): fully_preserved - environment retained.
+detailed_description:
+The target video uses a restrained cinematic style.
+[Shot 1] <Subject 1> (S1) rises from the water and asks, <d>[Chinese] 这什么地方？</d>
+[Shot 2] At 00:03.000, the shot cuts to <Subject 2> (S2), who raises the token and says, <d>[Chinese] 都别碰他！</d>
+overall_soundscape:
+Water and footsteps remain synchronized with the action.
+non_diegetic_music:
+N/A`;
+
+  assert.deepEqual(
+    collectVideoPromptContractViolations(task, prompt, {
+      referenceToken: "@图",
+      audio: true,
+      videoPromptProfile: {
+        modelFamily: "minimax-h3",
+        modeKind: "multimodal",
+      },
+    }),
+    [],
+  );
+});
+
+test("rejects extra text after the H3 non-diegetic music field", () => {
+  const violations = collectVideoPromptContractViolations(
+    {
+      segmentRows: [],
+      medias: [],
+    },
+    `subject_definitions:
+N/A
+summary:
+[reference generation] Empty test segment.
+retention_analysis:
+N/A
+detailed_description:
+[Shot 1] A static empty frame.
+overall_soundscape:
+N/A
+non_diegetic_music:
+N/A
+只保留同步环境音效，不生成背景音乐。`,
+    {
+      videoPromptProfile: {
+        modelFamily: "minimax-h3",
+        modeKind: "multiReference",
+      },
+    },
+  );
+
+  assert.ok(violations.some((item) => item.includes("只能写 N/A")));
+});
+
+test("accepts the requested fixed synchronous sound suffix after H3 N/A", () => {
+  const violations = collectVideoPromptContractViolations(
+    {
+      segmentRows: [],
+      medias: [],
+    },
+    `subject_definitions:
+N/A
+summary:
+[reference generation] Empty test segment.
+retention_analysis:
+N/A
+detailed_description:
+[Shot 1] A static empty frame.
+overall_soundscape:
+N/A
+non_diegetic_music:
+N/A
+只保留同步环境音效和动作音效，不生成背景音乐，不生成字幕。`,
+    {
+      videoPromptProfile: {
+        modelFamily: "minimax-h3",
+        modeKind: "multiReference",
+      },
+    },
+  );
+
+  assert.deepEqual(violations, []);
+});
+
+test("rejects reset shot timing, speaker prefixes, missing identities, and duplicate subjects", () => {
+  const violations = collectVideoPromptContractViolations(
+    {
+      medias: [
+        { name: "王胜", type: "role" },
+        { name: "宋嫣", type: "role" },
+      ],
+      segmentRows: [
+        { duration: 3, dialogue: "王胜：这什么地方？", description: "王胜抬头", scale: "近景" },
+        { duration: 4, dialogue: "宋嫣：都别碰他！", description: "宋嫣抬手", scale: "近景" },
+      ],
+    },
+    `subject_definitions:
+<Subject 1> is the character from @图1 (王胜).
+<Subject 1> is also the character from @图2 (宋嫣).
+summary:
+[reference generation] confrontation.
+retention_analysis:
+<Subject 1>: fully_preserved - identity retained.
+detailed_description:
+[Shot 1] <Subject 1> (S1) says, <d>[Chinese] 王胜：这什么地方？</d>
+[Shot 2] At 00:00.000, <Subject 1> (S2) says, <d>[Chinese] 宋嫣：都别碰他！</d>
+overall_soundscape:
+Water.
+non_diegetic_music:
+N/A`,
+    {
+      referenceToken: "@图",
+      audio: true,
+      videoPromptProfile: {
+        modelFamily: "minimax-h3",
+        modeKind: "multimodal",
+      },
+    },
+  );
+
+  assert.ok(violations.some((item) => item.includes("说话人前缀")));
+  assert.ok(violations.some((item) => item.includes("同一个 Subject")));
+  assert.ok(violations.some((item) => item.includes("累计时间 00:03.000")));
 });

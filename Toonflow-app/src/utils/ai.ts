@@ -166,6 +166,10 @@ class AiText {
 interface ImageConfig {
   prompt: string; //图片提示词
   imageBase64: string[]; //输入的图片提示词
+  referenceList?: Array<{
+    type: "image";
+    base64: string;
+  }>;
   size: "1K" | "2K" | "4K"; // 图片尺寸
   aspectRatio: `${number}:${number}`; // 长宽比
 }

@@ -2,7 +2,16 @@ import pLimit from "p-limit";
 import { v4 as uuidv4 } from "uuid";
 import u from "@/utils";
 import { parseModelReference } from "@/utils/modelRef";
-import { appendNegativePrompt } from "@/utils/imagePrompt";
+import {
+  appendNegativePrompt,
+  buildAssetGenerationPrompt,
+} from "@/utils/imagePrompt";
+import {
+  buildAssetInferenceTemplatePrompt,
+  isAssetInferenceTemplateApplicable,
+  parseAssetInferenceTemplate,
+  type AssetInferenceTemplate,
+} from "@/utils/assetInferenceTemplate";
 
 type AssetType = "role" | "scene" | "tool";
 type ImageResolution = "1K" | "2K" | "4K";
@@ -12,7 +21,9 @@ interface AssetImageItem {
   type: AssetType;
   name: string;
   prompt: string;
+  describe?: string | null;
   base64?: string | null;
+  referenceImageId?: number | null;
 }
 
 interface QueueAssetImagesInput {
@@ -20,7 +31,10 @@ interface QueueAssetImagesInput {
   model: string;
   resolution: ImageResolution;
   concurrentCount?: number;
+  templateId?: number | null;
   items: AssetImageItem[];
+  selectedTemplateRaw?: string;
+  selectedStructuredTemplate?: AssetInferenceTemplate | null;
 }
 
 interface QueueStoryboardImagesInput {
@@ -81,18 +95,37 @@ function buildAssetPrompt(
   type: AssetType,
   artStyle: string,
   name: string,
+  description: string | null | undefined,
   prompt: string,
+  hasReference: boolean,
+  templateRaw?: string,
+  structuredTemplate?: AssetInferenceTemplate | null,
 ) {
   const config = assetTypeConfig[type];
-  return [
-    `请生成${config.promptTitle}。`,
-    `画风风格：${artStyle || "未指定"}`,
-    `${config.label}名称：${name}`,
-    `${config.label}提示词：${prompt}`,
-    ...(config.promptGuidance?.length
-      ? ["生成硬性要求：", ...config.promptGuidance.map((item) => `- ${item}`)]
-      : []),
-  ].join("\n");
+  const hasCustomTemplate = Boolean(templateRaw?.trim());
+  return buildAssetGenerationPrompt({
+    promptTitle: hasCustomTemplate ? "自定义模板资产图" : config.promptTitle,
+    promptEnd: hasCustomTemplate ? "符合所选模板版式的资产图" : config.promptTitle,
+    assetLabel: config.label,
+    artStyle,
+    name,
+    description,
+    prompt,
+    hasReference,
+    guidance: hasCustomTemplate
+      ? [
+          structuredTemplate
+            ? buildAssetInferenceTemplatePrompt(structuredTemplate)
+            : "严格遵循当前图片提示词中明确的画布比例、视图数量、细节面板和版式，不得追加角色标准四视图或道具四宫格规则。",
+          "当前已选择自定义图片推理模板；模板版式优先于默认资产类型版式。",
+        ]
+      : config.promptGuidance,
+    customTemplate: hasCustomTemplate,
+  });
+}
+
+function resolveAspectRatio(prompt: string, templateRaw?: string, structuredTemplate?: AssetInferenceTemplate | null) {
+  return structuredTemplate?.canvas.aspectRatio || templateRaw?.match(/\b(?:9:16|16:9|1:1|4:3)\b/)?.[0] || prompt.match(/\b(?:9:16|16:9|1:1|4:3)\b/)?.[0] || "16:9";
 }
 
 function normalizeIds(ids: number[]) {
@@ -108,8 +141,7 @@ export function buildDerivedAssetPrompt(input: {
   prompt?: string | null;
 }) {
   const consistencyRules: Record<AssetType, string> = {
-    role:
-      "保持参考图角色的身份、五官、体型比例、姿态、视角和构图一致，只改变衍生目标明确要求的整体造型或形态。",
+    role: "保持参考图角色的身份、五官、体型比例、姿态、视角和构图一致，只改变衍生目标明确要求的整体造型或形态。",
     scene:
       "保持参考图的空间结构、建筑布局、材质、镜头机位和构图一致，只改变衍生目标明确要求的时段与相应光影；画面中不要出现人物。",
     tool: "保持参考图主体的结构、比例、材质、视角和构图一致，只改变衍生目标明确要求的视觉状态。",
@@ -188,13 +220,20 @@ async function runAssetImageTask(
             item.type,
             project.artStyle || "",
             item.name,
+            item.describe,
             item.prompt,
+            Boolean(item.base64),
+            input.selectedTemplateRaw,
+            input.selectedStructuredTemplate,
           ),
           project.negativePrompt,
         ),
         imageBase64: item.base64 ? [item.base64] : [],
+        referenceList: item.base64
+          ? [{ type: "image", base64: item.base64 }]
+          : [],
         size: input.resolution,
-        aspectRatio: "16:9",
+        aspectRatio: resolveAspectRatio(item.prompt, input.selectedTemplateRaw, input.selectedStructuredTemplate) as `${number}:${number}`,
       },
       {
         taskClass: config.taskClass,
@@ -204,6 +243,7 @@ async function runAssetImageTask(
           id: item.id,
           projectId: input.projectId,
           type: config.label,
+          templateId: input.templateId ?? null,
         }),
       },
     );
@@ -243,7 +283,27 @@ export async function queueAssetImages(input: QueueAssetImagesInput) {
   ).trim();
   if (!model) throw new Error("项目未配置图片模型");
   if (!input.items.length) throw new Error("没有可生成的资产");
-  const taskInput = { ...input, model };
+  const selectedTemplate = input.templateId
+    ? await u.db("o_prompt").where({ id: input.templateId }).select("data", "useData").first()
+    : null;
+  const selectedTemplateRaw = String(selectedTemplate?.useData || selectedTemplate?.data || "");
+  const selectedStructuredTemplate = parseAssetInferenceTemplate(selectedTemplateRaw);
+  const assetRows = await u
+    .db("o_assets")
+    .where({ projectId: input.projectId })
+    .whereIn(
+      "id",
+      input.items.map((item) => item.id),
+    )
+    .select("id", "type", "name", "describe");
+  const assetMap = new Map(assetRows.map((asset) => [Number(asset.id), asset]));
+  const invalidTemplateAsset = selectedStructuredTemplate
+    ? input.items.find((item) => !isAssetInferenceTemplateApplicable(selectedStructuredTemplate, item.type))
+    : null;
+  if (invalidTemplateAsset) {
+    throw new Error(`推理模板“${selectedStructuredTemplate!.name}”不适用于${assetTypeConfig[invalidTemplateAsset.type].label}资产`);
+  }
+  const taskItems: AssetImageItem[] = [];
 
   const imageIds: number[] = [];
   for (const item of input.items) {
@@ -251,11 +311,32 @@ export async function queueAssetImages(input: QueueAssetImagesInput) {
       throw new Error(`不支持的资产类型：${item.type}`);
     if (!item.prompt.trim())
       throw new Error(`资产“${item.name}”缺少图片提示词`);
-    const asset = await u
-      .db("o_assets")
-      .where({ id: item.id, projectId: input.projectId })
-      .first();
+    const asset = assetMap.get(Number(item.id));
     if (!asset) throw new Error(`资产不存在：${item.id}`);
+    if (asset.type !== item.type)
+      throw new Error(`资产“${asset.name || item.name}”类型不匹配`);
+    let referenceBase64 = item.base64 || null;
+    if (!referenceBase64 && item.referenceImageId != null) {
+      const referenceImage = await u
+        .db("o_image")
+        .where({
+          id: item.referenceImageId,
+          assetsId: item.id,
+          state: "已完成",
+        })
+        .whereNotNull("filePath")
+        .select("filePath")
+        .first();
+      if (!referenceImage)
+        throw new Error(`资产“${asset.name || item.name}”的参考图不可用`);
+      referenceBase64 = await u.oss.getImageBase64(referenceImage.filePath);
+    }
+    taskItems.push({
+      ...item,
+      name: String(asset.name || item.name),
+      describe: asset.describe,
+      base64: referenceBase64,
+    });
     const [imageId] = await u.db("o_image").insert({
       type: item.type,
       state: "生成中",
@@ -272,7 +353,8 @@ export async function queueAssetImages(input: QueueAssetImagesInput) {
   }
 
   const limit = pLimit(Math.max(1, input.concurrentCount || 1));
-  const tasks = input.items.map((item, index) =>
+  const taskInput = { ...input, model, items: taskItems, selectedTemplateRaw, selectedStructuredTemplate };
+  const tasks = taskItems.map((item, index) =>
     limit(() => runAssetImageTask(project, taskInput, item, imageIds[index])),
   );
   void Promise.allSettled(tasks);
@@ -306,7 +388,10 @@ export async function queueAssetImagesById(
         const parent = await u
           .db("o_assets")
           .leftJoin("o_image", "o_assets.imageId", "o_image.id")
-          .where({ "o_assets.id": row.assetsId, "o_assets.projectId": projectId })
+          .where({
+            "o_assets.id": row.assetsId,
+            "o_assets.projectId": projectId,
+          })
           .select(
             "o_assets.id",
             "o_assets.name",
@@ -314,8 +399,7 @@ export async function queueAssetImagesById(
             "o_image.filePath as imageFilePath",
           )
           .first();
-        if (!parent)
-          throw new Error(`衍生资产“${row.name}”的父资产不存在`);
+        if (!parent) throw new Error(`衍生资产“${row.name}”的父资产不存在`);
         if (!parent.imageFilePath)
           throw new Error(
             `衍生资产“${row.name}”的父资产“${parent.name}”还没有可用图片，请先生成父资产图片`,
@@ -378,11 +462,19 @@ async function runStoryboardImageTask(
 ) {
   const filePath = `${row.projectId}/storyboard/${row.scriptId}/${uuidv4()}.jpg`;
   try {
+    const referenceImages = await storyboardReferenceBase64(Number(row.id));
     const aiImage = u.Ai.Image(model as `${string}:${string}`);
     await aiImage.run(
       {
-        prompt: appendNegativePrompt(String(row.prompt), project.negativePrompt),
-        imageBase64: await storyboardReferenceBase64(Number(row.id)),
+        prompt: appendNegativePrompt(
+          String(row.prompt),
+          project.negativePrompt,
+        ),
+        imageBase64: referenceImages,
+        referenceList: referenceImages.map((base64) => ({
+          type: "image" as const,
+          base64,
+        })),
         size: resolution,
         aspectRatio: String(
           project.videoRatio || "16:9",

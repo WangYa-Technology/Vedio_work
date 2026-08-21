@@ -454,6 +454,7 @@ export default async (knex: Knex, forceInit: boolean = false): Promise<void> => 
         table.integer("startTime");
         table.string("promptState");
         table.text("promptErrorReason");
+        table.integer("audioBindState").defaultTo(0);
         table.primary(["id"]);
         table.unique(["id"]);
       },
@@ -717,6 +718,15 @@ export default async (knex: Knex, forceInit: boolean = false): Promise<void> => 
         table.integer("assetId").notNullable();
         table.primary(["scriptId", "assetId"]);
         table.unique(["scriptId", "assetId"]);
+      },
+    },
+    {
+      name: "o_assetsRole2Audio",
+      builder: (table) => {
+        table.integer("assetsRoleId").notNullable();
+        table.integer("assetsAudioId").notNullable();
+        table.primary(["assetsRoleId", "assetsAudioId"]);
+        table.unique(["assetsAudioId"]);
       },
     },
     {
@@ -1147,6 +1157,13 @@ export default async (knex: Knex, forceInit: boolean = false): Promise<void> => 
       .whereNull("originalPrompt")
       .whereNotNull("prompt")
       .update({ originalPrompt: knex.raw("??", ["prompt"]) });
+  }
+
+  if ((await knex.schema.hasTable("o_assets")) && !(await knex.schema.hasColumn("o_assets", "audioBindState"))) {
+    await knex.schema.alterTable("o_assets", (table) => {
+      table.integer("audioBindState").defaultTo(0);
+    });
+    console.log("[初始化数据库] 已补充角色声音绑定状态字段: audioBindState");
   }
 
   if ((await knex.schema.hasTable("o_assets2Storyboard")) && !(await knex.schema.hasColumn("o_assets2Storyboard", "sort"))) {

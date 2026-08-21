@@ -242,9 +242,9 @@ const nextAction = computed(() => {
   if (persistedScriptCount.value > 0) {
     return {
       title: "剧本已就绪",
-      description: "进入制作流程，继续完成导演规划、资产和分镜。",
-      label: "进入制作",
-      type: "production" as const,
+      description: "前往剧本管理，先提取角色、场景和道具资产，再进入制作流程。",
+      label: "去提取资产",
+      type: "script" as const,
     };
   }
   if (planData.value.adaptationStrategy.trim()) {
@@ -368,8 +368,8 @@ function handleStop() {
 function runNextAction() {
   const action = nextAction.value;
   if (!action) return;
-  if (action.type === "production") {
-    router.push("/production");
+  if (action.type === "script") {
+    router.push("/script");
     return;
   }
   if (scriptAgent.chat(action.prompt)) {
@@ -486,7 +486,7 @@ async function delScript(index: number) {
     theme: "danger",
     onConfirm: async () => {
       if (item.id) {
-        await axios.post("/script/delScript", { id: [item.id] });
+        await axios.post("/script/delScript", { ids: [item.id] });
         planData.value.script.splice(index, 1);
       } else {
         planData.value.script.splice(index, 1);
