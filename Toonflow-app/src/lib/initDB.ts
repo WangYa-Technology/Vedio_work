@@ -11,6 +11,7 @@ import {
   DEFAULT_VIDEO_PROMPT_FAITHFUL,
 } from "@/constants/videoPromptDefaults";
 import { DEFAULT_IMAGE_NEGATIVE_PROMPT } from "@/constants/imagePromptDefaults";
+import { hashPassword, isPasswordHash } from "@/utils/password";
 
 interface TableSchema {
   name: string;
@@ -132,11 +133,14 @@ export default async (knex: Knex, forceInit: boolean = false): Promise<void> => 
         table.integer("id").notNullable();
         table.text("name");
         table.text("password");
+        table.text("role").notNullable().defaultTo("user");
+        table.text("status").notNullable().defaultTo("active");
+        table.integer("createTime");
         table.primary(["id"]);
         table.unique(["id"]);
       },
       initData: async (knex) => {
-        await knex("o_user").insert([{ id: 1, name: "admin", password: "admin123" }]);
+        await knex("o_user").insert([{ id: 1, name: "admin", password: await hashPassword("admin123"), role: "admin", status: "active", createTime: Date.now() }]);
       },
     },
     //项目表
@@ -1128,11 +1132,25 @@ export default async (knex: Knex, forceInit: boolean = false): Promise<void> => 
     }
   }
 
+  for (const [column, build] of [
+    ["role", (table: Knex.AlterTableBuilder) => table.text("role").notNullable().defaultTo("user")],
+    ["status", (table: Knex.AlterTableBuilder) => table.text("status").notNullable().defaultTo("active")],
+    ["createTime", (table: Knex.AlterTableBuilder) => table.integer("createTime")],
+  ] as const) {
+    if (!(await knex.schema.hasColumn("o_user", column))) await knex.schema.alterTable("o_user", build);
+  }
   const userCount = Number((await knex("o_user").count<{ count: number | string }>("id as count").first())?.count ?? 0);
   if (userCount === 0) {
-    await knex("o_user").insert({ id: 1, name: "admin", password: "admin123" });
+    await knex("o_user").insert({ id: 1, name: "admin", password: await hashPassword("admin123"), role: "admin", status: "active", createTime: Date.now() });
     console.log("[初始化数据库] 已补充默认管理员账号");
   }
+  await knex("o_user").where({ id: 1 }).update({ role: "admin", status: "active" });
+  const users = await knex("o_user").select("id", "password");
+  for (const user of users) {
+    const password = String(user.password || "");
+    if (password && !isPasswordHash(password)) await knex("o_user").where({ id: user.id }).update({ password: await hashPassword(password) });
+  }
+  await knex("o_project").whereNull("userId").update({ userId: 1 });
 
   if ((await knex.schema.hasTable("o_project")) && !(await knex.schema.hasColumn("o_project", "negativePrompt"))) {
     await knex.schema.alterTable("o_project", (table) => {

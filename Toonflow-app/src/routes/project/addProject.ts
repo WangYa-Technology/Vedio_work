@@ -36,7 +36,7 @@ export default router.post(
       negativePrompt: String(negativePrompt ?? DEFAULT_IMAGE_NEGATIVE_PROMPT).trim(),
       videoRatio,
       directorManual,
-      userId: 1,
+      userId: req.authUser!.id,
       imageModel,
       videoModel,
       createTime: Date.now(),

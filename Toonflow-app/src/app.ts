@@ -10,9 +10,9 @@ import cors from "cors";
 import buildRoute from "@/core";
 import fs from "fs";
 import u from "@/utils";
-import jwt from "jsonwebtoken";
 import socketInit from "@/socket/index";
 import path from "path";
+import { authenticate, authorizeRequest, userOwnsProject } from "@/middleware/auth";
 
 declare const __APP_VERSION__: string;
 
@@ -43,13 +43,25 @@ export default async function startServe(randomPort: Boolean = false) {
   app.use(express.json({ limit: "100mb" }));
   app.use(express.urlencoded({ extended: true, limit: "100mb" }));
 
-  // oss 静态资源
+  // data/web 静态网站和登录页保持公开。
+  const webDir = u.getPath("web");
+  if (fs.existsSync(webDir)) app.use(express.static(webDir));
+
+  app.use(authenticate);
+  app.use(authorizeRequest);
+
+  // 项目媒体必须校验 URL 首段中的项目归属。
   const ossDir = u.getPath("oss");
   if (!fs.existsSync(ossDir)) {
     fs.mkdirSync(ossDir, { recursive: true });
   }
   console.log("文件目录:", ossDir);
-  app.use("/oss", express.static(ossDir));
+  app.use("/oss", async (req, res, next) => {
+    if (!req.authUser) return next();
+    const projectId = Number(req.path.split("/").filter(Boolean)[0]);
+    if (!req.authUser || !(await userOwnsProject(req.authUser, projectId))) return res.status(403).send({ message: "无权访问该项目文件" });
+    next();
+  }, express.static(ossDir));
   // skills 静态资源
   const skillsDir = u.getPath("skills");
   if (!fs.existsSync(skillsDir)) {
@@ -73,34 +85,6 @@ export default async function startServe(randomPort: Boolean = false) {
   console.log("文件目录:", assetsDir);
   app.use("/assets", express.static(assetsDir));
 
-  // data/web 静态网站
-  const webDir = u.getPath("web");
-  if (fs.existsSync(webDir)) {
-    console.log("静态网站目录:", webDir);
-    app.use(express.static(webDir));
-  } else {
-    console.warn("静态网站目录不存在:", webDir);
-  }
-
-  app.use(async (req, res, next) => {
-    const setting = await u.db("o_setting").where("key", "tokenKey").select("value").first();
-    if (!setting) return res.status(444).send({ message: "服务器秘钥未配置，请联系管理员" });
-    const { value: tokenKey } = setting;
-    // 从 header 或 query 参数获取 token
-    const rawToken = req.headers.authorization || (req.query.token as string) || "";
-    const token = rawToken.replace("Bearer ", "");
-    // 白名单路径
-    if (req.path === "/api/login/login") return next();
-
-    if (!token) return res.status(401).send({ message: "未提供token" });
-    try {
-      const decoded = jwt.verify(token, tokenKey as string);
-      (req as any).user = decoded;
-      next();
-    } catch (err) {
-      return res.status(401).send({ message: "无效的token" });
-    }
-  });
 
   const router = await import("@/router");
   await router.default(app);

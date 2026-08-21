@@ -1,8 +1,8 @@
-import jwt from "jsonwebtoken";
-import u from "@/utils";
 import { Namespace, Socket } from "socket.io";
+import u from "@/utils";
 import * as agent from "@/agents/scriptAgent/index";
 import ResTool from "@/socket/resTool";
+import { decodeSocketUser, userOwnsProject } from "@/middleware/auth";
 
 const DECISION_MAX_ATTEMPTS = 3;
 
@@ -27,29 +27,17 @@ async function waitBeforeRetry(delayMs: number, signal?: AbortSignal) {
   });
 }
 
-async function verifyToken(rawToken: string): Promise<Boolean> {
-  const setting = await u.db("o_setting").where("key", "tokenKey").select("value").first();
-  if (!setting) return false;
-  const { value: tokenKey } = setting;
-  if (!rawToken) return false;
-  const token = rawToken.replace("Bearer ", "");
-  try {
-    jwt.verify(token, tokenKey as string);
-    return true;
-  } catch (err) {
-    return false;
-  }
-}
-
 export default (nsp: Namespace) => {
   nsp.on("connection", async (socket: Socket) => {
     const token = socket.handshake.auth.token;
-    if (!token || !(await verifyToken(token))) {
+    const user = await decodeSocketUser(token);
+    const projectId = Number(socket.handshake.auth.projectId);
+    if (!user || !(await userOwnsProject(user, projectId))) {
       console.log("[scriptAgent] 连接失败，token无效");
       socket.disconnect();
       return;
     }
-    const isolationKey = socket.handshake.auth.isolationKey;
+    const isolationKey = `${user.id}:${String(socket.handshake.auth.isolationKey || "")}`;
     if (!isolationKey) {
       console.log("[scriptAgent] 连接失败，缺少 isolationKey");
       socket.disconnect();
@@ -59,7 +47,7 @@ export default (nsp: Namespace) => {
     console.log("[scriptAgent] 已连接:", socket.id);
 
     const resTool = new ResTool(socket, {
-      projectId: socket.handshake.auth.projectId,
+      projectId,
     });
     let abortController: AbortController | null = null;
 

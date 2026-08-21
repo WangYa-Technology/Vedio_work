@@ -19,6 +19,7 @@ export default router.post(
     const data = await u
       .db("o_tasks")
       .leftJoin("o_project", "o_project.id", "o_tasks.projectId")
+      .where("o_project.userId", req.authUser!.id)
       .andWhere((qb) => {
         if (taskClass) {
           qb.andWhere("o_tasks.taskClass", taskClass);
@@ -36,6 +37,8 @@ export default router.post(
       .orderBy("o_tasks.id", "desc");
     const totalQuery = (await u
       .db("o_tasks")
+      .join("o_project", "o_project.id", "o_tasks.projectId")
+      .where("o_project.userId", req.authUser!.id)
       .andWhere((qb) => {
         if (taskClass) {
           qb.andWhere("o_tasks.taskClass", taskClass);

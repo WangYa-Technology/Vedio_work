@@ -19,8 +19,11 @@
       <div class="login-form">
         <t-input v-model="state.user.username" :placeholder="$t('login.username')" autocomplete="username" size="large"></t-input>
         <t-input v-model="state.user.password" type="password" :placeholder="$t('login.password')" size="large"></t-input>
-        <t-button class="loginBtn" theme="primary" size="large" :loading="state.loginLoading" @click="handleLogin" block>
-          {{ $t("login.login") }}
+        <t-button class="loginBtn" theme="primary" size="large" :loading="state.loginLoading" @click="handleSubmit" block>
+          {{ isRegister ? "注册账户" : $t("login.login") }}
+        </t-button>
+        <t-button variant="text" size="small" :disabled="state.loginLoading" @click="isRegister = !isRegister">
+          {{ isRegister ? "已有账户？返回登录" : "注册新账户" }}
         </t-button>
       </div>
       <div class="tips c">{{ $t("login.tips") }}</div>
@@ -87,8 +90,9 @@ const state = ref({
     password: [{ required: true, message: $t("login.passwordRequired") }],
   },
 });
+const isRegister = ref(false);
 
-const handleLogin = () => {
+const handleSubmit = () => {
   if (!state.value.user.username || !state.value.user.password) {
     window.$message.warning($t("login.enterUsernameAndPassword"));
     return;
@@ -96,8 +100,14 @@ const handleLogin = () => {
   state.value.loginLoading = true;
   const obj = { ...state.value.user };
   axios
-    .post("/login/login", obj)
+    .post(isRegister.value ? "/login/register" : "/login/login", obj)
     .then(({ data }) => {
+      if (isRegister.value) {
+        isRegister.value = false;
+        window.$message.success("注册成功，请登录");
+        state.value.loginLoading = false;
+        return;
+      }
       localStorage.setItem("token", data.token);
       localStorage.setItem("userId", data.id);
       Router.push("/project");

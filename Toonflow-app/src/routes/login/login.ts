@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { success, error } from "@/lib/responseFormat";
 import { validateFields } from "@/middleware/middleware";
 import { z } from "zod";
+import { hashPassword, verifyPassword } from "@/utils/password";
 const router = express.Router();
 
 export function setToken(payload: string | object, expiresIn: string | number, secret: string): string {
@@ -26,7 +27,11 @@ export default router.post(
     const data = await u.db("o_user").where("name", "=", username).first();
     if (!data) return res.status(400).send(error("登录失败"));
 
-    if (data!.password == password && data!.name == username) {
+    if (data.status === "disabled") return res.status(403).send(error("账号已停用"));
+    if (await verifyPassword(password, String(data.password || ""))) {
+      if (!String(data.password).startsWith("scrypt$")) {
+        await u.db("o_user").where({ id: data.id }).update({ password: await hashPassword(password) });
+      }
       const tokenData = await u.db("o_setting").where("key", "tokenKey").first();
       if (!tokenData) return res.status(400).send(error("未找到tokenKey"));
       const token = setToken(
@@ -34,11 +39,11 @@ export default router.post(
           id: data!.id,
           name: data!.name,
         },
-        "180Days",
+        "7d",
         tokenData?.value as string,
       );
 
-      return res.status(200).send(success({ token: "Bearer " + token, name: data!.name, id: data!.id }, "登录成功"));
+      return res.status(200).send(success({ token: "Bearer " + token, name: data.name, id: data.id, role: "admin" }, "登录成功"));
     } else {
       return res.status(400).send(error("用户名或密码错误"));
     }

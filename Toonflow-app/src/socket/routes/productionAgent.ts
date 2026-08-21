@@ -1,8 +1,8 @@
-import jwt from "jsonwebtoken";
 import { Namespace, Socket } from "socket.io";
 import u from "@/utils";
 import * as agent from "@/agents/productionAgent";
 import ResTool from "@/socket/resTool";
+import { decodeSocketUser, userOwnsProject } from "@/middleware/auth";
 
 const DECISION_MAX_ATTEMPTS = 3;
 
@@ -27,28 +27,20 @@ async function waitBeforeRetry(delayMs: number, signal?: AbortSignal) {
   });
 }
 
-async function verifyToken(rawToken: string) {
-  const setting = await u.db("o_setting").where("key", "tokenKey").select("value").first();
-  if (!setting?.value || !rawToken) return false;
-  try {
-    jwt.verify(rawToken.replace("Bearer ", ""), String(setting.value));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export default (nsp: Namespace) => {
   nsp.on("connection", async (socket: Socket) => {
     const auth = socket.handshake.auth;
-    if (!auth.token || !(await verifyToken(auth.token))) {
+    const user = await decodeSocketUser(auth.token);
+    const initialProjectId = Number(auth.projectId);
+    const initialScript = auth.scriptId == null ? true : Boolean(await u.db("o_script").where({ id: Number(auth.scriptId), projectId: initialProjectId }).select("id").first());
+    if (!user || !(await userOwnsProject(user, initialProjectId)) || !initialScript) {
       console.log("[productionAgent] 连接失败，token 无效");
       socket.emit("error", { code: "AUTH_FAILED", message: "登录状态无效，请重新登录" });
       socket.disconnect();
       return;
     }
 
-    let isolationKey = String(auth.isolationKey || "");
+    let isolationKey = `${user.id}:${String(auth.isolationKey || "")}`;
     if (!isolationKey) {
       socket.emit("error", { code: "CONTEXT_MISSING", message: "生产 Agent 缺少会话上下文" });
       socket.disconnect();
@@ -56,21 +48,22 @@ export default (nsp: Namespace) => {
     }
 
     let resTool = new ResTool(socket, {
-      projectId: Number(auth.projectId),
+      projectId: initialProjectId,
       scriptId: auth.scriptId == null ? undefined : Number(auth.scriptId),
     });
     let abortController: AbortController | null = null;
     const thinkConfig = { think: false, thinlLevel: 0 };
     console.log("[productionAgent] 已连接:", socket.id, isolationKey);
 
-    socket.on("updateContext", (data: any, callback?: (response: any) => void) => {
+    socket.on("updateContext", async (data: any, callback?: (response: any) => void) => {
       const projectId = Number(data?.projectId);
       const scriptId = Number(data?.scriptId);
-      if (!data?.isolationKey || !Number.isFinite(projectId) || !Number.isFinite(scriptId)) {
+      const script = await u.db("o_script").where({ id: scriptId, projectId }).select("id").first();
+      if (!data?.isolationKey || !Number.isFinite(projectId) || !Number.isFinite(scriptId) || !(await userOwnsProject(user, projectId)) || !script) {
         callback?.({ success: false, message: "项目或剧本上下文无效" });
         return;
       }
-      isolationKey = String(data.isolationKey);
+      isolationKey = `${user.id}:${String(data.isolationKey)}`;
       resTool = new ResTool(socket, { projectId, scriptId });
       callback?.({ success: true });
       console.log("[productionAgent] 上下文已更新:", isolationKey);
