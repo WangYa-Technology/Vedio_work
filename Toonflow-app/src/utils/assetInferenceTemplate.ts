@@ -166,6 +166,15 @@ export const DEFAULT_ASSET_INFERENCE_TEMPLATES: AssetInferenceTemplate[] = [
   },
 ];
 
+const multiRegionTemplate = DEFAULT_ASSET_INFERENCE_TEMPLATES.find((template) => template.name === "人物多区域设定板");
+if (multiRegionTemplate) {
+  DEFAULT_ASSET_INFERENCE_TEMPLATES.push({
+    ...multiRegionTemplate,
+    name: "多细节",
+    summary: "适合需要多细节交付的角色：主肖像、三视图、脸部、发饰、服装、配饰和鞋履分区。",
+  });
+}
+
 export function parseAssetInferenceTemplate(value: unknown): AssetInferenceTemplate | null {
   try {
     const parsed = typeof value === "string" ? JSON.parse(value) : value;
