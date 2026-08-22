@@ -28,9 +28,10 @@ git diff --name-status HEAD wangya/main -- Toonflow-app/data/db2.sqlite
 ```bash
 cd Toonflow-app
 npm run check:runtime-db
+npm run check:runtime-data
 ```
 
-该检查会验证 SQLite 完整性、必要表和业务记录数量；空库只适用于全新安装，不适用于包含现有项目的运行数据提交。
+`check:runtime-db` 验证 SQLite 完整性、必要表和业务记录数量；`check:runtime-data` 进一步验证素材文件实际存在、分镜与素材属于同一项目、每个正式分镜都有绑定、场次/片段键不重复、分镜与视频轨道匹配。任一检查失败都不能提交业务数据。空库只适用于全新安装，不适用于包含现有项目的运行数据提交。
 
 ## 推理模板保存规则
 
@@ -41,3 +42,15 @@ npm run check:runtime-db
 上游提交 `c33ef6b` 将原本未跟踪的本地 `db2.sqlite` 变成了已跟踪文件，并带入一个只有表结构、没有项目记录的数据库。快进合并后，本地项目数据被替换；随后 `c1bd7de` 又提交了该空数据库。恢复时使用了本机备份 `db2.sqlite.before-minimax-h3-aieverything-20260819.sqlite`，并由当前版本启动迁移补齐新字段。
 
 恢复前的空数据库保存在 `Toonflow-app/backups/db2-before-restore-20260822-1712.sqlite`，仅作安全回滚使用，不作为业务数据源。
+
+## 媒体文件提交规则
+
+`o_image.filePath` 只是数据库中的相对路径，不是图片内容。数据库和 `data/oss/<projectId>/...` 必须作为一个数据集提交；只提交 `db2.sqlite` 会留下“数据库显示已完成、页面实际 404”的假绑定。当前仓库原先用 `data/oss/*` 忽略本地媒体，因此完整数据提交必须显式确认媒体文件已被 Git 跟踪：
+
+```bash
+git ls-files 'Toonflow-app/data/oss/**' | wc -l
+git check-ignore -v Toonflow-app/data/oss/<projectId>/<type>/<file>
+npm run check:runtime-data
+```
+
+如果 `check:runtime-data` 报告 `media`，不要用占位图片或修改数据库路径掩盖问题；应先找回原始文件，或在应用中重新上传/生成，再重新执行检查。`--allow-missing-media` 只用于诊断，不可作为提交前检查。

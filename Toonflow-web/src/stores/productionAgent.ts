@@ -125,14 +125,22 @@ export default defineStore(
       });
     }
 
+    let flowDataRequestId = 0;
+
     async function getFlowData() {
       const projectId = resolveProjectId();
       const episodeId = resolveScriptId();
       if (!projectId || !episodeId) return;
+      const requestId = ++flowDataRequestId;
       const { data } = await axios.post("/production/getFlowData", {
         projectId,
         episodesId: episodeId,
       });
+      if (
+        requestId !== flowDataRequestId ||
+        resolveProjectId() !== projectId ||
+        resolveScriptId() !== episodeId
+      ) return;
       flowData.value = data;
     }
     function updateContext(projectId?: number, scriptId?: number) {
@@ -167,26 +175,34 @@ export default defineStore(
       episodesId.value = scriptId;
     }
     const loadingHistory = ref(false);
+    let historyRequestId = 0;
     async function getHistory() {
+      const projectId = resolveProjectId();
+      const episodeId = resolveScriptId();
+      if (!projectId) {
+        messages.value = [...defMsg];
+        return;
+      }
+      const requestId = ++historyRequestId;
       loadingHistory.value = true;
       try {
-        const projectId = resolveProjectId();
-        const episodeId = resolveScriptId();
-        if (!projectId) {
-          messages.value = [...defMsg];
-          return;
-        }
         const { data } = await axios.post(`/agents/getMemory`, {
           projectId,
           episodesId: episodeId,
           agentType: "productionAgent",
         });
+        if (
+          requestId !== historyRequestId ||
+          resolveProjectId() !== projectId ||
+          resolveScriptId() !== episodeId
+        ) return;
         messages.value = [...defMsg, ...(Array.isArray(data) ? data : [])];
       } catch (error: any) {
+        if (requestId !== historyRequestId || resolveProjectId() !== projectId || resolveScriptId() !== episodeId) return;
         messages.value = [...defMsg];
         window.$message.error(error?.message || "生产 Agent 历史记录加载失败");
       } finally {
-        loadingHistory.value = false;
+        if (requestId === historyRequestId) loadingHistory.value = false;
       }
     }
 

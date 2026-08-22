@@ -1,5 +1,0 @@
-.DS_Store
-
-# Local runtime databases. Schema and seed data live in source-controlled code.
-/Toonflow-app/data/*.db
-/Toonflow-app/data/*.db-*

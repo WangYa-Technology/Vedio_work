@@ -10,8 +10,8 @@
           <t-checkbox v-model="checkAll" @change="handleCheckAll">{{ $t("workbench.generate.selectAll") }}</t-checkbox>
           <span class="selectedCount" v-if="selectedSceneCount">已选 {{ selectedSceneCount }} 场 · {{ selectedSegmentCount }} 段</span>
           <t-button size="small" variant="outline" :disabled="!selectedSegmentCount" @click="batchGenText">{{ $t("workbench.generate.batchGenerateText") }}</t-button>
-          <t-button size="small" variant="outline" :disabled="!selectedSegmentCount || selectedHasDraftTracks" @click="batchGenVideo">{{ $t("workbench.generate.batchGenerateVideo") }}</t-button>
-          <t-button size="small" :disabled="!selectedSegmentCount || selectedHasDraftTracks || !selectedImportableCount" @click="importVideo">
+          <t-button size="small" variant="outline" :disabled="!selectedSegmentCount" @click="batchGenVideo">{{ $t("workbench.generate.batchGenerateVideo") }}</t-button>
+          <t-button size="small" :disabled="!selectedSegmentCount || !selectedImportableCount" @click="importVideo">
             {{ $t("workbench.generate.importVideo") }}
           </t-button>
         </div>
@@ -103,12 +103,8 @@
               <span>{{ row.scale || "—" }} / {{ row.cameraMovement || "—" }}</span>
             </div>
           </div>
-          <div class="taskNotice" v-if="activeTrack.readiness?.messages?.length && !activeTrack.isDraft">
+          <div class="taskNotice" v-if="activeTrack.readiness?.messages?.length">
             {{ activeTrack.readiness.messages.join("；") }}
-          </div>
-          <div class="taskNotice taskNoticeWarning draftActionNotice" v-if="activeTrack.isDraft">
-            <span>分镜表已保存，请先写入正式分镜面板</span>
-            <t-button size="small" theme="primary" @click="requestStoryboardWrite">写入正式分镜面板</t-button>
           </div>
           <div class="taskNotice taskNoticeWarning" v-if="activeTrack.promptAudit?.length">
             提示词质量门：{{ activeTrack.promptAudit.join("；") }}
@@ -304,7 +300,7 @@
             </t-popup>
           </div>
           <div class="genBtn">
-            <t-button size="small" :disabled="!activeTrack || activeTrack.isDraft" :loading="generating" @click="generateVideo">{{ $t("workbench.generate.generate") }}</t-button>
+            <t-button size="small" :disabled="!activeTrack" :loading="generating" @click="generateVideo">{{ $t("workbench.generate.generate") }}</t-button>
           </div>
         </div>
         <div class="history">
@@ -439,7 +435,6 @@ import axios from "@/utils/axios";
 import projectStore from "@/stores/project";
 
 const episodesId = inject<Ref<number>>("episodesId")!;
-const writeStoryboardAction = inject<() => void>("writeStoryboardFromWorkbench");
 
 const { project } = storeToRefs(projectStore());
 
@@ -508,10 +503,6 @@ const videoPromptTemplates = ref<VideoPromptTemplate[]>([]);
 const selectedVideoPromptTemplateId = ref<number>();
 const videoPromptTemplateLoading = ref(false);
 const videoPromptTemplateOptions = computed(() => videoPromptTemplates.value.map((item) => ({ label: item.name, value: item.id })));
-
-function requestStoryboardWrite() {
-  writeStoryboardAction?.();
-}
 
 function displaySegmentField(value: string | undefined, label: string) {
   return String(value || "")
@@ -1062,7 +1053,6 @@ interface TrackItem {
   promptTemplateVersion?: string | null;
   promptInferenceSnapshot?: string | null;
   promptAudit?: string[];
-  isDraft?: boolean;
   segmentRows?: Array<{
     serial: string;
     description: string;
@@ -1487,7 +1477,6 @@ const selectedSceneCount = computed(
 );
 const selectedSegmentCount = computed(() => checkedTrackIds.value.length);
 const selectedTracks = computed(() => trackList.value.filter((track) => checkedTrackIds.value.includes(track.id)));
-const selectedHasDraftTracks = computed(() => selectedTracks.value.some((track) => track.isDraft));
 const selectedImportableCount = computed(
   () => selectedTracks.value.filter((track) => {
     const selectedVideoId = trackSelectedVideoMap.value[track.id] ?? track.selectVideoId;

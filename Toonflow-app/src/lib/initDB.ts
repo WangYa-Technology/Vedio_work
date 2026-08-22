@@ -1302,6 +1302,27 @@ export default async (knex: Knex, forceInit: boolean = false): Promise<void> => 
         console.log(`[初始化数据库] 已升级内置供应商 ${row.id}: ${codeMeta.version} -> ${bundled?.vendor.version}`);
       }
     }
+
+    // 新版本可以通过 data/vendor/*.ts 增加内置供应商。旧数据库没有对应行时，
+    // 在启动迁移阶段补插入，避免用户必须手动导入供应商代码。
+    const existingVendorIds = new Set(vendorRows.map((row) => String(row.id)));
+    for (const [vendorId, bundled] of bundledVendors) {
+      if (existingVendorIds.has(vendorId)) continue;
+      await knex("o_vendorConfig").insert({
+        id: bundled.vendor.id,
+        author: bundled.vendor.author || "",
+        description: bundled.vendor.description || "",
+        name: bundled.vendor.name || bundled.vendor.id,
+        icon: bundled.vendor.icon || "",
+        inputs: JSON.stringify(bundled.vendor.inputs ?? []),
+        inputValues: JSON.stringify(bundled.vendor.inputValues ?? {}),
+        models: JSON.stringify(bundled.vendor.models ?? []),
+        code: bundled.source,
+        createTime: Date.now(),
+        enable: 0,
+      });
+      console.log(`[初始化数据库] 已添加内置供应商: ${bundled.vendor.id}`);
+    }
   }
 
   const videoTableExists = await knex.schema.hasTable("o_video");

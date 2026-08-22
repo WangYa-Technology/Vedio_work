@@ -49,11 +49,13 @@ class OSS {
    */
   async getFileUrl(userRelPath: string, prefix?: string): Promise<string> {
     if (!prefix) prefix = "oss";
+    if (/^https?:\/\//i.test(userRelPath)) return userRelPath;
     await this.ensureInit();
     const safePath = normalizeUserPath(userRelPath);
     // URL 始终使用 /，所以这里需要将系统分隔符转回 /
     const pathname = `/${prefix}/${safePath.split(path.sep).join("/")}`;
     if (prefix !== "oss") return pathname;
+    if (!(await this.fileExists(userRelPath))) return "";
     const { default: db } = await import("@/utils/db");
     const setting = await db("o_setting").where({ key: "tokenKey" }).select("value").first();
     const expires = Date.now() + 15 * 60 * 1000;

@@ -341,6 +341,12 @@ function formatDirectorPlan(content: string) {
   const englishPlan = formatEnglishDirectorPlan(markdown);
   if (englishPlan) return englishPlan;
 
+  // Older production runs stored Markdown inside XML section wrappers
+  // (`sceneSummary` + `notes`). Do not pass those wrappers to md-editor: custom
+  // HTML-like tags make the table render as one plain paragraph.
+  const hybridPlan = formatHybridDirectorPlan(markdown);
+  if (hybridPlan) return hybridPlan;
+
   const sectionTags = ["分场汇总表", "逐场注意事项", "场间过渡"];
   const fieldTags = ["情感砸点", "一致性锚点", "空间距离", "环境音", "易错提示"];
   const hasStructuredTags = sectionTags.some((tag) => markdown.includes(`<${tag}>`)) || /<场次\b/.test(markdown);
@@ -362,6 +368,32 @@ function formatDirectorPlan(content: string) {
   }
 
   return markdown.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function formatHybridDirectorPlan(content: string) {
+  const readBlock = (names: string[]) => {
+    const pattern = names.join("|");
+    const match = content.match(new RegExp(`<(?:(?:${pattern}))\\b[^>]*>([\\s\\S]*?)<\\/(?:(?:${pattern}))>`, "i"));
+    return match?.[1]?.trim() || "";
+  };
+
+  const summary = readBlock(["sceneSummary", "scenesummary"]);
+  const notes = readBlock(["sceneNotes", "scenenotes", "notes"]);
+  const transitions = readBlock(["transitions"]);
+  if (!summary && !notes && !transitions) return "";
+
+  const sections: string[] = [];
+  if (summary) sections.push(["## 分场汇总表", "", summary].join("\n"));
+  if (notes) {
+    const normalizedNotes = notes
+      .replace(/^[ \t]*([A-Za-z]+\d+)\s*:\s*$/gm, "### $1")
+      .replace(/^[ \t]*(Sc\d+)\s*$/gm, "### $1")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+    sections.push(["## 逐场注意事项", "", normalizedNotes].join("\n"));
+  }
+  if (transitions) sections.push(["## 场间过渡", "", transitions].join("\n"));
+  return sections.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 function formatEnglishDirectorPlan(content: string) {
@@ -406,13 +438,28 @@ function formatEnglishDirectorPlan(content: string) {
 
   if (noteScenes.length) {
     const noteLines = ["## 逐场注意事项", ""];
+    const noteFieldLabels: Record<string, string> = {
+      emotionalBeat: "情绪节点",
+      continuityAnchor: "连续性锚点",
+      spatialDistance: "空间距离",
+      environmentSound: "环境音",
+      errorWarning: "易错提示",
+    };
     for (const scene of noteScenes) {
       const id = readText(scene, ["sceneId", "sceneid"]);
       noteLines.push(`### ${cell(id) || "未命名场次"}`, "");
-      const items = [...scene.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)]
+      const notesBlock = readTag(scene, ["notes"]);
+      const items = [...notesBlock.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)]
         .map((match) => match[1].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim())
         .filter(Boolean);
+      const fields = Object.entries(noteFieldLabels)
+        .map(([tag, label]) => {
+          const value = readText(notesBlock, [tag]);
+          return value ? `- **${label}**：${value}` : "";
+        })
+        .filter(Boolean);
       if (items.length) noteLines.push(...items.map((item) => `- ${item}`), "");
+      else if (fields.length) noteLines.push(...fields, "");
       else noteLines.push("无", "");
     }
     sections.push(noteLines.join("\n").trim());
@@ -578,13 +625,6 @@ function runNextAction() {
   }
   productionStore.chat(action.prompt);
 }
-
-function writeStoryboardFromWorkbench() {
-  workbenchVisible.value = false;
-  productionStore.chat("继续写入正式分镜面板");
-}
-
-provide("writeStoryboardFromWorkbench", writeStoryboardFromWorkbench);
 
 function openAssetLibrary() {
   router.push({ path: "/assets", query: { from: "production" } });

@@ -362,8 +362,7 @@ export default router.post(
     if (!requestedTrackIds.length)
       return res.status(400).send(error("未选择需要推理的视频片段"));
 
-    const formalTrackIds = requestedTrackIds.filter((id) => id > 0);
-    const draftTrackIds = requestedTrackIds.filter((id) => id < 0);
+    const formalTrackIds = requestedTrackIds;
     const tracks = formalTrackIds.length
       ? await u
           .db("o_videoTrack")
@@ -377,9 +376,7 @@ export default router.post(
     );
     const resolvedScriptId = formalScriptIds[0] || Number(scriptId);
     if (!resolvedScriptId)
-      return res
-        .status(400)
-        .send(error("缺少当前剧集，无法处理草稿分镜"));
+      return res.status(400).send(error("缺少当前剧集，无法处理正式分镜"));
     if (formalScriptIds.length > 1)
       return res.status(400).send(error("同一次场次推理只能处理同一集中的视频片段"));
     const data = await buildVideoTaskData(projectId, resolvedScriptId, {
@@ -387,8 +384,6 @@ export default router.post(
       mode,
     });
     const taskMap = new Map<number, any>(data.trackList.map((item: any) => [Number(item.id), item]));
-    if (draftTrackIds.some((id) => !taskMap.get(id)?.isDraft))
-      return res.status(400).send(error("草稿分镜已变化，请刷新后重试"));
     const tasks = requestedTrackIds
       .map((id) => taskMap.get(id))
       .filter(Boolean) as any[];

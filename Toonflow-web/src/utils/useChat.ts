@@ -565,6 +565,14 @@ export function useChat(options: UseChatOptions) {
     socket.value.on("disconnect", (reason) => {
       connected.value = false;
       connecting.value = false;
+      if (currentMessageId.value) {
+        const currentMessage = findMessage(currentMessageId.value);
+        if (currentMessage && (currentMessage.status === "pending" || currentMessage.status === "streaming")) {
+          currentMessage.status = "error";
+        }
+        currentMessageId.value = null;
+        status.value = "idle";
+      }
       if (reason !== "io client disconnect" && (workflowStatus.value.state === "working" || workflowStatus.value.state === "retrying")) {
         workflowStatus.value = { state: "error", label: "连接已断开，当前任务可重新继续" };
       }

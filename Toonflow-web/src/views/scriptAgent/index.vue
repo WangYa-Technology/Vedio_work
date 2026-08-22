@@ -106,13 +106,13 @@
             </t-tab-panel> -->
             <t-tab-panel :value="1" :label="$t('workbench.scriptAgent.storySkeleton')">
               <div class="panelContent">
-                <MdPreview v-if="planData.storySkeleton" :modelValue="planData.storySkeleton" />
+                <MdPreview v-if="planData.storySkeleton" :modelValue="normalizeScriptAgentContent(planData.storySkeleton)" />
                 <t-empty v-else :title="$t('workbench.scriptAgent.noContent')" />
               </div>
             </t-tab-panel>
             <t-tab-panel :value="2" :label="$t('workbench.scriptAgent.adaptationStrategy')">
               <div class="panelContent">
-                <MdPreview v-if="planData.adaptationStrategy" :modelValue="planData.adaptationStrategy" />
+                <MdPreview v-if="planData.adaptationStrategy" :modelValue="normalizeScriptAgentContent(planData.adaptationStrategy)" />
                 <t-empty v-else :title="$t('workbench.scriptAgent.noContent')" />
               </div>
             </t-tab-panel>
@@ -193,6 +193,7 @@ import router from "@/router";
 const { project } = storeToRefs(projectStore());
 import editMdPreivew from "@/components/editMdPreivew.vue";
 import scriptAgentStore from "@/stores/scriptAgent";
+import { normalizeScriptAgentContent } from "@/utils/scriptAgentContent";
 const scriptAgent = scriptAgentStore();
 const { connected, messages, renderableMessages, status, workflowStatus, planData } = storeToRefs(scriptAgent);
 const currentTable = ref(1);

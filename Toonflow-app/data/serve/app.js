@@ -37286,7 +37286,7 @@ var require_websocket2 = __commonJS({
     var http4 = require("http");
     var net = require("net");
     var tls = require("tls");
-    var { randomBytes, createHash: createHash4 } = require("crypto");
+    var { randomBytes: randomBytes2, createHash: createHash4 } = require("crypto");
     var { Duplex, Readable: Readable2 } = require("stream");
     var { URL: URL2 } = require("url");
     var PerMessageDeflate = require_permessage_deflate();
@@ -37813,7 +37813,7 @@ var require_websocket2 = __commonJS({
         }
       }
       const defaultPort = isSecure ? 443 : 80;
-      const key = randomBytes(16).toString("base64");
+      const key = randomBytes2(16).toString("base64");
       const request = isSecure ? https2.request : http4.request;
       const protocolSet = /* @__PURE__ */ new Set();
       let perMessageDeflate;
@@ -47436,7 +47436,7 @@ var require_websocket4 = __commonJS({
     var http4 = require("http");
     var net = require("net");
     var tls = require("tls");
-    var { randomBytes, createHash: createHash4 } = require("crypto");
+    var { randomBytes: randomBytes2, createHash: createHash4 } = require("crypto");
     var { Readable: Readable2 } = require("stream");
     var { URL: URL2 } = require("url");
     var PerMessageDeflate = require_permessage_deflate2();
@@ -47896,7 +47896,7 @@ var require_websocket4 = __commonJS({
       }
       const isSecure = parsedUrl.protocol === "wss:" || parsedUrl.protocol === "https:";
       const defaultPort = isSecure ? 443 : 80;
-      const key = randomBytes(16).toString("base64");
+      const key = randomBytes2(16).toString("base64");
       const get2 = isSecure ? https2.get : http4.get;
       let perMessageDeflate;
       opts.createConnection = isSecure ? tlsConnect : netConnect;
@@ -60514,12 +60514,12 @@ var require_fs5 = __commonJS({
     var flatten = require_flatten();
     var os = require("os");
     var path24 = require("path");
-    var { promisify: promisify2 } = require("util");
-    var stat = promisify2(fs27.stat);
-    var readFile3 = promisify2(fs27.readFile);
-    var writeFile3 = promisify2(fs27.writeFile);
-    var readdir = promisify2(fs27.readdir);
-    var mkdir2 = promisify2(fs27.mkdir);
+    var { promisify: promisify3 } = require("util");
+    var stat = promisify3(fs27.stat);
+    var readFile3 = promisify3(fs27.readFile);
+    var writeFile3 = promisify3(fs27.writeFile);
+    var readdir = promisify3(fs27.readdir);
+    var mkdir2 = promisify3(fs27.mkdir);
     function existsSync2(path25) {
       try {
         fs27.accessSync(path25);
@@ -60529,7 +60529,7 @@ var require_fs5 = __commonJS({
       }
     }
     function createTemp() {
-      return promisify2(fs27.mkdtemp)(`${os.tmpdir()}${path24.sep}`);
+      return promisify3(fs27.mkdtemp)(`${os.tmpdir()}${path24.sep}`);
     }
     function ensureDirectoryExists(dir) {
       return stat(dir).catch(() => mkdir2(dir, { recursive: true }));
@@ -61404,8 +61404,8 @@ var require_async7 = __commonJS({
   "node_modules/get-package-type/async.cjs"(exports2, module2) {
     "use strict";
     var path24 = require("path");
-    var { promisify: promisify2 } = require("util");
-    var readFile3 = promisify2(require("fs").readFile);
+    var { promisify: promisify3 } = require("util");
+    var readFile3 = promisify3(require("fs").readFile);
     var isNodeModules = require_is_node_modules();
     var resultsCache = require_cache();
     var promiseCache = /* @__PURE__ */ new Map();
@@ -70101,7 +70101,7 @@ var require_client2 = __commonJS({
     "use strict";
     var { Pool, TimeoutError } = require_tarn();
     var { EventEmitter: EventEmitter3 } = require("events");
-    var { promisify: promisify2 } = require("util");
+    var { promisify: promisify3 } = require("util");
     var { makeEscape } = require_string2();
     var cloneDeep = require_cloneDeep();
     var defaults2 = require_defaults();
@@ -70369,7 +70369,7 @@ ${e.message}`);
               connection.__knexLifetimeLimit = generateLifetimeLimit();
             }
             if (userAfterCreate) {
-              await promisify2(userAfterCreate)(connection);
+              await promisify3(userAfterCreate)(connection);
             }
             return connection;
           },
@@ -72965,7 +72965,7 @@ var require_sqlite3 = __commonJS({
     "use strict";
     var defaults2 = require_defaults();
     var map3 = require_map();
-    var { promisify: promisify2 } = require("util");
+    var { promisify: promisify3 } = require("util");
     var Client2 = require_client2();
     var Raw = require_raw2();
     var Transaction_Sqlite = require_sqlite_transaction();
@@ -73059,7 +73059,7 @@ var require_sqlite3 = __commonJS({
       // Used to explicitly close a connection, called internally by the pool when
       // a connection times out or the pool is shutdown.
       async destroyRawConnection(connection) {
-        const close = promisify2((cb) => connection.close(cb));
+        const close = promisify3((cb) => connection.close(cb));
         return close();
       }
       // Runs the query on the specified connection, providing the bindings and any
@@ -74172,7 +74172,7 @@ var require_postgres = __commonJS({
     "use strict";
     var extend4 = require_extend();
     var map3 = require_map();
-    var { promisify: promisify2 } = require("util");
+    var { promisify: promisify3 } = require("util");
     var Client2 = require_client2();
     var Transaction = require_pg_transaction();
     var QueryCompiler = require_pg_querycompiler();
@@ -74261,7 +74261,7 @@ var require_postgres = __commonJS({
       // Used to explicitly close a connection, called internally by the pool
       // when a connection times out or the pool is shutdown.
       async destroyRawConnection(connection) {
-        const end = promisify2((cb) => connection.end(cb));
+        const end = promisify3((cb) => connection.end(cb));
         return end();
       }
       // In PostgreSQL, we need to do a version check to do some feature
@@ -77240,7 +77240,7 @@ var require_mysql = __commonJS({
     "use strict";
     var defer = require_defer();
     var map3 = require_map();
-    var { promisify: promisify2 } = require("util");
+    var { promisify: promisify3 } = require("util");
     var Client2 = require_client2();
     var Transaction = require_transaction3();
     var QueryBuilder = require_mysql_querybuilder();
@@ -77311,7 +77311,7 @@ var require_mysql = __commonJS({
       // when a connection times out or the pool is shutdown.
       async destroyRawConnection(connection) {
         try {
-          const end = promisify2((cb) => connection.end(cb));
+          const end = promisify3((cb) => connection.end(cb));
           return await end();
         } catch (err) {
           connection.__knex__disposed = err;
@@ -77413,7 +77413,7 @@ var require_mysql = __commonJS({
             return this._resolveConfiguredVersion(this.version);
           }
           try {
-            const query = promisify2(connection.query).bind(connection);
+            const query = promisify3(connection.query).bind(connection);
             const rows = await query("select version() as version");
             const rawVersion = rows?.[0]?.version;
             if (!rawVersion) {
@@ -78564,7 +78564,7 @@ var require_utils11 = __commonJS({
   "node_modules/knex/lib/dialects/oracledb/utils.js"(exports2, module2) {
     "use strict";
     var Utils = require_utils10();
-    var { promisify: promisify2 } = require("util");
+    var { promisify: promisify3 } = require("util");
     var stream4 = require("stream");
     function BlobHelper(columnName, value) {
       this.columnName = columnName;
@@ -78639,7 +78639,7 @@ var require_utils11 = __commonJS({
           });
         });
       };
-      const fetchAsync = promisify2(function(sql, bindParams, options, cb) {
+      const fetchAsync = promisify3(function(sql, bindParams, options, cb) {
         options = options || {};
         options.outFormat = client.driver.OUT_FORMAT_OBJECT || client.driver.OBJECT;
         if (!options.outFormat) {
@@ -78710,7 +78710,7 @@ var require_utils11 = __commonJS({
       connection.executeAsync = function(sql, bindParams, options) {
         return fetchAsync(sql, bindParams, options).then(async (results) => {
           const closeResultSet = () => {
-            return results.resultSet ? promisify2(results.resultSet.close).call(results.resultSet) : Promise.resolve();
+            return results.resultSet ? promisify3(results.resultSet.close).call(results.resultSet) : Promise.resolve();
           };
           const lobs = [];
           if (results.rows) {
@@ -104167,6 +104167,34 @@ var init_imagePromptDefaults = __esm({
   }
 });
 
+// src/utils/password.ts
+function isPasswordHash(value) {
+  return value.startsWith("scrypt$");
+}
+async function hashPassword(password) {
+  const salt = (0, import_node_crypto3.randomBytes)(16).toString("hex");
+  const derived = await scrypt(password, salt, KEY_LENGTH);
+  return `scrypt$${salt}$${derived.toString("hex")}`;
+}
+async function verifyPassword(password, stored) {
+  if (!isPasswordHash(stored)) return stored === password;
+  const [, salt, expectedHex] = stored.split("$");
+  if (!salt || !expectedHex) return false;
+  const expected = Buffer.from(expectedHex, "hex");
+  const actual = await scrypt(password, salt, expected.length);
+  return expected.length === actual.length && (0, import_node_crypto3.timingSafeEqual)(expected, actual);
+}
+var import_node_crypto3, import_node_util, scrypt, KEY_LENGTH;
+var init_password = __esm({
+  "src/utils/password.ts"() {
+    "use strict";
+    import_node_crypto3 = require("node:crypto");
+    import_node_util = require("node:util");
+    scrypt = (0, import_node_util.promisify)(import_node_crypto3.scrypt);
+    KEY_LENGTH = 64;
+  }
+});
+
 // src/lib/initDB.ts
 function parseJsonArray(value) {
   if (!value) return [];
@@ -104259,6 +104287,7 @@ var init_initDB = __esm({
     init_getPath();
     init_videoPromptDefaults();
     init_imagePromptDefaults();
+    init_password();
     initDB_default = async (knex4, forceInit = false) => {
       const tables = [
         // 用户表
@@ -104268,11 +104297,14 @@ var init_initDB = __esm({
             table.integer("id").notNullable();
             table.text("name");
             table.text("password");
+            table.text("role").notNullable().defaultTo("user");
+            table.text("status").notNullable().defaultTo("active");
+            table.integer("createTime");
             table.primary(["id"]);
             table.unique(["id"]);
           },
           initData: async (knex5) => {
-            await knex5("o_user").insert([{ id: 1, name: "admin", password: "admin123" }]);
+            await knex5("o_user").insert([{ id: 1, name: "admin", password: await hashPassword("admin123"), role: "admin", status: "active", createTime: Date.now() }]);
           }
         },
         //项目表
@@ -105931,11 +105963,25 @@ A medium tracking shot follows the woman from behind as she ascends and approach
           }
         }
       }
+      for (const [column, build] of [
+        ["role", (table) => table.text("role").notNullable().defaultTo("user")],
+        ["status", (table) => table.text("status").notNullable().defaultTo("active")],
+        ["createTime", (table) => table.integer("createTime")]
+      ]) {
+        if (!await knex4.schema.hasColumn("o_user", column)) await knex4.schema.alterTable("o_user", build);
+      }
       const userCount = Number((await knex4("o_user").count("id as count").first())?.count ?? 0);
       if (userCount === 0) {
-        await knex4("o_user").insert({ id: 1, name: "admin", password: "admin123" });
+        await knex4("o_user").insert({ id: 1, name: "admin", password: await hashPassword("admin123"), role: "admin", status: "active", createTime: Date.now() });
         console.log("[\u521D\u59CB\u5316\u6570\u636E\u5E93] \u5DF2\u8865\u5145\u9ED8\u8BA4\u7BA1\u7406\u5458\u8D26\u53F7");
       }
+      await knex4("o_user").where({ id: 1 }).update({ role: "admin", status: "active" });
+      const users = await knex4("o_user").select("id", "password");
+      for (const user of users) {
+        const password = String(user.password || "");
+        if (password && !isPasswordHash(password)) await knex4("o_user").where({ id: user.id }).update({ password: await hashPassword(password) });
+      }
+      await knex4("o_project").whereNull("userId").update({ userId: 1 });
       if (await knex4.schema.hasTable("o_project") && !await knex4.schema.hasColumn("o_project", "negativePrompt")) {
         await knex4.schema.alterTable("o_project", (table) => {
           table.text("negativePrompt").notNullable().defaultTo(DEFAULT_IMAGE_NEGATIVE_PROMPT);
@@ -106051,6 +106097,24 @@ A medium tracking shot follows the woman from behind as she ascends and approach
           if (shouldUpgradeBundledCode) {
             console.log(`[\u521D\u59CB\u5316\u6570\u636E\u5E93] \u5DF2\u5347\u7EA7\u5185\u7F6E\u4F9B\u5E94\u5546 ${row.id}: ${codeMeta.version} -> ${bundled?.vendor.version}`);
           }
+        }
+        const existingVendorIds = new Set(vendorRows.map((row) => String(row.id)));
+        for (const [vendorId, bundled] of bundledVendors) {
+          if (existingVendorIds.has(vendorId)) continue;
+          await knex4("o_vendorConfig").insert({
+            id: bundled.vendor.id,
+            author: bundled.vendor.author || "",
+            description: bundled.vendor.description || "",
+            name: bundled.vendor.name || bundled.vendor.id,
+            icon: bundled.vendor.icon || "",
+            inputs: JSON.stringify(bundled.vendor.inputs ?? []),
+            inputValues: JSON.stringify(bundled.vendor.inputValues ?? {}),
+            models: JSON.stringify(bundled.vendor.models ?? []),
+            code: bundled.source,
+            createTime: Date.now(),
+            enable: 0
+          });
+          console.log(`[\u521D\u59CB\u5316\u6570\u636E\u5E93] \u5DF2\u6DFB\u52A0\u5185\u7F6E\u4F9B\u5E94\u5546: ${bundled.vendor.id}`);
         }
       }
       const videoTableExists = await knex4.schema.hasTable("o_video");
@@ -106881,20 +106945,26 @@ overall_soundscape:
 non_diegetic_music:
 
 1. \u4E25\u683C\u9075\u5FAA MiniMax H3 Ref2VA \u5B98\u65B9\u8BED\u8A00\u89C4\u5219\uFF1A\u516D\u4E2A\u5B57\u6BB5\u540D\u3001subject_definitions\u3001summary\u3001retention_analysis\u3001detailed_description\u3001overall_soundscape \u4E0E non_diegetic_music \u7684\u6B63\u6587\u5168\u90E8\u4F7F\u7528\u82F1\u6587\uFF1B\u53EA\u6709 <d>[Chinese] ...</d> \u5185\u7684\u4E2D\u6587\u5BF9\u767D/\u65C1\u767D\u3001\u573A\u666F\u4E2D\u786E\u5B9E\u53EF\u89C1\u7684\u539F\u6587\u6587\u5B57\uFF0C\u4EE5\u53CA\u8D44\u4EA7\u539F\u540D\u4FDD\u7559\u539F\u8BED\u8A00\u3002\u7981\u6B62\u7FFB\u8BD1\u3001\u6539\u5199\u6216\u7F57\u9A6C\u5316\u4E2D\u6587\u53F0\u8BCD\u3002
-2. referenceMap \u4E2D\u6BCF\u4E2A ${referenceToken}N \u90FD\u5FC5\u987B\u8FDB\u5165 subject_definitions\u3002\u89D2\u8272\u3001\u573A\u666F\u3001\u9053\u5177\u3001\u670D\u88C5\u3001\u52A8\u4F5C\u6216\u98CE\u683C\u7B49\u53EF\u590D\u7528\u53EF\u89C1\u5185\u5BB9\u9ED8\u8BA4\u5B9A\u4E49\u4E3A\u72EC\u7ACB\u7684 <Subject N>\uFF0C\u5E76\u5728\u540C\u4E00\u884C\u4FDD\u7559\u6765\u6E90\u6807\u8BB0\u3001\u8D44\u4EA7\u539F\u540D\u548C\u7A33\u5B9A\u7279\u5F81\uFF0C\u4F8B\u5982 "<Subject 1> is the character from ${referenceToken}1 (\u8D44\u4EA7\u539F\u540D), ..."\u3002\u53EA\u6709\u56FE\u7247\u786E\u5B9E\u627F\u62C5\u9996\u5E27\u3001\u5C3E\u5E27\u3001\u5173\u952E\u5E27\u3001\u6784\u56FE\u951A\u70B9\u6216\u5206\u955C\u89C4\u5212\u65F6\uFF0C\u624D\u53E6\u5EFA <Picture N>\uFF1B\u4E0D\u80FD\u56E0\u4E3A\u8F93\u5165\u662F\u56FE\u7247\u5C31\u81EA\u52A8\u628A\u5B83\u5F53\u5173\u952E\u5E27\u3002
+2. referenceMap \u4E2D\u6BCF\u4E2A ${referenceToken}N \u90FD\u5FC5\u987B\u8FDB\u5165 subject_definitions\u3002\u89D2\u8272\u3001\u573A\u666F\u3001\u9053\u5177\u3001\u670D\u88C5\u3001\u52A8\u4F5C\u6216\u98CE\u683C\u7B49\u53EF\u590D\u7528\u53EF\u89C1\u5185\u5BB9\u9ED8\u8BA4\u5B9A\u4E49\u4E3A\u72EC\u7ACB\u7684 <Subject N>\uFF0C\u5E76\u5728\u540C\u4E00\u884C\u4FDD\u7559\u6765\u6E90\u6807\u8BB0\u3001\u8D44\u4EA7\u539F\u540D\u548C\u7A33\u5B9A\u7279\u5F81\uFF0C\u4F8B\u5982 "<Subject 1> is the character from ${referenceToken}1 (\u8D44\u4EA7\u539F\u540D), ..."\u3002\u53EA\u6709\u56FE\u7247\u786E\u5B9E\u627F\u62C5\u9996\u5E27\u3001\u5C3E\u5E27\u3001\u5173\u952E\u5E27\u3001\u6784\u56FE\u951A\u70B9\u6216\u5206\u955C\u89C4\u5212\u65F6\uFF0C\u624D\u53E6\u5EFA <Picture N>\uFF1B\u4E0D\u80FD\u56E0\u4E3A\u8F93\u5165\u662F\u56FE\u7247\u5C31\u81EA\u52A8\u628A\u5B83\u5F53\u5173\u952E\u5E27\u3002\u82E5\u5B9A\u4E49\u4E86 <Picture N>\uFF0C\u5FC5\u987B\u5728 detailed_description \u7684\u5BF9\u5E94\u955C\u5934\u4E2D\u518D\u6B21\u5F15\u7528\uFF0C\u5E76\u8BF4\u660E\u5B83\u9501\u5B9A\u7684\u6784\u56FE\u3001\u59FF\u6001\u6216\u72B6\u6001\uFF1B\u7981\u6B62\u5B9A\u4E49\u540E\u5F03\u7528\u3002
 3. \u540C\u4E00\u6807\u7B7E\u5728\u516D\u6BB5\u4E2D\u7684\u542B\u4E49\u6C38\u4E45\u4E0D\u53D8\u3002<Video N> \u53EA\u8868\u793A\u6574\u6BB5\u89C6\u9891\u7684\u7F16\u8F91\u6E90\u3001\u7EED\u5199\u8D77\u70B9\u6216\u5168\u5C40\u65F6\u5E8F/\u8FD0\u955C\u6765\u6E90\uFF1B\u89C6\u9891\u91CC\u62BD\u53D6\u7684\u4EBA\u7269\u3001\u52A8\u4F5C\u3001\u573A\u666F\u4ECD\u5B9A\u4E49\u4E3A <Subject N>\u3002<Audio N> \u72EC\u7ACB\u7F16\u53F7\uFF0C\u4EC5\u5728\u786E\u5B9E\u590D\u5236\u6216\u53C2\u8003\u97F3\u9891\u4FE1\u53F7\u65F6\u5EFA\u7ACB\u3002
 4. summary \u4F7F\u7528\u82F1\u6587\u77ED\u6BB5\u843D\uFF0C\u4F46\u5F00\u5934\u7684\u534F\u8BAE\u6807\u8BB0\u56FA\u5B9A\u4F7F\u7528 [reference generation]\u3001[keyframe completion]\u3001[video editing]\u3001[video continuation]\u3001[audio reuse] \u6216 [audio reference]\uFF1B\u591A\u79CD\u771F\u5B9E\u5173\u7CFB\u7528 " + " \u7EC4\u5408\u3002\u53EA\u6709\u771F\u5B9E\u8F93\u5165\u4E86\u8981\u76F4\u63A5\u7F16\u8F91\u6216\u7EED\u5199\u7684\u89C6\u9891\u65F6\u624D\u80FD\u4F7F\u7528 video editing / video continuation\uFF1B\u7EAF\u56FE\u7247\u53C2\u8003\u5FC5\u987B\u4F7F\u7528 reference generation\uFF0C\u4E0D\u80FD\u4ECE\u5267\u672C\u4E0A\u4E0B\u6587\u865A\u6784\u4EFB\u52A1\u7C7B\u578B\u3002
-5. retention_analysis \u5FC5\u987B\u9010\u4E2A\u8986\u76D6 subject_definitions \u4E2D\u7684\u6807\u7B7E\u3002\u53EF\u89C1\u5185\u5BB9\u53EA\u4F7F\u7528 fully_preserved / partially_preserved / attribute_transfer / weak_reference\uFF1B\u5982\u679C\u53C2\u8003\u8D44\u4EA7\u4E0D\u51FA\u73B0\u5728\u5F53\u524D segment\uFF0C\u4F7F\u7528\u82F1\u6587\u5199 "not_visible_in_this_segment - retained as an unused reference and not introduced into the generated scene"\u3002\u97F3\u9891\u53EA\u4F7F\u7528 fully_copy / partially_copy / reference / weak_reference\uFF0C\u5E76\u7528\u82F1\u6587\u8BF4\u660E\u51FA\u73B0\u955C\u5934\u548C\u4FDD\u7559\u5185\u5BB9\u3002
+5. retention_analysis \u5FC5\u987B\u9010\u4E2A\u8986\u76D6 subject_definitions \u4E2D\u7684\u6807\u7B7E\u3002\u53EF\u89C1\u5185\u5BB9\u53EA\u4F7F\u7528 fully_preserved / partially_preserved / attribute_transfer / weak_reference\uFF1B\u5982\u679C\u4F7F\u7528 partially_preserved\uFF0C\u8865\u5145\u53EF\u89C1\u8303\u56F4\u5C5E\u4E8E full-body visible with altered action\u3001body-part visible \u6216 effect residue visible \u4E2D\u7684\u54EA\u4E00\u79CD\uFF08\u4EC5\u5728\u4E8B\u5B9E\u6210\u7ACB\u65F6\u4F7F\u7528\uFF09\uFF0C\u5E76\u8BF4\u660E\u4FDD\u7559\u7684\u8EAB\u4EFD/\u5916\u89C2\u7279\u5F81\u3002\u5982\u679C\u53C2\u8003\u8D44\u4EA7\u4E0D\u51FA\u73B0\u5728\u5F53\u524D segment\uFF0C\u4F7F\u7528\u82F1\u6587\u5199 "not_visible_in_this_segment - retained as an unused reference and not introduced into the generated scene"\u3002\u97F3\u9891\u53EA\u4F7F\u7528 fully_copy / partially_copy / reference / weak_reference\uFF0C\u5E76\u7528\u82F1\u6587\u8BF4\u660E\u51FA\u73B0\u955C\u5934\u548C\u4FDD\u7559\u5185\u5BB9\u3002
 6. detailed_description \u662F\u4E3B\u8981\u751F\u6210\u6B63\u6587\uFF0C\u6309\u5B98\u65B9\u8981\u6C42\u4F7F\u7528\u82F1\u6587\u3002\u5148\u7528 1-2 \u53E5\u9501\u5B9A\u753B\u98CE\uFF0C\u518D\u5199\u65F6\u95F4\u7EBF\uFF1A[Shot 1] \u4E0D\u52A0\u65F6\u95F4\u6233\uFF1B\u540E\u7EED\u5207\u955C\u4E25\u683C\u5199 "[Shot N] At MM:SS.mmm, the shot cuts to ..."\u3002\u5207\u955C\u65F6\u95F4\u5FC5\u987B\u662F\u524D\u9762\u955C\u5934\u65F6\u957F\u7684\u7D2F\u8BA1\u548C\uFF0C\u4F8B\u5982 3s\u30014s\u30012s \u5BF9\u5E94 Shot 1 \u65E0\u65F6\u95F4\u6233\u3001Shot 2 At 00:03.000\u3001Shot 3 At 00:07.000\uFF1B\u7981\u6B62\u6BCF\u955C\u91CD\u65B0\u4ECE 00 \u79D2\u8BA1\u65F6\u3002\u6BCF\u6B21\u5207\u955C\u5FC5\u987B\u5E26\u6765\u4E3B\u4F53\u3001\u7A7A\u95F4\u3001\u72B6\u6001\u3001\u89C6\u70B9\u6216\u65F6\u95F4\u7684\u65B0\u4FE1\u606F\u3002
 7. \u6BCF\u955C\u5FC5\u987B\u660E\u786E\u6784\u56FE\u3001\u4E3B\u4F53\u4F4D\u7F6E\u3001\u73AF\u5883\u5149\u7EBF\u3001\u52A8\u4F5C\u72B6\u6001\u3001\u6444\u5F71\u673A\u8FD0\u52A8\u548C\u540C\u6B65\u97F3\u6548\uFF0C\u5E76\u5728\u53C2\u8003\u9879\u771F\u6B63\u51FA\u73B0\u7684\u955C\u5934\u8C03\u7528\u5BF9\u5E94\u6807\u7B7E\u3002\u97F3\u6548\u53EA\u5199\u73AF\u5883\u5E95\u5E8A\u3001\u52A8\u4F5C\u62DF\u97F3\u3001\u547C\u5438/\u558A\u58F0\u3001\u89E6\u53D1\u70B9\u3001\u58F0\u573A\u8DDD\u79BB\u548C\u5F3A\u5F31\uFF1B\u4E0D\u5F97\u8BBE\u8BA1\u4EFB\u4F55\u80CC\u666F\u97F3\u4E50\u3002\u6BCF\u955C\u6700\u591A\u4E00\u4E2A\u5FAE\u8868\u60C5\u53D8\u5316\u548C\u4E00\u81F3\u4E24\u9879\u97F3\u6548\u53D8\u5316\uFF1B\u5938\u5F20\u5F20\u53E3\u3001\u77AA\u773C\u3001\u558A\u53EB\u53EA\u5728\u8F93\u5165\u5DF2\u6709\u53F0\u8BCD/\u558A\u58F0\u6216\u52A8\u4F5C\u8FBE\u5230\u4E34\u754C\u70B9\u65F6\u4F7F\u7528\u3002\u82E5\u662F\u5760\u843D\uFF0C\u5FC5\u987B\u5199\u6E05\u4EBA\u7269\u4ECE\u753B\u9762\u4E0A\u65B9\u5411\u4E0B\u63A5\u8FD1\u5730\u9762/\u6C34\u9762\uFF0C\u7981\u6B62\u4E0A\u5347\u3001\u5347\u7A7A\u6216\u5012\u98DE\u3002\u7981\u6B62\u6BEB\u7C73\u7EA7\u6570\u503C\u3001\u8868\u60C5\u5806\u53E0\u548C\u65E0\u4F9D\u636E\u54ED\u558A\u3002\u4EBA\u7269\u4F4D\u79FB\u4E0E\u6444\u5F71\u673A\u4F4D\u79FB\u5206\u5F00\u63CF\u8FF0\uFF0C\u6B63\u6587\u53EA\u5199\u5E94\u751F\u6210\u7684\u753B\u9762\u548C\u58F0\u97F3\u3002
 8. \u6BCF\u4E2A\u5B9E\u9645\u8BF4\u8BDD\u4EBA\u6309\u9996\u6B21\u53D1\u58F0\u987A\u5E8F\u5206\u914D\u7A33\u5B9A\u7684 (S1)/(S2) \u7F16\u53F7\u3002\u753B\u9762\u89D2\u8272\u53D1\u58F0\u5FC5\u987B\u5199\u6210 "<Subject N> (Sx) says, <d>[Chinese] \u5B9E\u9645\u8BED\u53E5</d>"\uFF1B<d> \u5185\u53EA\u80FD\u653E\u5267\u672C\u539F\u53E5\uFF0C\u7EDD\u4E0D\u5305\u542B\u201C\u738B\u80DC\uFF1A\u201D\u7B49\u8BF4\u8BDD\u4EBA\u524D\u7F00\u3002\u65C1\u767D\u5199\u6210 "The off-screen narrator (Sx) says, <d>[Chinese] \u5B9E\u9645\u8BED\u53E5</d>"\uFF0C\u4E0D\u7ED1\u5B9A\u753B\u9762\u89D2\u8272\u3002\u4E0D\u5F97\u6F0F\u8BCD\u3001\u6362\u8BCD\u3001\u4E32\u53F0\u3001\u91CD\u590D\u53F0\u8BCD\u6216\u65B0\u589E\u8BED\u6C14\u8BCD\u3002
-9. overall_soundscape \u7528 1-4 \u53E5\u82F1\u6587\u6982\u62EC\u73AF\u5883\u5E95\u5E8A\u3001\u5173\u952E\u52A8\u4F5C\u62DF\u97F3\u3001\u975E\u8BED\u8A00\u4EBA\u58F0\u3001\u58F0\u573A\u8DDD\u79BB\u548C\u540C\u6B65\u70B9\uFF1Bnon_diegetic_music \u65E0\u6761\u4EF6\u5199 N/A\uFF0C\u4E0D\u5F97\u51FA\u73B0\u4E50\u5668\u3001\u65CB\u5F8B\u3001\u8282\u62CD\u3001\u97F3\u4E50\u8FDB\u5165/\u9000\u51FA\u6216\u58F0\u97F3\u6865\u7B49\u914D\u4E50\u63CF\u8FF0\u3002N/A \u540E\u53EA\u5141\u8BB8\u8FFD\u52A0\u56FA\u5B9A\u53E5\u201C\u53EA\u4FDD\u7559\u540C\u6B65\u73AF\u5883\u97F3\u6548\u548C\u52A8\u4F5C\u97F3\u6548\uFF0C\u4E0D\u751F\u6210\u80CC\u666F\u97F3\u4E50\uFF0C\u4E0D\u751F\u6210\u5B57\u5E55\u3002\u201D\u3002
+9. overall_soundscape \u7528 1-4 \u53E5\u82F1\u6587\u6982\u62EC\u73AF\u5883\u5E95\u5E8A\u3001\u5173\u952E\u52A8\u4F5C\u62DF\u97F3\u3001\u975E\u8BED\u8A00\u4EBA\u58F0\u3001\u58F0\u573A\u8DDD\u79BB\u548C\u540C\u6B65\u70B9\uFF1B\u53EA\u5141\u8BB8\u6982\u62EC detailed_description \u4E2D\u5DF2\u7ECF\u660E\u786E\u5199\u51FA\u7684\u540C\u6B65\u97F3\u6548\uFF0C\u4E0D\u5F97\u51ED\u7A7A\u65B0\u589E\u955C\u5934\u4E2D\u6CA1\u6709\u7684\u58F0\u97F3\u3002non_diegetic_music \u65E0\u6761\u4EF6\u5199 N/A\uFF0C\u4E0D\u5F97\u51FA\u73B0\u4E50\u5668\u3001\u65CB\u5F8B\u3001\u8282\u62CD\u3001\u97F3\u4E50\u8FDB\u5165/\u9000\u51FA\u6216\u58F0\u97F3\u6865\u7B49\u914D\u4E50\u63CF\u8FF0\u3002N/A \u540E\u53EA\u5141\u8BB8\u8FFD\u52A0\u56FA\u5B9A\u53E5\u201C\u53EA\u4FDD\u7559\u540C\u6B65\u73AF\u5883\u97F3\u6548\u548C\u52A8\u4F5C\u97F3\u6548\uFF0C\u4E0D\u751F\u6210\u80CC\u666F\u97F3\u4E50\uFF0C\u4E0D\u751F\u6210\u5B57\u5E55\u3002\u201D\u3002
 10. \u5168\u7A0B\u7981\u6B62\u5B57\u5E55\u3001\u6807\u9898\u548C\u5BF9\u8BDD\u6C14\u6CE1\u3002\u5BF9\u767D\u3001\u65C1\u767D\u53EA\u4F5C\u4E3A\u58F0\u97F3\uFF0C\u7EDD\u4E0D\u6E32\u67D3\u4E3A\u753B\u9762\u6587\u5B57\uFF1B\u573A\u666F\u5185\u5B9E\u4F53\u6587\u5B57\u53EA\u6709 shotFacts \u660E\u786E\u6307\u5B9A\u65F6\u624D\u4FDD\u7559\u3002
 11. \u4E2D\u666F\u6216\u4E2D\u8FDC\u666F\u51FA\u73B0\u4E3B\u8981\u4EBA\u7269\u65F6\uFF0C\u9010\u955C\u5199\u660E\u9762\u90E8\u9510\u5229\u5BF9\u7126\uFF0C\u773C\u775B\u3001\u9F3B\u5B50\u3001\u5634\u90E8\u4E0E\u8F6E\u5ED3\u6E05\u6670\u53EF\u8FA8\uFF0C\u4E0D\u88AB\u6D45\u666F\u6DF1\u3001\u7126\u70B9\u6F02\u79FB\u6216\u8FD0\u52A8\u6A21\u7CCA\u8986\u76D6\uFF1B\u4F18\u5148\u7B80\u5316\u80CC\u666F\u3001\u906E\u6321\u548C\u5FEB\u901F\u8FD0\u52A8\uFF0C\u4E0D\u6539\u53D8\u8F93\u5165\u666F\u522B\u3002
 12. detailed_description \u4EE5\u5B8C\u6574\u65F6\u95F4\u7EBF\u548C\u53EF\u6267\u884C\u52A8\u4F5C\u4F18\u5148\uFF0C\u901A\u5E38\u5199 350-500 \u4E2A\u82F1\u6587\u5355\u8BCD\uFF1B\u5BF9\u767D\u5BC6\u96C6\u65F6\u4F18\u5148\u4FDD\u8BC1\u5B8C\u6574\u4E14\u7CBE\u786E\u7684\u53D1\u58F0\u65F6\u95F4\u7EBF\uFF0C\u4E0D\u7528\u91CD\u590D\u5F62\u5BB9\u8BCD\u51D1\u957F\u5EA6\u3002
 13. ${audioRule}
 14. \u89D2\u8272\u5B9E\u4F8B\u552F\u4E00\uFF1A\u6BCF\u4E2A\u6709\u540D\u5B57\u7684\u51FA\u955C\u89D2\u8272\u5FC5\u987B\u6620\u5C04\u5230\u4E00\u4E2A\u4E14\u4EC5\u4E00\u4E2A\u89D2\u8272 <Subject N>\uFF0C\u4E00\u4E2A\u89D2\u8272 <Subject N> \u5728\u540C\u4E00\u955C\u5934\u9ED8\u8BA4\u53EA\u5141\u8BB8\u4E00\u4E2A\u53EF\u89C1\u8EAB\u4F53\u3002\u9664\u975E shotFacts \u660E\u786E\u8981\u6C42\u53CC\u80DE\u80CE\u3001\u514B\u9686\u3001\u955C\u50CF\u6216\u5206\u8EAB\uFF0C\u7981\u6B62 duplicate person\u3001look-alike\u3001second copy\u3001reflection duplicate\u3001background replica\u3002\u4E0D\u5F97\u7528\u738B\u80DC\u7684\u89D2\u8272\u53C2\u8003\u751F\u6210\u5B8B\u5AE3\u6216\u6234\u6B22\uFF1B\u672A\u7ED1\u5B9A\u89D2\u8272\u53C2\u8003\u65F6\u4E0D\u5F97\u731C\u6D4B\u6216\u590D\u7528\u5176\u4ED6\u4EBA\u7684\u8138\u3002
 15. \u6BCF\u955C\u660E\u786E\u5217\u51FA\u53EF\u89C1\u89D2\u8272\u53CA\u7CBE\u786E\u6570\u91CF\uFF1B\u672A\u5728\u8BE5\u955C\u51FA\u73B0\u7684\u89D2\u8272\u4E0D\u5F97\u5728\u80CC\u666F\u3001\u5012\u5F71\u3001\u6C34\u9762\u3001\u753B\u5916\u5165\u955C\u6216\u7FA4\u4F17\u4E2D\u590D\u5236\u51FA\u73B0\u3002\u591A\u4EBA\u955C\u5934\u7528\u5404\u81EA\u4E0D\u540C\u7684 <Subject N> \u548C\u7AD9\u4F4D\u63CF\u8FF0\uFF0C\u4EBA\u7269\u8EAB\u4EFD\u4E0D\u56E0\u5207\u955C\u3001\u906E\u6321\u6216\u6301\u6709\u9053\u5177\u800C\u4E92\u6362\u3002
+16. \u62BD\u8C61\u98CE\u683C\u8BCD\uFF08\u5982 cinematic\u3001beautiful\u3001epic\uFF09\u4E0D\u80FD\u5355\u72EC\u627F\u62C5\u753B\u9762\u6307\u4EE4\uFF0C\u5FC5\u987B\u7ED1\u5B9A\u53EF\u6267\u884C\u7684\u5149\u7EBF\u3001\u6750\u8D28\u3001\u8272\u5F69\u3001\u6784\u56FE\u3001\u955C\u5934\u8FD0\u52A8\u6216\u8868\u6F14\u951A\u70B9\u3002\u9879\u76EE\u7684 artStyle\u3001videoRatio \u548C visualStyleManual \u4F18\u5148\u4E8E\u53C2\u8003\u56FE\u7684\u5A92\u4ECB\u5916\u89C2\uFF1B\u4E0D\u80FD\u4EC5\u56E0\u53C2\u8003\u56FE\u662F\u7167\u7247\u5C31\u64C5\u81EA\u6539\u6210\u771F\u4EBA\u5B9E\u62CD\u3001\u7535\u5F71\u5BBD\u753B\u5E45\u30018K \u6216\u54C1\u724C\u6444\u5F71\u673A\u3002\u672A\u88AB shotFacts \u6216\u53C2\u8003\u7D20\u6750\u652F\u6301\u7684\u80CC\u666F\u4EBA\u7269\u3001\u7FA4\u4F17\u3001\u9053\u5177\u548C\u4E8B\u4EF6\u4E0D\u5F97\u81EA\u884C\u8865\u5165\u3002
+17. \u53D9\u4E8B\u589E\u5F3A\u53EA\u6761\u4EF6\u89E6\u53D1\uFF0C\u4E0D\u5F97\u8986\u76D6\u4E8B\u5B9E\u548C\u6280\u672F\u534F\u8BAE\uFF1A\u82E5\u5F53\u524D segment \u7684 shotFacts \u660E\u786E\u5B58\u5728\u5371\u9669\u3001\u76EE\u6807\u3001\u963B\u788D\u3001\u5931\u63A7\u3001\u5F02\u5E38\u3001\u5173\u952E\u7269\u4EF6\u53D8\u5316\u3001\u7D27\u5F20\u5173\u7CFB\u6216\u672A\u5B8C\u6210\u7ED3\u679C\uFF0C\u5E94\u5728\u8F93\u5165\u65F6\u957F\u548C\u65E2\u6709\u6784\u56FE\u5141\u8BB8\u7684\u8303\u56F4\u5185\uFF0C\u628A\u8FD9\u4E9B\u8981\u7D20\u7684\u6700\u65E9\u53EF\u89C1\u8BC1\u636E\u653E\u5728 Shot 1 \u7684\u63CF\u8FF0\u524D\u90E8\uFF0C\u5E76\u6309\u8F93\u5165\u4E8B\u5B9E\u6E05\u6670\u5448\u73B0\u201C\u538B\u529B\u53D8\u5316 \u2192 \u4EBA\u7269/\u73AF\u5883\u53CD\u5E94 \u2192 \u5F53\u524D\u7ED3\u679C\u201D\u3002\u4E0D\u5B58\u5728\u8FD9\u4E9B\u4E8B\u5B9E\u65F6\uFF0C\u4FDD\u6301\u539F\u6709\u5F00\u573A\uFF0C\u4E0D\u865A\u6784\u51B2\u7A81\u3001\u60AC\u5FF5\u3001\u53F0\u8BCD\u6216\u65B0\u4E8B\u4EF6\uFF1B\u4E0D\u5F97\u5F3A\u5236\u4E09\u6BB5\u5F0F\u8282\u594F\u3001\u975E\u5E38\u89C4\u673A\u4F4D\u6216\u60AC\u800C\u672A\u51B3\u7ED3\u5C3E\u3002
+18. \u82E5\u8F93\u5165\u660E\u786E\u5B58\u5728\u538B\u529B\u53D8\u5316\u5E8F\u5217\u6216\u672A\u89E3\u51B3\u7ED3\u679C\uFF0C\u53EF\u4EE5\u5728 summary \u4E2D\u7528\u4E00\u53E5\u82F1\u6587\u6982\u62EC\u63A8\u8FDB\u5173\u7CFB\uFF0C\u5E76\u5728\u6700\u540E\u955C\u5934\u4FDD\u7559\u8BE5\u672A\u5B8C\u6210\u72B6\u6001\uFF1B\u82E5\u8F93\u5165\u660E\u786E\u5B8C\u6210\u3001\u62B5\u8FBE\u3001\u4EA4\u4ED8\u6216\u60C5\u7EEA\u91CA\u653E\uFF0C\u5FC5\u987B\u5982\u5B9E\u4FDD\u7559\u5B8C\u6210\u72B6\u6001\u3002overall_soundscape \u53EA\u80FD\u5728\u8F93\u5165\u5DF2\u6709\u97F3\u6548\u7684\u57FA\u7840\u4E0A\u8BF4\u660E\u5176\u4E0E\u52A8\u4F5C/\u60C5\u7EEA\u7684\u540C\u6B65\u5173\u7CFB\uFF0C\u4E0D\u5F97\u65B0\u589E\u58F0\u97F3\u7C7B\u578B\u3002\u4E0A\u8FF0\u589E\u5F3A\u4E0D\u5F97\u8F93\u51FA\u5206\u6790\u6CE8\u91CA\u3001\u6539\u53D8\u666F\u522B\u3001\u91CD\u6392\u955C\u5934\u65F6\u957F\u6216\u6539\u53D8 H3 \u5B57\u6BB5\u987A\u5E8F\u3002
+19. \u955C\u5934\u4FE1\u606F\u5BC6\u5EA6\u53EA\u901A\u8FC7\u53EF\u89C2\u5BDF\u5185\u5BB9\u63D0\u5347\uFF1A\u6BCF\u955C\u81F3\u5C11\u5199\u51FA\u4E00\u4E2A\u6709\u4E8B\u5B9E\u4F9D\u636E\u7684\u53EF\u89C2\u5BDF\u52A8\u8BCD\u548C\u4E00\u4E2A\u89C6\u89C9\u951A\u70B9\uFF08\u4E3B\u4F53\u3001\u9053\u5177\u3001\u7A7A\u95F4\u4F4D\u7F6E\u3001\u5149\u7EBF\u6216\u53C2\u8003\u6807\u7B7E\uFF09\u3002\u9759\u6001\u955C\u5934\u4E5F\u5FC5\u987B\u63CF\u8FF0\u53EF\u89C1\u72B6\u6001\uFF0C\u4E0D\u5F97\u7528 beautiful\u3001cinematic\u3001tense \u7B49\u62BD\u8C61\u8BCD\u66FF\u4EE3\u753B\u9762\u4E8B\u5B9E\u3002
+20. \u53EA\u6709 shotFacts\u3001\u5BF9\u767D\u6216\u52A8\u4F5C\u660E\u786E\u63D0\u4F9B\u60C5\u7EEA\u4FE1\u53F7\u65F6\uFF0C\u624D\u5728\u5BF9\u5E94\u955C\u5934\u4F7F\u7528 1-2 \u4E2A\u53EF\u6267\u884C\u7684\u60C5\u7EEA/\u8868\u6F14\u951A\u70B9\uFF08\u5982 restrained anger\u3001visible panic\u3001hesitation\uFF09\uFF1B\u4E2D\u6027\u753B\u9762\u4E0D\u5F97\u5F3A\u52A0\u60C5\u7EEA\uFF0C\u89C2\u4F17\u611F\u53D7\u53EA\u80FD\u901A\u8FC7\u53EF\u89C1\u8868\u60C5\u3001\u52A8\u4F5C\u3001\u8DDD\u79BB\u3001\u5149\u7EBF\u6216\u5DF2\u6709\u58F0\u97F3\u8868\u8FBE\u3002
+21. \u9664\u538B\u529B\u5347\u7EA7\u5916\uFF0C\u82E5\u8F93\u5165\u4E8B\u5B9E\u5448\u73B0\u4EFB\u52A1\u63A8\u8FDB\u3001\u53D1\u73B0/\u63ED\u9732\u6216\u60C5\u7EEA\u8F6C\u6298\uFF0C\u4E5F\u5E94\u6309\u4E8B\u5B9E\u987A\u5E8F\u7A81\u51FA\u201C\u53D8\u5316\u524D\u72B6\u6001 \u2192 \u53EF\u89C1\u53D8\u5316 \u2192 \u5F53\u524D\u7ED3\u679C\u201D\uFF1B\u4E0D\u5F97\u628A\u4E0D\u5B58\u5728\u7684\u5FC3\u7406\u52A8\u673A\u3001\u4FE1\u606F\u5DEE\u6216\u53CD\u8F6C\u5199\u6210\u4E8B\u5B9E\u3002\u94A9\u5B50\u53EA\u8868\u793A\u6700\u65E9\u53EF\u611F\u77E5\u7684\u5DF2\u6709\u4FE1\u53F7\uFF0C\u4E0D\u5F97\u6DFB\u52A0\u201C\u672C\u4E0D\u8BE5\u51FA\u73B0\u201D\u7B49\u672A\u88AB\u8F93\u5165\u786E\u8BA4\u7684\u5224\u65AD\u3002
 
 ## \u56DB\u6A21\u5757\u89C4\u5212\u4E0E H3 \u6620\u5C04
 \u5148\u5728\u5185\u90E8\u6309\u56DB\u4E2A\u6A21\u5757\u7EC4\u7EC7\u4E8B\u5B9E\uFF0C\u518D\u5E8F\u5217\u5316\u4E3A\u4E0A\u9762\u7684\u5B98\u65B9\u5B57\u6BB5\uFF1BH3 \u6700\u7EC8 prompt \u4E0D\u5F97\u76F4\u63A5\u8F93\u51FA\u6A21\u5757\u6807\u9898\u6216 [\u53C2\u8003\u56FE]/[\u89C6\u9891\u5185\u5BB9] \u5305\u88C5\uFF1A
@@ -116515,6 +116585,12 @@ var init_dist2 = __esm({
 });
 
 // src/utils/db.ts
+var db_exports = {};
+__export(db_exports, {
+  db: () => db,
+  default: () => db_default,
+  initKnexType: () => initKnexType
+});
 async function initKnexType(knexDb) {
   const { Client: Client2 } = await Promise.resolve().then(() => (init_dist2(), dist_exports));
   const outFile = import_path4.default.resolve("src/types/database.d.ts");
@@ -116602,6 +116678,25 @@ var init_db = __esm({
   }
 });
 
+// src/utils/mediaSignature.ts
+function signMediaPath(pathname, expires, secret) {
+  return (0, import_node_crypto4.createHmac)("sha256", secret).update(`${pathname}:${expires}`).digest("hex");
+}
+function verifyMediaSignature(pathname, expiresValue, signatureValue, secret) {
+  const expires = Number(expiresValue);
+  const signature = String(signatureValue || "");
+  if (!Number.isSafeInteger(expires) || expires < Date.now() || !/^[a-f0-9]{64}$/.test(signature)) return false;
+  const expected = signMediaPath(pathname, expires, secret);
+  return (0, import_node_crypto4.timingSafeEqual)(Buffer.from(signature), Buffer.from(expected));
+}
+var import_node_crypto4;
+var init_mediaSignature = __esm({
+  "src/utils/mediaSignature.ts"() {
+    "use strict";
+    import_node_crypto4 = require("node:crypto");
+  }
+});
+
 // src/utils/oss.ts
 function normalizeUserPath(userPath) {
   const trimmedPath = userPath.replace(/^[/\\]+/, "");
@@ -116624,6 +116719,7 @@ var init_oss = __esm({
     import_promises3 = __toESM(require("node:fs/promises"));
     import_node_path2 = __toESM(require("node:path"));
     import_node_buffer = require("node:buffer");
+    init_mediaSignature();
     OSS = class {
       rootDir;
       initPromise;
@@ -116646,10 +116742,17 @@ var init_oss = __esm({
        */
       async getFileUrl(userRelPath, prefix) {
         if (!prefix) prefix = "oss";
+        if (/^https?:\/\//i.test(userRelPath)) return userRelPath;
         await this.ensureInit();
         const safePath = normalizeUserPath(userRelPath);
-        const url4 = `http://127.0.0.1:10588/${prefix}/`;
-        return `${url4}${safePath.split(import_node_path2.default.sep).join("/")}`;
+        const pathname = `/${prefix}/${safePath.split(import_node_path2.default.sep).join("/")}`;
+        if (prefix !== "oss") return pathname;
+        if (!await this.fileExists(userRelPath)) return "";
+        const { default: db2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+        const setting = await db2("o_setting").where({ key: "tokenKey" }).select("value").first();
+        const expires = Date.now() + 15 * 60 * 1e3;
+        const signature = signMediaPath(pathname, expires, String(setting?.value || ""));
+        return `${pathname}?expires=${expires}&signature=${signature}`;
       }
       /**
        * 读取指定路径的文件内容为 Buffer。
@@ -146526,11 +146629,11 @@ function isValidIP(ip, version3) {
   }
   return false;
 }
-function isValidJWT2(jwt7, alg) {
-  if (!jwtRegex.test(jwt7))
+function isValidJWT2(jwt5, alg) {
+  if (!jwtRegex.test(jwt5))
     return false;
   try {
-    const [header] = jwt7.split(".");
+    const [header] = jwt5.split(".");
     if (!header)
       return false;
     const base644 = header.replace(/-/g, "+").replace(/_/g, "/").padEnd(header.length + (4 - header.length % 4) % 4, "=");
@@ -189914,7 +190017,7 @@ var require_schemas2 = __commonJS({
     exports2.base64 = base644;
     exports2.base64url = base64url4;
     exports2.e164 = e1644;
-    exports2.jwt = jwt7;
+    exports2.jwt = jwt5;
     exports2.stringFormat = stringFormat3;
     exports2.hostname = hostname4;
     exports2.hex = hex4;
@@ -190289,7 +190392,7 @@ var require_schemas2 = __commonJS({
       core.$ZodJWT.init(inst, def);
       exports2.ZodStringFormat.init(inst, def);
     });
-    function jwt7(params) {
+    function jwt5(params) {
       return core._jwt(exports2.ZodJWT, params);
     }
     exports2.ZodCustomStringFormat = core.$constructor("ZodCustomStringFormat", (inst, def) => {
@@ -192873,11 +192976,11 @@ var require_types4 = __commonJS({
       }
       return false;
     }
-    function isValidJWT4(jwt7, alg) {
-      if (!jwtRegex2.test(jwt7))
+    function isValidJWT4(jwt5, alg) {
+      if (!jwtRegex2.test(jwt5))
         return false;
       try {
-        const [header] = jwt7.split(".");
+        const [header] = jwt5.split(".");
         if (!header)
           return false;
         const base644 = header.replace(/-/g, "+").replace(/_/g, "/").padEnd(header.length + (4 - header.length % 4) % 4, "=");
@@ -222134,12 +222237,12 @@ var require_jwa = __commonJS({
       };
     }
     var bufferEqual;
-    var timingSafeEqual = "timingSafeEqual" in crypto5 ? function timingSafeEqual2(a, b) {
+    var timingSafeEqual3 = "timingSafeEqual" in crypto5 ? function timingSafeEqual4(a, b) {
       if (a.byteLength !== b.byteLength) {
         return false;
       }
       return crypto5.timingSafeEqual(a, b);
-    } : function timingSafeEqual2(a, b) {
+    } : function timingSafeEqual4(a, b) {
       if (!bufferEqual) {
         bufferEqual = require_buffer_equal_constant_time();
       }
@@ -222148,7 +222251,7 @@ var require_jwa = __commonJS({
     function createHmacVerifier(bits) {
       return function verify(thing, signature, secret) {
         var computedSig = createHmacSigner(bits)(thing, secret);
-        return timingSafeEqual(Buffer5.from(signature), Buffer5.from(computedSig));
+        return timingSafeEqual3(Buffer5.from(signature), Buffer5.from(computedSig));
       };
     }
     function createKeySigner(bits) {
@@ -222497,9 +222600,9 @@ var require_decode = __commonJS({
   "node_modules/jsonwebtoken/decode.js"(exports2, module2) {
     "use strict";
     var jws = require_jws();
-    module2.exports = function(jwt7, options) {
+    module2.exports = function(jwt5, options) {
       options = options || {};
-      var decoded = jws.decode(jwt7, options);
+      var decoded = jws.decode(jwt5, options);
       if (!decoded) {
         return null;
       }
@@ -237663,6 +237766,27 @@ var init_utils3 = __esm({
   }
 });
 
+// src/lib/responseFormat.ts
+function success3(data = null, message = "\u6210\u529F") {
+  return {
+    code: 200,
+    data,
+    message
+  };
+}
+function error50(message = "", data = null) {
+  return {
+    code: 400,
+    data,
+    message
+  };
+}
+var init_responseFormat = __esm({
+  "src/lib/responseFormat.ts"() {
+    "use strict";
+  }
+});
+
 // src/utils/productionFlow.ts
 function parseStoryboardTableAssetBindings(markdown) {
   return [...String(markdown || "").matchAll(/\*\*引用资产ID\*\*\s*[：:]\s*(?:\[|［)([^\]］]*)(?:\]|］)/g)].map(
@@ -237685,22 +237809,19 @@ async function withSrc(row) {
 }
 async function loadAssets(projectId, scriptId) {
   const linkedAssetIds = (await utils_default.db("o_scriptAssets").where({ scriptId }).pluck("assetId")).map(Number);
-  let baseRows = await utils_default.db("o_assets").leftJoin("o_image", "o_assets.imageId", "o_image.id").select(
+  const baseRows = await utils_default.db("o_assets").leftJoin("o_image", "o_assets.imageId", "o_image.id").select(
     "o_assets.*",
     "o_image.filePath as imageFilePath",
     "o_image.state as imageState",
     "o_image.errorReason as imageErrorReason"
   ).where("o_assets.projectId", projectId);
-  if (linkedAssetIds.length) {
-    const linkedSet = new Set(linkedAssetIds);
-    const derivedParentIds = new Set(
-      baseRows.filter((row) => row.assetsId != null && linkedSet.has(Number(row.id))).map((row) => Number(row.assetsId))
-    );
-    baseRows = baseRows.filter(
-      (row) => linkedSet.has(Number(row.id)) || linkedSet.has(Number(row.assetsId)) || derivedParentIds.has(Number(row.id))
-    );
-  }
-  const rows = baseRows;
+  const linkedSet = new Set(linkedAssetIds);
+  const derivedParentIds = new Set(
+    baseRows.filter((row) => row.assetsId != null && linkedSet.has(Number(row.id))).map((row) => Number(row.assetsId))
+  );
+  const rows = baseRows.filter(
+    (row) => linkedSet.has(Number(row.id)) || linkedSet.has(Number(row.assetsId)) || derivedParentIds.has(Number(row.id))
+  );
   const roleIds = rows.filter((item) => item.type === "role").map((item) => Number(item.id)).filter(Number.isFinite);
   const voiceMap = /* @__PURE__ */ new Map();
   if (roleIds.length) {
@@ -237748,6 +237869,8 @@ async function loadAssets(projectId, scriptId) {
         flowId: child.flowId ?? void 0,
         errorReason: child.promptErrorReason || child.imageErrorReason || ""
       });
+      normalized.state = normalized.src ? child.imageState || "\u5DF2\u5B8C\u6210" : "\u672A\u751F\u6210";
+      normalized.imageState = normalized.state;
       if (child.type === "role") {
         const voiceReference = voiceMap.get(Number(child.id)) || null;
         normalized.voiceReference = voiceReference;
@@ -237779,6 +237902,8 @@ async function loadAssets(projectId, scriptId) {
         errorReason: parent.promptErrorReason || parent.imageErrorReason || "",
         derive: childMap.get(parent.id) || []
       });
+      normalized.state = normalized.src ? parent.imageState || "\u5DF2\u5B8C\u6210" : "\u672A\u751F\u6210";
+      normalized.imageState = normalized.state;
       if (parent.type === "role") {
         const voiceReference = voiceMap.get(Number(parent.id)) || null;
         normalized.voiceReference = voiceReference;
@@ -237809,35 +237934,36 @@ async function loadStoryboard(projectId, scriptId) {
     relationMap.set(storyboardId, list2);
   }
   return Promise.all(
-    formalRows.map(async (row) => ({
-      id: Number(row.id),
-      prompt: row.prompt || "",
-      src: row.filePath ? await utils_default.oss.getFileUrl(row.filePath) : null,
-      state: row.state || "\u672A\u751F\u6210",
-      duration: Number(row.duration) || 0,
-      trackId: row.trackId == null ? void 0 : Number(row.trackId),
-      track: row.track || "",
-      index: row.index == null ? null : Number(row.index),
-      associateAssetsIds: relationMap.get(Number(row.id)) || [],
-      videoDesc: row.videoDesc || "",
-      shouldGenerateImage: Number(row.shouldGenerateImage) || 0,
-      flowId: row.flowId == null ? void 0 : Number(row.flowId),
-      reason: row.reason || ""
-    }))
+    formalRows.map(async (row) => {
+      const src = row.filePath ? await utils_default.oss.getFileUrl(row.filePath) : "";
+      return {
+        id: Number(row.id),
+        prompt: row.prompt || "",
+        src: src || null,
+        state: src ? row.state || "\u672A\u751F\u6210" : "\u672A\u751F\u6210",
+        duration: Number(row.duration) || 0,
+        trackId: row.trackId == null ? void 0 : Number(row.trackId),
+        track: row.track || "",
+        index: row.index == null ? null : Number(row.index),
+        associateAssetsIds: relationMap.get(Number(row.id)) || [],
+        videoDesc: row.videoDesc || "",
+        shouldGenerateImage: Number(row.shouldGenerateImage) || 0,
+        flowId: row.flowId == null ? void 0 : Number(row.flowId),
+        reason: row.reason || ""
+      };
+    })
   );
 }
 async function buildProductionFlowData(projectId, scriptId) {
   const script = await utils_default.db("o_script").where({ projectId, id: scriptId }).first();
   const scriptAgent = await utils_default.db("o_agentWorkData").where({ projectId, episodesId: scriptId, key: "scriptAgent" }).first();
-  const scriptAgentFallback = scriptAgent || await utils_default.db("o_agentWorkData").where({ projectId, key: "scriptAgent" }).first();
   const savedFlow = await utils_default.db("o_agentWorkData").where({ projectId, episodesId: scriptId, key: "productionFlowData" }).first();
-  const scriptAgentData = safeJsonParse(scriptAgentFallback?.data, {});
   const flowData = safeJsonParse(savedFlow?.data, {});
   const storyboard = await loadStoryboard(projectId, scriptId);
   const assets = await loadAssets(projectId, scriptId);
   return {
     script: flowData.script || script?.content || "",
-    scriptPlan: flowData.scriptPlan || scriptAgentData.adaptationStrategy || "",
+    scriptPlan: flowData.scriptPlan || "",
     storyboardTable: flowData.storyboardTable || "",
     assets,
     storyboard,
@@ -238227,7 +238353,7 @@ function createTemplateAnalysisPrompt(caseText, requestedName) {
     caseText
   ].join("\n\n");
 }
-var sharedNegative, DEFAULT_ASSET_INFERENCE_TEMPLATES;
+var sharedNegative, DEFAULT_ASSET_INFERENCE_TEMPLATES, multiRegionTemplate;
 var init_assetInferenceTemplate = __esm({
   "src/utils/assetInferenceTemplate.ts"() {
     "use strict";
@@ -238350,7 +238476,7 @@ var init_assetInferenceTemplate = __esm({
         outputRules: ["\u4E0D\u5F3A\u5236\u5957\u7528\u89D2\u8272\u56DB\u89C6\u56FE\u6216\u9053\u5177\u56DB\u5BAB\u683C\uFF0C\u573A\u666F\u6309\u5355\u5E45\u4E3B\u89C6\u56FE\u8F93\u51FA", "\u4EC5\u8F93\u51FA\u4E00\u6761\u53EF\u76F4\u63A5\u7528\u4E8E\u56FE\u7247\u751F\u6210\u7684\u5B8C\u6574\u63D0\u793A\u8BCD"]
       }
     ];
-    const multiRegionTemplate = DEFAULT_ASSET_INFERENCE_TEMPLATES.find((template) => template.name === "\u4EBA\u7269\u591A\u533A\u57DF\u8BBE\u5B9A\u677F");
+    multiRegionTemplate = DEFAULT_ASSET_INFERENCE_TEMPLATES.find((template) => template.name === "\u4EBA\u7269\u591A\u533A\u57DF\u8BBE\u5B9A\u677F");
     if (multiRegionTemplate) {
       DEFAULT_ASSET_INFERENCE_TEMPLATES.push({
         ...multiRegionTemplate,
@@ -238785,27 +238911,6 @@ var init_videoGeneration = __esm({
   "src/services/videoGeneration.ts"() {
     "use strict";
     init_utils3();
-  }
-});
-
-// src/lib/responseFormat.ts
-function success3(data = null, message = "\u6210\u529F") {
-  return {
-    code: 200,
-    data,
-    message
-  };
-}
-function error50(message = "", data = null) {
-  return {
-    code: 400,
-    data,
-    message
-  };
-}
-var init_responseFormat = __esm({
-  "src/lib/responseFormat.ts"() {
-    "use strict";
   }
 });
 
@@ -240839,18 +240944,19 @@ function setToken(payload, expiresIn, secret) {
   if (!payload || typeof secret !== "string" || !secret) {
     throw new Error("\u53C2\u6570\u4E0D\u5408\u6CD5");
   }
-  return import_jsonwebtoken4.default.sign(payload, secret, { expiresIn });
+  return import_jsonwebtoken3.default.sign(payload, secret, { expiresIn });
 }
-var import_express35, import_jsonwebtoken4, router35, login_default;
+var import_express35, import_jsonwebtoken3, router35, login_default;
 var init_login = __esm({
   "src/routes/login/login.ts"() {
     "use strict";
     import_express35 = __toESM(require_express2());
     init_utils3();
-    import_jsonwebtoken4 = __toESM(require_jsonwebtoken());
+    import_jsonwebtoken3 = __toESM(require_jsonwebtoken());
     init_responseFormat();
     init_middleware();
     init_zod();
+    init_password();
     router35 = import_express35.default.Router();
     login_default = router35.post(
       "/",
@@ -240862,7 +240968,11 @@ var init_login = __esm({
         const { username, password } = req.body;
         const data = await utils_default.db("o_user").where("name", "=", username).first();
         if (!data) return res.status(400).send(error50("\u767B\u5F55\u5931\u8D25"));
-        if (data.password == password && data.name == username) {
+        if (data.status === "disabled") return res.status(403).send(error50("\u8D26\u53F7\u5DF2\u505C\u7528"));
+        if (await verifyPassword(password, String(data.password || ""))) {
+          if (!String(data.password).startsWith("scrypt$")) {
+            await utils_default.db("o_user").where({ id: data.id }).update({ password: await hashPassword(password) });
+          }
           const tokenData = await utils_default.db("o_setting").where("key", "tokenKey").first();
           if (!tokenData) return res.status(400).send(error50("\u672A\u627E\u5230tokenKey"));
           const token = setToken(
@@ -240870,10 +240980,10 @@ var init_login = __esm({
               id: data.id,
               name: data.name
             },
-            "180Days",
+            "7d",
             tokenData?.value
           );
-          return res.status(200).send(success3({ token: "Bearer " + token, name: data.name, id: data.id }, "\u767B\u5F55\u6210\u529F"));
+          return res.status(200).send(success3({ token: "Bearer " + token, name: data.name, id: data.id, role: "admin" }, "\u767B\u5F55\u6210\u529F"));
         } else {
           return res.status(400).send(error50("\u7528\u6237\u540D\u6216\u5BC6\u7801\u9519\u8BEF"));
         }
@@ -241677,13 +241787,13 @@ async function probeVideoFile(filePath) {
     return null;
   }
 }
-var import_node_child_process, import_node_util, execFileAsync;
+var import_node_child_process, import_node_util2, execFileAsync;
 var init_videoOutputProbe = __esm({
   "src/utils/videoOutputProbe.ts"() {
     "use strict";
     import_node_child_process = require("node:child_process");
-    import_node_util = require("node:util");
-    execFileAsync = (0, import_node_util.promisify)(import_node_child_process.execFile);
+    import_node_util2 = require("node:util");
+    execFileAsync = (0, import_node_util2.promisify)(import_node_child_process.execFile);
   }
 });
 
@@ -241837,18 +241947,18 @@ async function recoverPendingVideoTasks(videos) {
     })
   );
 }
-var import_node_crypto3, VIDEO_WORKER_RUN_ID, recoveryLocks, VIDEO_EXTENSIONS, TASK_HISTORY_TTL;
+var import_node_crypto5, VIDEO_WORKER_RUN_ID, recoveryLocks, VIDEO_EXTENSIONS, TASK_HISTORY_TTL;
 var init_videoTaskRecovery = __esm({
   "src/utils/videoTaskRecovery.ts"() {
     "use strict";
     init_axios2();
-    import_node_crypto3 = require("node:crypto");
+    import_node_crypto5 = require("node:crypto");
     init_db();
     init_oss();
     init_getPath();
     init_videoOutputAudit();
     init_videoOutputProbe();
-    VIDEO_WORKER_RUN_ID = (0, import_node_crypto3.randomUUID)();
+    VIDEO_WORKER_RUN_ID = (0, import_node_crypto5.randomUUID)();
     recoveryLocks = /* @__PURE__ */ new Map();
     VIDEO_EXTENSIONS = /\.(mp4|webm|mov|mkv)$/i;
     TASK_HISTORY_TTL = 2 * 60 * 60 * 1e3;
@@ -241939,6 +242049,16 @@ function groupStoryboardRowsBySegments(storyboardList, segments) {
     rows.push(storyboard);
     rowsByKey.set(key, rows);
   }
+  const indexBound = /* @__PURE__ */ new Set();
+  for (const storyboard of unmatched) {
+    const index = Number(storyboard.index);
+    if (!Number.isInteger(index) || index < 0 || index >= segments.length) continue;
+    const key = segmentKey(segments[index]);
+    const rows = rowsByKey.get(key) || [];
+    rows.push(storyboard);
+    rowsByKey.set(key, rows);
+    indexBound.add(storyboard);
+  }
   const used = /* @__PURE__ */ new Set();
   const groups = segments.map((segment) => {
     const storyboards = rowsByKey.get(segmentKey(segment)) || [];
@@ -241950,9 +242070,10 @@ function groupStoryboardRowsBySegments(storyboardList, segments) {
       unmatched.push(storyboard);
     }
   }
+  const remainingUnmatched = unmatched.filter((storyboard) => !indexBound.has(storyboard) && !used.has(storyboard));
   return [
     ...groups.filter((group) => group.storyboards.length),
-    ...unmatched.map((storyboard) => ({
+    ...remainingUnmatched.map((storyboard) => ({
       segment: void 0,
       storyboards: [storyboard]
     }))
@@ -242137,10 +242258,12 @@ function parseStoryboardTable(markdown, script = "") {
   finish();
   return segments;
 }
-function fileUrl(filePath) {
+async function fileUrl(filePath) {
   if (!filePath) return "";
   if (/^https?:\/\//i.test(filePath)) return filePath;
-  return `/oss/${String(filePath).replace(/^[/\\]+/, "").replace(/\\/g, "/")}`;
+  const normalizedPath = String(filePath).replace(/^[/\\]+/, "").replace(/\\/g, "/");
+  if (!await utils_default.oss.fileExists(normalizedPath)) return "";
+  return utils_default.oss.getFileUrl(normalizedPath);
 }
 function parseMode(value) {
   if (Array.isArray(value)) return value.map(String);
@@ -242268,17 +242391,7 @@ async function buildVideoTaskData(projectId, scriptId, overrides = {}) {
     "o_image.state",
     "o_image.errorReason"
   ) : [];
-  const fallbackBindingMap = /* @__PURE__ */ new Map();
-  for (const storyboard of storyboardList) {
-    const ids = [...String(storyboard.videoDesc || "").matchAll(/引用资产ID\s*[：:]\s*[\[［]([^\]］]*)[\]］]/g)].flatMap((match) => (match[1].match(/\d+/g) || []).map(Number)).filter(Number.isFinite);
-    if (ids.length) fallbackBindingMap.set(Number(storyboard.id), [...new Set(ids)]);
-  }
   const roleRelationIds = [...new Set(relations.filter((row) => row.type === "role").map((row) => Number(row.id)))].filter(Number.isFinite);
-  const fallbackAssetIds = [...new Set([...fallbackBindingMap.values()].flat())].filter(Number.isFinite);
-  if (fallbackAssetIds.length) {
-    const fallbackRoles = await utils_default.db("o_assets").where({ projectId, type: "role" }).whereIn("id", fallbackAssetIds).pluck("id");
-    roleRelationIds.push(...fallbackRoles.map(Number));
-  }
   const uniqueRoleRelationIds = [...new Set(roleRelationIds)];
   const voiceMap = /* @__PURE__ */ new Map();
   if (uniqueRoleRelationIds.length) {
@@ -242312,6 +242425,7 @@ async function buildVideoTaskData(projectId, scriptId, overrides = {}) {
   for (const row of relations) {
     const storyboardId = Number(row.storyboardId);
     const list2 = relationMap.get(storyboardId) || [];
+    const src = await fileUrl(row.filePath);
     if (!list2.some((item) => Number(item.id) === Number(row.id))) {
       const voiceReference = row.type === "role" ? voiceMap.get(Number(row.id)) || null : null;
       list2.push({
@@ -242322,8 +242436,8 @@ async function buildVideoTaskData(projectId, scriptId, overrides = {}) {
         prompt: row.prompt || "",
         fileType: "image",
         sources: "assets",
-        src: fileUrl(row.filePath),
-        state: row.state || (row.filePath ? "\u5DF2\u5B8C\u6210" : "\u672A\u751F\u6210"),
+        src,
+        state: src ? row.state || "\u5DF2\u5B8C\u6210" : "\u672A\u751F\u6210",
         errorReason: row.errorReason || "",
         voiceReference,
         voicePath: voiceReference?.src || "",
@@ -242331,51 +242445,6 @@ async function buildVideoTaskData(projectId, scriptId, overrides = {}) {
       });
     }
     relationMap.set(storyboardId, list2);
-  }
-  if (fallbackAssetIds.length) {
-    const relationAssetIds = new Set(relations.map((row) => Number(row.id)));
-    const fallbackRows = await utils_default.db("o_assets").leftJoin("o_image", "o_assets.imageId", "o_image.id").where("o_assets.projectId", projectId).whereIn("o_assets.id", fallbackAssetIds).select("o_assets.id", "o_assets.name", "o_assets.type", "o_assets.describe", "o_assets.prompt", "o_image.filePath", "o_image.state", "o_image.errorReason");
-    const fallbackRowMap = new Map(fallbackRows.map((row) => [Number(row.id), row]));
-    for (const [storyboardId, ids] of fallbackBindingMap) {
-      const list2 = relationMap.get(storyboardId) || [];
-      for (const assetId of ids) {
-        if (relationAssetIds.has(assetId) || list2.some((item) => Number(item.id) === assetId)) continue;
-        const row = fallbackRowMap.get(assetId);
-        if (!row) continue;
-        const voiceReference = row.type === "role" ? voiceMap.get(assetId) || null : null;
-        list2.push({
-          id: assetId,
-          name: row.name || `\u8D44\u4EA7 ${assetId}`,
-          type: row.type || "asset",
-          describe: row.describe || "",
-          prompt: row.prompt || "",
-          fileType: "image",
-          sources: "assets",
-          src: fileUrl(row.filePath),
-          state: row.state || (row.filePath ? "\u5DF2\u5B8C\u6210" : "\u672A\u751F\u6210"),
-          errorReason: row.errorReason || "",
-          voiceReference,
-          voicePath: voiceReference?.src || "",
-          voiceAssetId: voiceReference?.assetId || null
-        });
-      }
-      relationMap.set(storyboardId, list2);
-    }
-    await utils_default.db.transaction(async (trx) => {
-      for (const [storyboardId, ids] of fallbackBindingMap) {
-        const validIds = ids.filter((assetId) => fallbackRowMap.has(assetId));
-        if (!validIds.length) continue;
-        const existing = new Set(
-          (await trx("o_assets2Storyboard").where({ storyboardId }).pluck("assetId")).map(Number)
-        );
-        const missing = validIds.filter((assetId) => !existing.has(assetId));
-        if (missing.length) {
-          await trx("o_assets2Storyboard").insert(
-            missing.map((assetId, offset) => ({ storyboardId, assetId, sort: existing.size + offset }))
-          );
-        }
-      }
-    });
   }
   const videoRows = trackData.length ? await utils_default.db("o_video").whereIn(
     "videoTrackId",
@@ -242388,7 +242457,7 @@ async function buildVideoTaskData(projectId, scriptId, overrides = {}) {
   )?.count;
   const referenceMode = mode === "multiImage" || capabilities.some((item) => item.type === "imageReference");
   const storyboardGroups = groupStoryboardRowsBySegments(storyboardList, segments);
-  const tasks = storyboardGroups.map(({ storyboards, segment }, index) => {
+  const tasks = await Promise.all(storyboardGroups.map(async ({ storyboards, segment }, index) => {
     const storyboard = storyboards[0];
     const assets = storyboards.flatMap((item) => relationMap.get(Number(item.id)) || []).filter(
       (asset, assetIndex, list2) => list2.findIndex((candidate) => Number(candidate.id) === Number(asset.id)) === assetIndex
@@ -242400,7 +242469,7 @@ async function buildVideoTaskData(projectId, scriptId, overrides = {}) {
       type: "storyboard",
       fileType: "image",
       sources: "storyboard",
-      src: fileUrl(storyboardWithImage.filePath),
+      src: await fileUrl(storyboardWithImage.filePath),
       prompt: storyboardWithImage.prompt || "",
       state: storyboardWithImage.state || "\u672A\u751F\u6210"
     };
@@ -242441,15 +242510,15 @@ async function buildVideoTaskData(projectId, scriptId, overrides = {}) {
       selectedMedias.filter((item) => item.sources === "assets")
     );
     const missingAssetNames = assets.filter((asset) => !asset.src).map((asset) => asset.name);
-    const videos = videoRows.filter(
+    const videos = await Promise.all(videoRows.filter(
       (video) => storyboards.some(
         (item) => Number(video.videoTrackId) === Number(item.trackId)
       )
-    ).map((video) => ({
+    ).map(async (video) => ({
       ...video,
-      src: fileUrl(video.filePath),
+      src: await fileUrl(video.filePath),
       state: video.state === "\u751F\u6210\u6210\u529F" ? "\u5DF2\u5B8C\u6210" : video.state || "\u672A\u751F\u6210"
-    }));
+    })));
     return {
       id: Number(storyboard.trackId),
       storyboardId: Number(storyboard.id),
@@ -242504,75 +242573,7 @@ async function buildVideoTaskData(projectId, scriptId, overrides = {}) {
         ]
       }
     };
-  });
-  const draftBindings = parseStoryboardTableAssetBindings(flow.storyboardTable || "");
-  const draftAssetIds = [...new Set(draftBindings.flat())].filter(Number.isFinite);
-  const draftAssetRows = draftAssetIds.length ? await utils_default.db("o_assets").leftJoin("o_image", "o_assets.imageId", "o_image.id").where("o_assets.projectId", projectId).whereIn("o_assets.id", draftAssetIds).select("o_assets.id", "o_assets.name", "o_assets.type", "o_assets.describe", "o_assets.prompt", "o_image.filePath", "o_image.state", "o_image.errorReason") : [];
-  const draftAssetMap = new Map(draftAssetRows.map((row) => [Number(row.id), row]));
-  const draftTasks = !storyboardList.length ? segments.map((segment, index) => {
-    const videoDescription = segment.rows.map((row) => row.description).filter(Boolean).join("\n");
-    const duration4 = segment.rows.reduce((sum, row) => sum + row.duration, 0);
-    const draftAssets = (draftBindings[index] || []).map((assetId) => draftAssetMap.get(assetId)).filter(Boolean).map((asset) => ({
-      id: Number(asset.id),
-      name: asset.name || `\u8D44\u4EA7 ${asset.id}`,
-      type: asset.type || "asset",
-      describe: asset.describe || "",
-      prompt: asset.prompt || "",
-      fileType: "image",
-      sources: "assets",
-      src: fileUrl(asset.filePath),
-      state: asset.state || (asset.filePath ? "\u5DF2\u5B8C\u6210" : "\u672A\u751F\u6210"),
-      errorReason: asset.errorReason || ""
-    }));
-    return {
-      id: -(index + 1),
-      storyboardId: null,
-      index,
-      isEpisodeOpening: index === 0,
-      shotNumber: index + 1,
-      title: `${segment.sceneTitle || "\u5206\u955C\u8868"} / ${segment.segmentTitle}`,
-      sceneTitle: segment.sceneTitle || "",
-      segmentTitle: segment.segmentTitle,
-      location: segment.location || "",
-      dayPart: segment.dayPart || "",
-      interiorExterior: segment.interiorExterior || "",
-      spatialLayers: segment.spatialLayers || "",
-      segmentRows: segment.rows,
-      dialogue: summarizeSegmentField(segment.rows, "dialogue"),
-      sound: summarizeSegmentField(segment.rows, "sound"),
-      summary: videoDescription,
-      duration: duration4,
-      imagePrompt: "",
-      videoDesc: videoDescription,
-      prompt: "",
-      promptSource: "storyboard.videoDesc",
-      promptTemplateId: null,
-      promptTemplateVersion: null,
-      promptInferenceSnapshot: null,
-      state: "\u5F85\u5199\u5165",
-      reason: "\u5206\u955C\u8868\u5DF2\u4FDD\u5B58\uFF0C\u5C1A\u672A\u5199\u5165\u6B63\u5F0F\u5206\u955C\u9762\u677F",
-      selectVideoId: null,
-      medias: draftAssets,
-      availableMedias: draftAssets,
-      referenceAssets: draftAssets,
-      storyboard: null,
-      excludesStoryboard: true,
-      videoList: [],
-      isDraft: true,
-      readiness: {
-        ready: Boolean(draftAssets.some((asset) => asset.src)),
-        hasPrompt: false,
-        referenceCount: draftAssets.filter((asset) => asset.src).length,
-        referenceLimit: null,
-        missingAssetNames: draftAssets.filter((asset) => !asset.src).map((asset) => asset.name),
-        messages: [
-          "\u5206\u955C\u8868\u5DF2\u4FDD\u5B58\uFF0C\u8BF7\u5148\u5199\u5165\u6B63\u5F0F\u5206\u955C\u9762\u677F",
-          ...draftAssets.length && !draftAssets.some((asset) => asset.src) ? ["\u7F3A\u5C11\u53EF\u7528\u53C2\u8003\u56FE"] : []
-        ]
-      }
-    };
-  }) : [];
-  const visibleTasks = tasks.length ? tasks : draftTasks;
+  }));
   return {
     narrativeContext,
     projectConfig: {
@@ -242598,7 +242599,7 @@ async function buildVideoTaskData(projectId, scriptId, overrides = {}) {
       segmentTitle: task.segmentTitle,
       sceneTitle: task.sceneTitle
     })),
-    trackList: visibleTasks
+    trackList: tasks
   };
 }
 var MAX_EPISODE_SCRIPT_CONTEXT_CHARS, MAX_SOURCE_CHAPTER_CONTEXT_CHARS;
@@ -242788,14 +242789,14 @@ function normalizeVideoMode(mode) {
   return value;
 }
 function hashPromptTemplate(value) {
-  return (0, import_node_crypto4.createHash)("sha256").update(String(value || "")).digest("hex").slice(0, 16);
+  return (0, import_node_crypto6.createHash)("sha256").update(String(value || "")).digest("hex").slice(0, 16);
 }
-var import_express58, import_node_crypto4, router58, generateVideo_default;
+var import_express58, import_node_crypto6, router58, generateVideo_default;
 var init_generateVideo = __esm({
   "src/routes/production/workbench/generateVideo.ts"() {
     "use strict";
     import_express58 = __toESM(require_express2());
-    import_node_crypto4 = require("node:crypto");
+    import_node_crypto6 = require("node:crypto");
     init_zod();
     init_utils3();
     init_middleware();
@@ -243516,7 +243517,7 @@ function getVideoPromptTimeoutMs() {
   return Math.min(Math.max(Math.round(configured), 1e3), MAX_VIDEO_PROMPT_TIMEOUT_MS);
 }
 function hashTemplateContent(value) {
-  return (0, import_node_crypto5.createHash)("sha256").update(String(value || "")).digest("hex").slice(0, 16);
+  return (0, import_node_crypto7.createHash)("sha256").update(String(value || "")).digest("hex").slice(0, 16);
 }
 function buildPromptInferenceSnapshot(task, projectConfig, narrativeContext, templateId, templateVersion, systemPrompt, creativeVariation) {
   return {
@@ -243741,12 +243742,12 @@ function buildSceneInput(tasks, projectConfig, narrativeContext = {}, creativeVa
     }
   );
 }
-var import_express59, import_node_crypto5, router59, DEFAULT_VIDEO_PROMPT_TIMEOUT_MS, MAX_VIDEO_PROMPT_TIMEOUT_MS, GeneratedPromptSchema, generateVideoPrompt_default;
+var import_express59, import_node_crypto7, router59, DEFAULT_VIDEO_PROMPT_TIMEOUT_MS, MAX_VIDEO_PROMPT_TIMEOUT_MS, GeneratedPromptSchema, generateVideoPrompt_default;
 var init_generateVideoPrompt = __esm({
   "src/routes/production/workbench/generateVideoPrompt.ts"() {
     "use strict";
     import_express59 = __toESM(require_express2());
-    import_node_crypto5 = require("node:crypto");
+    import_node_crypto7 = require("node:crypto");
     init_dist22();
     init_zod();
     init_utils3();
@@ -243792,8 +243793,7 @@ var init_generateVideoPrompt = __esm({
         );
         if (!requestedTrackIds.length)
           return res.status(400).send(error50("\u672A\u9009\u62E9\u9700\u8981\u63A8\u7406\u7684\u89C6\u9891\u7247\u6BB5"));
-        const formalTrackIds = requestedTrackIds.filter((id) => id > 0);
-        const draftTrackIds = requestedTrackIds.filter((id) => id < 0);
+        const formalTrackIds = requestedTrackIds;
         const tracks = formalTrackIds.length ? await utils_default.db("o_videoTrack").where({ projectId }).whereIn("id", formalTrackIds) : [];
         if (tracks.length !== formalTrackIds.length)
           return res.status(400).send(error50("\u90E8\u5206\u89C6\u9891\u7247\u6BB5\u4E0D\u5B58\u5728\u6216\u4E0D\u5C5E\u4E8E\u5F53\u524D\u9879\u76EE"));
@@ -243802,7 +243802,7 @@ var init_generateVideoPrompt = __esm({
         );
         const resolvedScriptId = formalScriptIds[0] || Number(scriptId);
         if (!resolvedScriptId)
-          return res.status(400).send(error50("\u7F3A\u5C11\u5F53\u524D\u5267\u96C6\uFF0C\u65E0\u6CD5\u5904\u7406\u8349\u7A3F\u5206\u955C"));
+          return res.status(400).send(error50("\u7F3A\u5C11\u5F53\u524D\u5267\u96C6\uFF0C\u65E0\u6CD5\u5904\u7406\u6B63\u5F0F\u5206\u955C"));
         if (formalScriptIds.length > 1)
           return res.status(400).send(error50("\u540C\u4E00\u6B21\u573A\u6B21\u63A8\u7406\u53EA\u80FD\u5904\u7406\u540C\u4E00\u96C6\u4E2D\u7684\u89C6\u9891\u7247\u6BB5"));
         const data = await buildVideoTaskData(projectId, resolvedScriptId, {
@@ -243810,8 +243810,6 @@ var init_generateVideoPrompt = __esm({
           mode
         });
         const taskMap = new Map(data.trackList.map((item) => [Number(item.id), item]));
-        if (draftTrackIds.some((id) => !taskMap.get(id)?.isDraft))
-          return res.status(400).send(error50("\u8349\u7A3F\u5206\u955C\u5DF2\u53D8\u5316\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5"));
         const tasks = requestedTrackIds.map((id) => taskMap.get(id)).filter(Boolean);
         if (tasks.length !== requestedTrackIds.length)
           return res.status(400).send(error50("\u65E0\u6CD5\u8BFB\u53D6\u6240\u9009\u573A\u6B21\u7684\u5B8C\u6574\u5206\u955C\u6570\u636E"));
@@ -243881,7 +243879,7 @@ var init_generateVideoPrompt = __esm({
           ...data.projectConfig.videoPromptProfile,
           referenceToken: data.projectConfig.referenceToken
         });
-        const creativeVariation = resolveVideoPromptVariation(tasks, (0, import_node_crypto5.randomUUID)());
+        const creativeVariation = resolveVideoPromptVariation(tasks, (0, import_node_crypto7.randomUUID)());
         const safetySetting = await utils_default.db("o_setting").where("key", CONTENT_SAFETY_SETTING_KEY).first();
         const contentSafety = String(
           safetySetting?.value ?? DEFAULT_CONTENT_SAFETY_CONSTRAINT
@@ -243907,7 +243905,7 @@ var init_generateVideoPrompt = __esm({
 6. narrativeContext \u4E2D\u7684\u7AE0\u8282\u539F\u6587\u4E0E\u672C\u96C6\u5267\u672C\u53EA\u7528\u4E8E\u63D0\u70BC\u753B\u9762\u770B\u4E0D\u89C1\u7684\u51B2\u7A81\u4E8B\u5B9E\uFF1A\u4F18\u5148\u9009\u62E9\u201C\u4E3B\u89D2\u539F\u8EAB\u4EFD/\u80FD\u529B vs \u5F53\u524D\u5931\u80FD\u201D\u201C\u4E0A\u4E00\u523B\u7684\u65F6\u95F4\u5730\u70B9 vs \u6B64\u523B\u7684\u5F02\u5E38\u201D\u201C\u76EE\u6807 vs \u7A81\u53D1\u963B\u788D\u201D\u201C\u884C\u52A8 vs \u5373\u65F6\u4EE3\u4EF7\u201D\u3002\u65C1\u767D\u4E0D\u80FD\u590D\u8FF0 shotFacts \u5DF2\u7ECF\u5C55\u793A\u7684\u52A8\u4F5C\uFF0C\u4E5F\u4E0D\u80FD\u6539\u5199\u753B\u9762\u4E2D\u7684\u4EBA\u7269\u3001\u9053\u5177\u3001\u7ED3\u679C\u6216\u955C\u5934\u987A\u5E8F\u3002\u539F\u6587\u53EA\u8BF4\u660E\u53D1\u751F\u7A7F\u8D8A\u3001\u672A\u8BF4\u660E\u673A\u5236\u65F6\uFF0C\u5FC5\u987B\u4FDD\u7559\u672A\u77E5\uFF0C\u7981\u6B62\u7F16\u9020\u4F20\u9001\u95E8\u3001\u6CD5\u672F\u3001\u7206\u70B8\u3001\u7CFB\u7EDF\u53EC\u5524\u7B49\u539F\u56E0\u3002
 7. \u753B\u5185\u6587\u5B57\u4E0D\u662F\u5BF9\u767D\uFF1BspeechAllowed \u4E3A false \u65F6\u4E0D\u5F97\u6DFB\u52A0\u89D2\u8272\u5BF9\u767D\u3001\u72EC\u767D\u3001\u62DF\u58F0\u53F0\u8BCD\u6216\u201C\u554A/\u6765\u554A\u201D\u7B49\u6A21\u578B\u81EA\u9020\u8BED\u97F3\u3002H3 \u5BF9\u767D\u5FC5\u987B\u4F7F\u7528 <Subject N> (Sx) \u4E0E <d>[Chinese] actualDialogue</d> \u7ED1\u5B9A\uFF0C<d> \u5185\u53EA\u653E actualDialogue\uFF0C\u4E0D\u5F97\u5E26 speakerName\u3001\u5192\u53F7\u6216\u201C\u8BF4\u201D\u7B49\u524D\u7F00\uFF1B\u6BCF\u6761\u8F93\u5165\u53F0\u8BCD\u9010\u5B57\u4E14\u53EA\u51FA\u73B0\u4E00\u6B21\uFF0C\u4E0D\u5F97\u9057\u6F0F\u3001\u6539\u5199\u3001\u7FFB\u8BD1\u3001\u91CD\u590D\u6216\u4E32\u7ED9\u5176\u4ED6\u89D2\u8272\u3002\u65C1\u767D\u4F7F\u7528 off-screen narrator\uFF0C\u4E0D\u5F52\u5C5E\u753B\u9762\u89D2\u8272\u3002requiresNarrativeVoiceover \u4E3A true \u65F6\uFF0C\u5F00\u573A\u53EA\u5199\u4E00\u53E5\u77ED\u4FC3\u51B2\u7A81\u94A9\u5B50\uFF0C\u5FC5\u987B\u540C\u65F6\u51FA\u73B0\u539F\u6709\u4F18\u52BF/\u9884\u671F\u3001\u660E\u786E\u8F6C\u6298\u548C\u5F53\u524D\u963B\u788D/\u4EE3\u4EF7\u3002\u65C1\u767D\u4E0D\u8D85\u8FC7 min(\u7247\u6BB5\u79D2\u6570\xD72, 24) \u4E2A\u6C49\u5B57\uFF1B\u8F93\u5165\u5BF9\u767D\u53E6\u884C\u4FDD\u7559\u3002\u5176\u4F59\u7247\u6BB5\u53EA\u5728\u53D9\u4E8B\u63A8\u8FDB\u9700\u8981\u65F6\u52A0\u5165\uFF0CaudioSupported \u4E3A false \u65F6\u4E0D\u5F97\u6DFB\u52A0\u65C1\u767D\u3002
 8. \u53EA\u6269\u5199 shotFacts \u4E2D\u660E\u786E\u5B58\u5728\u7684\u52A8\u4F5C\u3001\u955C\u5934\u3001\u65F6\u957F\u3001\u5BF9\u767D\u548C\u97F3\u6548\uFF1BH3 \u7684 Shot 1 \u4E0D\u5199\u65F6\u95F4\u6233\uFF0C\u540E\u7EED\u4E25\u683C\u4F7F\u7528\u8F93\u5165\u63D0\u4F9B\u7684 h3CutTimestamp\uFF0C\u683C\u5F0F\u4E3A [Shot N] At MM:SS.mmm\uFF0C\u4E14\u5FC5\u987B\u662F\u7D2F\u8BA1\u5207\u955C\u65F6\u95F4\u3002\u7981\u6B62\u6BCF\u955C\u4ECE 00 \u79D2\u91CD\u65B0\u8BA1\u65F6\u3002\u4FE1\u606F\u8FC7\u8F7D\u65F6\u7B80\u5316\u52A8\u4F5C\uFF0C\u4E0D\u51ED\u7A7A\u8865\u5267\u60C5\u3002
-9. \u6BCF\u4E2A\u7247\u6BB5\u5148\u8BC6\u522B\u8F93\u5165\u4E2D\u5DF2\u6709\u7684\u94A9\u5B50\uFF1A\u5371\u9669\u3001\u76EE\u6807\u3001\u963B\u788D\u3001\u5BF9\u5CD9\u3001\u5931\u63A7\u3001\u5173\u952E\u7269\u4EF6\u53D8\u5316\u3001\u4EBA\u7269\u53CD\u5E94\u6216\u672A\u5B8C\u6210\u7ED3\u679C\u3002\u9996\u4E2A\u65F6\u95F4\u6BB5\u5FC5\u987B\u5F3A\u52BF\u7A81\u51FA\u81F3\u5C11\u4E00\u7EC4\u201C\u5F3A\u70C8\u843D\u5DEE + \u6B63\u9762\u51B2\u7A81\u201D\uFF1A\u8EAB\u4EFD\u80FD\u529B vs \u72FC\u72C8\u5904\u5883\u3001\u524D\u4E00\u523B vs \u6B64\u523B\u3001\u76EE\u6807 vs \u963B\u788D\u3001\u4EBA\u7269 vs \u5A01\u80C1\u3001\u884C\u52A8 vs \u4EE3\u4EF7\u3002\u968F\u540E\u5F62\u6210\u201C\u538B\u529B\u5347\u7EA7 \u2192 \u53CD\u5E94/\u72B6\u6001\u6539\u53D8 \u2192 \u60AC\u5FF5\u6536\u5C3E\u201D\u3002\u4E0D\u5F97\u7528\u753B\u98CE\u3001\u8D44\u4EA7\u6E05\u5355\u6216\u9759\u6001\u73AF\u5883\u4ECB\u7ECD\u5360\u636E\u5F00\u573A\uFF0C\u4E5F\u4E0D\u5F97\u865A\u6784\u51B2\u7A81\u3002
+9. \u6BCF\u4E2A\u7247\u6BB5\u5148\u8BC6\u522B\u8F93\u5165\u4E2D\u5DF2\u6709\u7684\u94A9\u5B50\uFF1A\u5371\u9669\u3001\u76EE\u6807\u3001\u963B\u788D\u3001\u5BF9\u5CD9\u3001\u5931\u63A7\u3001\u5173\u952E\u7269\u4EF6\u53D8\u5316\u3001\u4EBA\u7269\u53CD\u5E94\u6216\u672A\u5B8C\u6210\u7ED3\u679C\u3002\u9996\u4E2A\u65F6\u95F4\u6BB5\u5FC5\u987B\u4F18\u5148\u5448\u73B0\u6700\u65E9\u53EF\u611F\u77E5\u7684\u5DF2\u6709\u4FE1\u53F7\uFF1B\u82E5\u4E8B\u5B9E\u5F62\u6210\u538B\u529B\u53D8\u5316\uFF0C\u53EF\u6309\u201C\u538B\u529B\u5347\u7EA7 \u2192 \u53CD\u5E94/\u72B6\u6001\u6539\u53D8 \u2192 \u5F53\u524D\u7ED3\u679C\u201D\u7EC4\u7EC7\u3002\u82E5\u4E8B\u5B9E\u5C5E\u4E8E\u4EFB\u52A1\u63A8\u8FDB\u3001\u53D1\u73B0/\u63ED\u9732\u6216\u60C5\u7EEA\u8F6C\u6298\uFF0C\u4E5F\u6309\u201C\u53D8\u5316\u524D\u72B6\u6001 \u2192 \u53EF\u89C1\u53D8\u5316 \u2192 \u5F53\u524D\u7ED3\u679C\u201D\u7EC4\u7EC7\uFF0C\u4E0D\u5F97\u5F3A\u884C\u5957\u7528\u51B2\u7A81\u6216\u60AC\u5FF5\u3002\u4E0D\u5F97\u7528\u753B\u98CE\u3001\u8D44\u4EA7\u6E05\u5355\u6216\u9759\u6001\u73AF\u5883\u4ECB\u7ECD\u5360\u636E\u5F00\u573A\uFF0C\u4E5F\u4E0D\u5F97\u865A\u6784\u51B2\u7A81\u3002
 10. \u6240\u6709\u5E26\u65B9\u5411\u7684\u52A8\u4F5C\u5FC5\u987B\u5199\u51FA\u4E3B\u4F53\u3001\u8D77\u70B9\u3001\u7EC8\u70B9\u548C\u73AF\u5883\u5C3A\u5EA6\u53CD\u9988\u3002\u5760\u843D/\u964D\u843D\u5FC5\u987B\u9501\u5B9A\u4E3A\u201C\u4EBA\u7269\u4ECE\u753B\u9762\u4E0A\u65B9\u5411\u4E0B\u6301\u7EED\u63A5\u8FD1\u5730\u9762\u6216\u6C34\u9762\uFF0C\u5730\u9762\u6216\u6C34\u9762\u4E0D\u65AD\u653E\u5927\u201D\uFF0C\u955C\u5934\u53EA\u53EF\u8DDF\u968F\u4E0B\u964D\uFF1B\u7981\u6B62\u4EBA\u7269\u4E0A\u5347\u3001\u5347\u7A7A\u3001\u5012\u98DE\u56DE\u9AD8\u5904\u3001\u4ECE\u6C34\u9762\u98DE\u5411\u5929\u7A7A\u3001\u53CD\u5411\u64AD\u653E\u6216\u7528\u955C\u5934\u8FD0\u52A8\u5077\u6362\u4EBA\u7269\u8FD0\u52A8\u65B9\u5411\u3002
 11. \u6BCF\u4E2A segment \u5FC5\u987B\u9501\u5B9A\u89D2\u8272\u3001\u573A\u666F\u3001\u5149\u5F71\u3001\u5A92\u4ECB\u56DB\u5C42\u4E00\u81F4\u6027\uFF1A\u6362\u666F\u522B\u548C\u673A\u4F4D\u4E0D\u80FD\u6539\u53D8\u4E94\u5B98\u53D1\u578B\u3001\u4F53\u578B\u670D\u88C5\u3001\u9053\u5177\u5916\u89C2\u3001\u7A7A\u95F4\u5E03\u5C40\u3001\u5730\u6807\u4F4D\u7F6E\u3001\u5149\u6E90\u65B9\u5411\u548C\u9879\u76EE\u753B\u98CE\u3002\u6BCF\u4E2A\u51FA\u955C\u89D2\u8272\u6620\u5C04\u5230\u552F\u4E00\u7684\u89D2\u8272 <Subject N>\uFF1B\u540C\u4E00\u89D2\u8272\u5728\u540C\u4E00\u955C\u5934\u53EA\u5141\u8BB8\u4E00\u4E2A\u53EF\u89C1\u5B9E\u4F8B\u3002\u9664\u975E shotFacts \u660E\u786E\u8981\u6C42\uFF0C\u7981\u6B62\u590D\u5236\u4EBA\u7269\u3001\u76F8\u540C\u8138\u66FF\u8EAB\u3001\u955C\u50CF\u5206\u8EAB\u3001\u6C34\u9762\u5012\u5F71\u5206\u8EAB\u548C\u80CC\u666F\u91CD\u590D\u4EBA\u7269\uFF1B\u4E0D\u5F97\u7528\u4E00\u4E2A\u89D2\u8272\u53C2\u8003\u4EE3\u66FF\u53E6\u4E00\u4E2A\u89D2\u8272\u3002
 12. referenceMap \u4E2D\u6BCF\u4E2A\u53C2\u8003\u9879\u53EA\u80FD\u627F\u62C5\u5176\u58F0\u660E\u7C7B\u578B\u7684\u804C\u8D23\uFF1A\u89D2\u8272\u56FE\u9501\u8EAB\u4EFD\u4E0E\u670D\u88C5\uFF0C\u573A\u666F\u56FE\u9501\u7A7A\u95F4\u4E0E\u5149\u5F71\uFF0C\u9053\u5177\u56FE\u9501\u5916\u89C2\u6750\u8D28\u3002\u4E0D\u5F97\u4E92\u6362\u7528\u9014\uFF0C\u4E0D\u5F97\u628A\u666E\u901A\u53C2\u8003\u56FE\u64C5\u81EA\u5B9A\u4E49\u4E3A\u9996\u5E27\u3001\u5C3E\u5E27\u3001\u52A8\u4F5C\u6216\u8FD0\u955C\u53C2\u8003\u3002
@@ -243915,7 +243913,7 @@ var init_generateVideoPrompt = __esm({
 14. \u666F\u522B\u5FC5\u987B\u627F\u62C5\u8F93\u5165\u6307\u5B9A\u7684\u53D9\u4E8B\u529F\u80FD\uFF0C\u4EBA\u7269\u4F4D\u79FB\u548C\u6444\u5F71\u673A\u8FD0\u52A8\u5FC5\u987B\u5206\u5F00\u63CF\u8FF0\uFF1B\u4E0D\u5F97\u4E3A\u4E86\u201C\u7535\u5F71\u611F\u201D\u66FF\u6362\u666F\u522B\u3001\u53E0\u52A0\u51B2\u7A81\u8FD0\u955C\u6216\u7528\u6444\u5F71\u673A\u79FB\u52A8\u63A9\u76D6\u52A8\u4F5C\u65B9\u5411\u3002
 15. \u65E0\u8BBA shotFacts \u662F\u5426\u6709\u5BF9\u767D\u6216\u753B\u5185\u6587\u5B57\uFF0C\u6700\u7EC8\u89C6\u9891\u90FD\u5FC5\u987B\u5168\u7A0B\u65E0\u5B57\u5E55\u3001\u65E0\u6807\u9898\u3001\u65E0\u5BF9\u8BDD\u6C14\u6CE1\uFF1B\u5BF9\u767D\u3001\u65C1\u767D\u53EA\u4F5C\u4E3A\u58F0\u97F3\uFF0C\u7EDD\u4E0D\u6E32\u67D3\u4E3A\u5B57\u5E55\u3002shotFacts \u6CA1\u6709\u753B\u5185\u6587\u5B57\u65F6\u8FD8\u5FC5\u987B\u7981\u6B62\u968F\u673A\u6587\u5B57\u3001logo\u3001\u6C34\u5370\u548C UI\uFF1B\u6709\u753B\u5185\u6587\u5B57\u65F6\u53EA\u80FD\u4FDD\u7559\u573A\u666F\u4E2D\u8F93\u5165\u660E\u786E\u6307\u5B9A\u7684\u5B9E\u4F53\u6587\u5B57\uFF0C\u4E0D\u80FD\u628A\u5B83\u8F6C\u6210\u5B57\u5E55\u3002
 16. creativeVariation \u662F\u672C\u6B21\u91CD\u751F\u6210\u7684\u53D7\u63A7\u521B\u4F5C\u65B9\u5411\uFF0C\u5FC5\u987B\u6267\u884C\u3002\u5B83\u53EA\u51B3\u5B9A\u540C\u4E00\u4E8B\u5B9E\u5982\u4F55\u5236\u9020\u94A9\u5B50\u3001\u5982\u4F55\u5B89\u6392\u955C\u5934\u538B\u529B\u548C\u5982\u4F55\u63AA\u8F9E\uFF0C\u7EDD\u4E0D\u80FD\u65B0\u589E\u4E8B\u4EF6\u6216\u6539\u5199\u5206\u955C\u3002previousPrompt \u975E\u7A7A\u65F6\u5B83\u662F\u4E0A\u4E00\u7A3F\u57FA\u7EBF\uFF1A\u65B0\u7A3F\u4E0D\u5F97\u4E0E\u5176\u5B8C\u5168\u76F8\u540C\uFF0C\u4E14\u9996\u4E2A\u65F6\u95F4\u6BB5\u7684\u51B2\u7A81\u5448\u73B0\u3001\u955C\u5934\u5207\u5206\u6216\u65C1\u767D\u63AA\u8F9E\u4E2D\u81F3\u5C11\u4E24\u9879\u5FC5\u987B\u5B9E\u8D28\u4E0D\u540C\uFF1B\u7981\u6B62\u4EC5\u66FF\u6362\u540C\u4E49\u8BCD\u3002\u6CA1\u6709 previousPrompt \u65F6\uFF0C\u4ECD\u5FC5\u987B\u6267\u884C\u672C\u8F6E direction\u3002
-17. \u58F0\u97F3\u4E0E\u8868\u60C5\u91C7\u7528\u6700\u5C0F\u53EF\u6267\u884C\u96C6\uFF1A\u6BCF\u955C\u6700\u591A\u4E00\u4E2A\u4E3B\u8981\u5FAE\u8868\u60C5\u53D8\u5316\u548C\u4E00\u81F3\u4E24\u9879\u58F0\u97F3\u53D8\u5316\uFF0C\u5FC5\u987B\u7531\u5F53\u524D\u52A8\u4F5C\u6216\u51B2\u7A81\u89E6\u53D1\uFF0C\u5E76\u4E0E\u955C\u5934\u63A8\u8FDB/\u5207\u6362\u540C\u6B65\u3002\u58F0\u97F3\u53EA\u5141\u8BB8\u201C\u97F3\u6548\u8BBE\u8BA1\u201D\uFF08\u73AF\u5883\u5E95\u5E8A\u3001\u52A8\u4F5C\u62DF\u97F3\u3001\u547C\u5438/\u558A\u58F0\u3001\u58F0\u573A\u3001\u89E6\u53D1\u70B9\u3001\u5F3A\u5F31\uFF09\uFF0C\u53EF\u4EE5\u4FDD\u7559\u6216\u5F3A\u5316\u4E0E\u53EF\u89C1\u52A8\u4F5C\u540C\u6B65\u7684\u97F3\u6548\u3002\u56FA\u5B9A\u7EA6\u675F\uFF1Anon_diegetic_music: N/A\uFF1B\u53EA\u4FDD\u7559\u540C\u6B65\u73AF\u5883\u97F3\u6548\u548C\u52A8\u4F5C\u97F3\u6548\uFF0C\u4E0D\u751F\u6210\u80CC\u666F\u97F3\u4E50\uFF0C\u4E0D\u751F\u6210\u5B57\u5E55\u3002\u5168\u7A0B\u7981\u6B62\u80CC\u666F\u97F3\u4E50\u3001\u914D\u4E50\u3001BGM \u548C\u975E\u753B\u5185\u97F3\u4E50\uFF1BMiniMax H3 \u7684 non_diegetic_music \u5FC5\u987B\u4E14\u53EA\u80FD\u5199 N/A\u3002\u5938\u5F20\u5F20\u53E3\u3001\u77AA\u773C\u3001\u5927\u58F0\u558A\u53EB\u53EA\u5728\u8F93\u5165\u5DF2\u6709\u53F0\u8BCD/\u558A\u58F0\u6216\u52A8\u4F5C\u786E\u5B9E\u8FBE\u5230\u4E34\u754C\u70B9\u65F6\u4F7F\u7528\u3002
+17. \u58F0\u97F3\u4E0E\u8868\u60C5\u91C7\u7528\u6700\u5C0F\u53EF\u6267\u884C\u96C6\uFF1A\u6BCF\u955C\u6700\u591A\u4E00\u4E2A\u4E3B\u8981\u5FAE\u8868\u60C5\u53D8\u5316\u548C\u4E00\u81F3\u4E24\u9879\u58F0\u97F3\u53D8\u5316\uFF0C\u5FC5\u987B\u7531\u5F53\u524D\u52A8\u4F5C\u6216\u51B2\u7A81\u89E6\u53D1\uFF0C\u5E76\u4E0E\u955C\u5934\u63A8\u8FDB/\u5207\u6362\u540C\u6B65\u3002\u53EA\u6709 shotFacts\u3001\u5BF9\u767D\u6216\u52A8\u4F5C\u660E\u786E\u63D0\u4F9B\u60C5\u7EEA\u4FE1\u53F7\u65F6\uFF0C\u624D\u4F7F\u7528 1-2 \u4E2A\u53EF\u6267\u884C\u7684\u60C5\u7EEA/\u8868\u6F14\u951A\u70B9\uFF1B\u4E2D\u6027\u753B\u9762\u4E0D\u5F97\u5F3A\u52A0\u60C5\u7EEA\u3002\u58F0\u97F3\u53EA\u5141\u8BB8\u201C\u97F3\u6548\u8BBE\u8BA1\u201D\uFF08\u73AF\u5883\u5E95\u5E8A\u3001\u52A8\u4F5C\u62DF\u97F3\u3001\u547C\u5438/\u558A\u58F0\u3001\u58F0\u573A\u3001\u89E6\u53D1\u70B9\u3001\u5F3A\u5F31\uFF09\uFF0C\u53EF\u4EE5\u4FDD\u7559\u6216\u5F3A\u5316\u4E0E\u53EF\u89C1\u52A8\u4F5C\u540C\u6B65\u7684\u97F3\u6548\u3002\u56FA\u5B9A\u7EA6\u675F\uFF1Anon_diegetic_music: N/A\uFF1B\u53EA\u4FDD\u7559\u540C\u6B65\u73AF\u5883\u97F3\u6548\u548C\u52A8\u4F5C\u97F3\u6548\uFF0C\u4E0D\u751F\u6210\u80CC\u666F\u97F3\u4E50\uFF0C\u4E0D\u751F\u6210\u5B57\u5E55\u3002\u5168\u7A0B\u7981\u6B62\u80CC\u666F\u97F3\u4E50\u3001\u914D\u4E50\u3001BGM \u548C\u975E\u753B\u5185\u97F3\u4E50\uFF1BMiniMax H3 \u7684 non_diegetic_music \u5FC5\u987B\u4E14\u53EA\u80FD\u5199 N/A\u3002\u5938\u5F20\u5F20\u53E3\u3001\u77AA\u773C\u3001\u5927\u58F0\u558A\u53EB\u53EA\u5728\u8F93\u5165\u5DF2\u6709\u53F0\u8BCD/\u558A\u58F0\u6216\u52A8\u4F5C\u786E\u5B9E\u8FBE\u5230\u4E34\u754C\u70B9\u65F6\u4F7F\u7528\u3002
 18. \u5148\u5728\u5185\u90E8\u6309\u3010\u53C2\u8003\u7D20\u6750\u8BF4\u660E\u3011\u3010\u6838\u5FC3\u521B\u610F\u3011\u3010\u753B\u9762\u8FC7\u7A0B\u63CF\u8FF0\u3011\u3010\u4E0D\u60F3\u8981\u3011\u56DB\u6A21\u5757\u7EC4\u7EC7\uFF0C\u518D\u6309\u5F53\u524D\u6A21\u578B\u534F\u8BAE\u5E8F\u5217\u5316\u3002H3 \u4ECD\u4E25\u683C\u4F7F\u7528\u5B98\u65B9\u5B57\u6BB5\uFF0C\u4E0D\u8F93\u51FA\u6A21\u5757\u6807\u9898\uFF1B\u975E H3 \u624D\u76F4\u63A5\u8F93\u51FA\u56DB\u6A21\u5757\u3002\u53C2\u8003\u7D20\u6750\u6309\u8F93\u5165\u987A\u5E8F\u7F16\u53F7\u4E3A @\u56FE\u7247N/@\u89C6\u9891N/@\u97F3\u9891N\uFF0C\u6BCF\u9879\u8BF4\u660E\u7528\u9014\u3001\u9501\u5B9A\u7EF4\u5EA6\u548C\u4E0D\u53C2\u8003\u7EF4\u5EA6\uFF1B\u65E0\u7D20\u6750\u5199\u201C\u65E0\u53C2\u8003\u7D20\u6750\uFF08\u7EAF\u6587\u5B57\u751F\u6210\u89C6\u9891\uFF09\u201D\u3002
 19. \u901A\u7528\u56DB\u6A21\u5757\u4E2D\u7684\u753B\u9762\u8FC7\u7A0B\u5FC5\u987B\u9010\u955C\u5199 Shot N\uFF08\u8D77\u59CB\u79D2-\u7ED3\u675F\u79D2\uFF09\u2014\u5C0F\u6807\u9898\uFF0C\u5E76\u5177\u5907\u666F\u522B\u3001\u573A\u666F\u3001\u4E3B\u4F53/\u53C2\u8003\u9879\u3001\u8FD0\u955C\u3001\u52A8\u4F5C\u3001\u53F0\u8BCD/\u65C1\u767D\u3001\u97F3\u6548\u3001\u6587\u5B57\u3001\u8F6C\u573A\u5B57\u6BB5\u3002\u4E2D\u6587\u53F0\u8BCD\u5B57\u6570\xF73 \u7EA6\u4E3A\u6700\u4F4E\u53F0\u8BCD\u955C\u5934\u65F6\u957F\uFF0C\u7EAF\u753B\u9762\u955C\u5934 2-5 \u79D2\uFF0C\u603B\u65F6\u957F\u5339\u914D\u8F93\u5165\uFF0C\u672A\u6307\u5B9A\u9ED8\u8BA4 10 \u79D2\u3002\u4EBA\u7269\u955C\u5934\u6700\u5BBD\u4F7F\u7528\u5168\u666F\uFF0C\u8FDC\u666F/\u5927\u5168\u666F\u53EA\u7528\u4E8E\u65E0\u4EBA\u7A7A\u955C\uFF1B\u907F\u514D\u8FDE\u7EED\u76F8\u540C\u666F\u522B\u3002\u51E1\u8F93\u5165\u666F\u522B\u4E3A\u4E2D\u666F\u6216\u4E2D\u8FDC\u666F\u4E14\u4E3B\u8981\u4EBA\u7269\u53EF\u89C1\uFF0C\u5FC5\u987B\u9010\u955C\u660E\u786E\u201C\u4E3B\u8981\u4EBA\u7269\u9762\u90E8\u9510\u5229\u5BF9\u7126\uFF0C\u773C\u775B\u3001\u9F3B\u5B50\u3001\u5634\u90E8\u4E0E\u8F6E\u5ED3\u6E05\u6670\u53EF\u8FA8\uFF0C\u4E0D\u88AB\u666F\u6DF1\u6216\u8FD0\u52A8\u6A21\u7CCA\u8986\u76D6\u201D\uFF1B\u4F18\u5148\u51CF\u5C11\u80CC\u666F\u7EC6\u8282\u3001\u906E\u6321\u548C\u5FEB\u901F\u8FD0\u52A8\uFF0C\u4E0D\u80FD\u64C5\u81EA\u6539\u6210\u8FD1\u666F\u3002\u9996\u5C3E\u5E27\u6A21\u5F0F\u660E\u786E\u9996\u5C3E\u53C2\u8003\u4E14\u7981\u6B62\u5207\u955C\uFF1B\u4E00\u955C\u5230\u5E95\u4E0D\u62C6 Shot\u3002
 20. \u7981\u6B62\u4F7F\u7528\u201C\u73AF\u7ED5\u8FD0\u955C\u201D\uFF0C\u73AF\u7ED5\u6548\u679C\u7EDF\u4E00\u5199 truck left + pan right \u6216 truck right + pan left\u3002\u901A\u7528\u3010\u4E0D\u60F3\u8981\u3011\u56FA\u5B9A\u5305\u542B\u201C\u4EBA\u7269\u8FDC\u666F\u955C\u5934\u3001\u80CC\u666F\u97F3\u4E50\u3001\u5B57\u5E55\u201D\uFF1B\u975E\u753B\u5185\u97F3\u4E50\u56FA\u5B9A\u5199\u201C\u975E\u53D9\u4E8B\u6027\u97F3\u4E50\uFF1AN/A\u201D\u3002
@@ -243925,6 +243923,7 @@ var init_generateVideoPrompt = __esm({
 24. \u4E0D\u76F4\u63A5\u8F93\u51FA\u6B63\u6587\uFF0C\u5FC5\u987B\u8C03\u7528 resultTool \u4E00\u6B21\u6027\u8FD4\u56DE\u5168\u90E8 trackId \u7684\u7ED3\u679C\u3002
 25. summary \u53EA\u6982\u62EC\u5F53\u524D segment \u7684\u955C\u5934\u4E8B\u5B9E\u548C\u5F53\u524D referenceMap\uFF0C\u4E0D\u5F97\u6CC4\u6F0F\u524D\u540E\u7247\u6BB5\u3001\u540E\u7EED\u67AA\u58F0\u3001\u540E\u7EED\u53CD\u8F6C\u6216\u6574\u96C6\u7ED3\u5C40\u3002\u53EA\u6709\u8F93\u5165\u771F\u5B9E\u5305\u542B\u5F85\u7EED\u5199\u89C6\u9891\u65F6\u624D\u53EF\u4F7F\u7528 [video continuation]\uFF1B\u53EA\u6709\u56FE\u7247\u53C2\u8003\u65F6\u4F7F\u7528 [reference generation]\u3002
 26. subject_definitions \u4E2D\u4EBA\u7269\u3001\u573A\u666F\u3001\u9053\u5177\u90FD\u53EF\u6309\u5B98\u65B9\u89C4\u5219\u5B9A\u4E49\u4E3A\u72EC\u7ACB <Subject N>\uFF0C\u4F46\u6BCF\u4E2A\u6709\u540D\u5B57\u7684\u89D2\u8272\u5FC5\u987B\u72EC\u7ACB\u6210\u884C\u3001\u4FDD\u7559\u81EA\u5DF1\u7684\u53C2\u8003\u7F16\u53F7\u548C\u8D44\u4EA7\u539F\u540D\u3002\u591A\u4EBA\u955C\u5934\u9010\u4E00\u5199\u660E\u53EF\u89C1\u89D2\u8272\u3001\u51C6\u786E\u6570\u91CF\u4E0E\u7AD9\u4F4D\uFF1B\u672A\u5728\u8BE5\u955C\u51FA\u73B0\u7684\u89D2\u8272\u4E0D\u5F97\u8FDB\u5165\u80CC\u666F\u6216\u5012\u5F71\u3002
+27. \u6BCF\u955C\u81F3\u5C11\u5199\u51FA\u4E00\u4E2A\u6709\u4E8B\u5B9E\u4F9D\u636E\u7684\u53EF\u89C2\u5BDF\u52A8\u8BCD\u548C\u4E00\u4E2A\u89C6\u89C9\u951A\u70B9\uFF08\u4E3B\u4F53\u3001\u9053\u5177\u3001\u7A7A\u95F4\u4F4D\u7F6E\u3001\u5149\u7EBF\u6216\u53C2\u8003\u6807\u7B7E\uFF09\uFF1B\u4E0D\u5F97\u7528\u62BD\u8C61\u8BCD\u66FF\u4EE3\u753B\u9762\u4E8B\u5B9E\u3002\u94A9\u5B50\u53EA\u8868\u793A\u6700\u65E9\u53EF\u611F\u77E5\u7684\u5DF2\u6709\u4FE1\u53F7\uFF0C\u4E0D\u5F97\u5199\u5165\u201C\u672C\u4E0D\u8BE5\u51FA\u73B0\u201D\u7B49\u672A\u88AB\u8F93\u5165\u786E\u8BA4\u7684\u5224\u65AD\u3002
 `;
         const systemPrompt = `${templateContent}
 
@@ -244311,7 +244310,7 @@ var init_addProject = __esm({
           negativePrompt: String(negativePrompt ?? DEFAULT_IMAGE_NEGATIVE_PROMPT).trim(),
           videoRatio,
           directorManual,
-          userId: 1,
+          userId: req.authUser.id,
           imageModel,
           videoModel,
           createTime: Date.now(),
@@ -244826,7 +244825,7 @@ var init_getProject = __esm({
     init_responseFormat();
     router72 = import_express72.default.Router();
     getProject_default = router72.post("/", async (req, res) => {
-      const data = await utils_default.db("o_project").select("*");
+      const data = await utils_default.db("o_project").where({ userId: req.authUser.id }).select("*");
       res.status(200).send(success3(data));
     });
   }
@@ -256165,7 +256164,7 @@ var init_getUser = __esm({
     init_responseFormat();
     router97 = import_express97.default.Router();
     getUser_default = router97.get("/", async (req, res) => {
-      const data = await utils_default.db("o_user").select("*").first();
+      const data = await utils_default.db("o_user").where({ id: req.authUser.id }).select("id", "name", "role", "status", "createTime").first();
       res.status(200).send(success3(data));
     });
   }
@@ -256181,6 +256180,7 @@ var init_updateUserPwd = __esm({
     init_zod();
     init_responseFormat();
     init_middleware();
+    init_password();
     router98 = import_express98.default.Router();
     updateUserPwd_default = router98.post(
       "/",
@@ -256191,9 +256191,10 @@ var init_updateUserPwd = __esm({
       }),
       async (req, res) => {
         const { name: name28, password, id } = req.body;
+        if (req.authUser.id !== id && req.authUser.role !== "admin") return res.status(403).send({ message: "\u65E0\u6743\u4FEE\u6539\u5176\u4ED6\u7528\u6237" });
         await utils_default.db("o_user").where("id", id).update({
           name: name28,
-          password
+          password: await hashPassword(password)
         });
         res.status(200).send(success3("\u4FDD\u5B58\u8BBE\u7F6E\u6210\u529F"));
       }
@@ -257009,7 +257010,7 @@ var init_getProject2 = __esm({
     init_responseFormat();
     router117 = import_express117.default.Router();
     getProject_default2 = router117.post("/", async (req, res) => {
-      const list2 = await utils_default.db("o_project").select("id", "name").groupBy("name");
+      const list2 = await utils_default.db("o_project").where({ userId: req.authUser.id }).select("id", "name").groupBy("name");
       const data = list2.filter((item) => item.name);
       res.status(200).send(success3(data));
     });
@@ -257039,7 +257040,7 @@ var init_getTaskApi = __esm({
       async (req, res) => {
         const { taskClass, state, projectId, page = 1, limit = 10 } = req.body;
         const offset = (page - 1) * limit;
-        const data = await utils_default.db("o_tasks").leftJoin("o_project", "o_project.id", "o_tasks.projectId").andWhere((qb) => {
+        const data = await utils_default.db("o_tasks").leftJoin("o_project", "o_project.id", "o_tasks.projectId").where("o_project.userId", req.authUser.id).andWhere((qb) => {
           if (taskClass) {
             qb.andWhere("o_tasks.taskClass", taskClass);
           }
@@ -257050,7 +257051,7 @@ var init_getTaskApi = __esm({
             qb.andWhere("o_tasks.projectId", projectId);
           }
         }).select("o_tasks.*", "o_project.* ").offset(offset).limit(limit).orderBy("o_tasks.id", "desc");
-        const totalQuery = await utils_default.db("o_tasks").andWhere((qb) => {
+        const totalQuery = await utils_default.db("o_tasks").join("o_project", "o_project.id", "o_tasks.projectId").where("o_project.userId", req.authUser.id).andWhere((qb) => {
           if (taskClass) {
             qb.andWhere("o_tasks.taskClass", taskClass);
           }
@@ -257453,7 +257454,10 @@ function fileNameToRoutePath(fileName) {
   return routePath;
 }
 async function generateRouter() {
-  let entries = await (0, import_fast_glob.default)(["src/routes/**/*.ts"]);
+  let entries = await (0, import_fast_glob.default)([
+    "src/routes/**/*.ts",
+    "!src/routes/**/assetPromptTemplateStore.ts"
+  ]);
   entries = entries.sort((a, b) => a.localeCompare(b));
   const importLines = [];
   const routeModulePairs = [];
@@ -257501,10 +257505,8 @@ import { Express } from "express";
 // src/app.ts
 var import_fs16 = __toESM(require("fs"));
 init_utils3();
-var import_jsonwebtoken5 = __toESM(require_jsonwebtoken());
 
 // src/socket/routes/scriptAgent.ts
-var import_jsonwebtoken2 = __toESM(require_jsonwebtoken());
 init_utils3();
 
 // src/agents/scriptAgent/index.ts
@@ -258861,8 +258863,112 @@ var ReasoningBuilder = class {
 };
 var resTool_default = ResTool;
 
+// src/middleware/auth.ts
+var import_jsonwebtoken2 = __toESM(require_jsonwebtoken());
+init_utils3();
+init_responseFormat();
+init_mediaSignature();
+function bearerToken(req) {
+  return String(req.headers.authorization || req.query.token || "").replace(/^Bearer\s+/i, "");
+}
+async function authenticate(req, res, next) {
+  if (req.path === "/api/login/login" || req.path === "/api/login/register" || req.path.startsWith("/skills/")) return next();
+  if (req.path.startsWith("/oss/")) {
+    const setting2 = await utils_default.db("o_setting").where("key", "tokenKey").select("value").first();
+    if (setting2?.value && verifyMediaSignature(req.path, req.query.expires, req.query.signature, String(setting2.value))) return next();
+  }
+  const token = bearerToken(req);
+  if (!token) return res.status(401).send(error50("\u672A\u63D0\u4F9B\u767B\u5F55\u51ED\u8BC1"));
+  const setting = await utils_default.db("o_setting").where("key", "tokenKey").select("value").first();
+  if (!setting?.value) return res.status(500).send(error50("\u670D\u52A1\u5668\u5BC6\u94A5\u672A\u914D\u7F6E"));
+  try {
+    const payload = import_jsonwebtoken2.default.verify(token, String(setting.value));
+    const userId = Number(payload.id);
+    const user = await utils_default.db("o_user").where({ id: userId }).select("id", "name", "role", "status").first();
+    if (!user || user.status === "disabled") return res.status(401).send(error50("\u8D26\u53F7\u4E0D\u5B58\u5728\u6216\u5DF2\u505C\u7528"));
+    req.authUser = { id: Number(user.id), name: String(user.name), role: "admin" };
+    next();
+  } catch {
+    return res.status(401).send(error50("\u767B\u5F55\u72B6\u6001\u65E0\u6548\uFF0C\u8BF7\u91CD\u65B0\u767B\u5F55"));
+  }
+}
+async function decodeSocketUser(rawToken) {
+  if (!rawToken) return null;
+  const setting = await utils_default.db("o_setting").where("key", "tokenKey").select("value").first();
+  if (!setting?.value) return null;
+  try {
+    const payload = import_jsonwebtoken2.default.verify(rawToken.replace(/^Bearer\s+/i, ""), String(setting.value));
+    const user = await utils_default.db("o_user").where({ id: Number(payload.id) }).select("id", "name", "role", "status").first();
+    if (!user || user.status === "disabled") return null;
+    return { id: Number(user.id), name: String(user.name), role: "admin" };
+  } catch {
+    return null;
+  }
+}
+async function userOwnsProject(user, projectId) {
+  if (!Number.isSafeInteger(projectId) || projectId <= 0) return false;
+  return Boolean(await utils_default.db("o_project").where({ id: projectId, userId: user.id }).select("id").first());
+}
+var idResourceByPath = [
+  [/\/(?:project\/(?:editProject|delProject)|general\/(?:getSingleProject|updateProject))/, "o_project", "id"],
+  [/\/script\/(?:updateScript|delScript|exportScript|pollScriptAssets)/, "o_script", "id"],
+  [/\/novel\/(?:updateNovel|delNovel|getNovelData|getNovelEventState|batchDeleteNovel)/, "o_novel", "id"],
+  [/\/assets\/(?:updateAssets|delAssets|batchDelete|getImage|pollingImageAssets|pollingPromptAssets)/, "o_assets", "id"],
+  [/\/assetsGenerate\/cancelGenerate/, "o_tasks", "id"],
+  [/\/production\/workbench\/(?:delVideo)/, "o_video", "id"],
+  [/\/production\/workbench\/(?:deleteTrack)/, "o_videoTrack", "id"],
+  [/\/task\/taskDetails/, "o_tasks", "taskId"]
+];
+async function projectIdsForResource(table, field, raw) {
+  const ids = (Array.isArray(raw) ? raw : [raw]).map(Number).filter(Number.isSafeInteger);
+  if (!ids.length) return [];
+  if (table === "o_project") return ids;
+  if (table === "o_image") {
+    const rows2 = await utils_default.db("o_image").join("o_assets", "o_image.assetsId", "o_assets.id").whereIn(`o_image.${field}`, ids).select("o_assets.projectId");
+    return rows2.map((row) => Number(row.projectId));
+  }
+  if (table === "o_event") {
+    const rows2 = await utils_default.db("o_event").join("o_eventChapter", "o_event.id", "o_eventChapter.eventId").join("o_novel", "o_eventChapter.novelId", "o_novel.id").whereIn(`o_event.${field}`, ids).select("o_novel.projectId");
+    return rows2.map((row) => Number(row.projectId));
+  }
+  const rows = await utils_default.db(table).whereIn(field, ids).select("projectId");
+  return rows.map((row) => Number(row.projectId));
+}
+async function authorizeRequest(req, res, next) {
+  const user = req.authUser;
+  if (!user || req.path === "/api/login/login") return next();
+  const body = req.body || {};
+  const query = req.query;
+  const projectIds = /* @__PURE__ */ new Set();
+  for (const raw of [body.projectId, query.projectId]) {
+    const value = Number(raw);
+    if (Number.isSafeInteger(value) && value > 0) projectIds.add(value);
+  }
+  const resourceFields = [
+    ["o_script", "id", body.scriptId ?? body.episodesId],
+    ["o_assets", "id", body.assetsId ?? body.roleAssetId],
+    ["o_storyboard", "id", body.storyboardId ?? body.storyboardIds],
+    ["o_video", "id", body.videoId],
+    ["o_videoTrack", "id", body.trackId],
+    ["o_image", "id", body.imageId],
+    ["o_tasks", "id", body.taskId]
+  ];
+  if (/\/novel\/event\/(?:deletEvent|batchDeleteEvent)/.test(req.path)) resourceFields.push(["o_event", "id", body.id ?? body.ids]);
+  if (/\/assets\/delImage/.test(req.path)) resourceFields.push(["o_image", "id", body.id]);
+  const routeMapping = idResourceByPath.find(([pattern]) => pattern.test(req.path));
+  if (routeMapping) resourceFields.push([routeMapping[1], "id", body[routeMapping[2]] ?? body.ids]);
+  for (const [table, field, raw] of resourceFields) {
+    for (const projectId of await projectIdsForResource(table, field, raw)) projectIds.add(projectId);
+  }
+  for (const projectId of projectIds) {
+    if (!await userOwnsProject(user, projectId)) return res.status(403).send(error50("\u65E0\u6743\u8BBF\u95EE\u8BE5\u9879\u76EE"));
+  }
+  next();
+}
+
 // src/socket/routes/scriptAgent.ts
 var DECISION_MAX_ATTEMPTS = 3;
+var SCRIPT_AGENT_REQUEST_TIMEOUT_MS = 12e4;
 function createAbortError3() {
   const error60 = new Error("\u751F\u6210\u5DF2\u505C\u6B62");
   error60.name = "AbortError";
@@ -258882,28 +258988,17 @@ async function waitBeforeRetry2(delayMs, signal) {
     signal?.addEventListener("abort", onAbort, { once: true });
   });
 }
-async function verifyToken(rawToken) {
-  const setting = await utils_default.db("o_setting").where("key", "tokenKey").select("value").first();
-  if (!setting) return false;
-  const { value: tokenKey } = setting;
-  if (!rawToken) return false;
-  const token = rawToken.replace("Bearer ", "");
-  try {
-    import_jsonwebtoken2.default.verify(token, tokenKey);
-    return true;
-  } catch (err) {
-    return false;
-  }
-}
 var scriptAgent_default = (nsp) => {
   nsp.on("connection", async (socket) => {
     const token = socket.handshake.auth.token;
-    if (!token || !await verifyToken(token)) {
+    const user = await decodeSocketUser(token);
+    const projectId = Number(socket.handshake.auth.projectId);
+    if (!user || !await userOwnsProject(user, projectId)) {
       console.log("[scriptAgent] \u8FDE\u63A5\u5931\u8D25\uFF0Ctoken\u65E0\u6548");
       socket.disconnect();
       return;
     }
-    const isolationKey = socket.handshake.auth.isolationKey;
+    const isolationKey = `${user.id}:${String(socket.handshake.auth.isolationKey || "")}`;
     if (!isolationKey) {
       console.log("[scriptAgent] \u8FDE\u63A5\u5931\u8D25\uFF0C\u7F3A\u5C11 isolationKey");
       socket.disconnect();
@@ -258911,7 +259006,7 @@ var scriptAgent_default = (nsp) => {
     }
     console.log("[scriptAgent] \u5DF2\u8FDE\u63A5:", socket.id);
     const resTool = new resTool_default(socket, {
-      projectId: socket.handshake.auth.projectId
+      projectId
     });
     let abortController = null;
     socket.on("chat", async (data) => {
@@ -258919,6 +259014,11 @@ var scriptAgent_default = (nsp) => {
       abortController?.abort();
       abortController = new AbortController();
       const currentController = abortController;
+      let timedOut = false;
+      const timeout = setTimeout(() => {
+        timedOut = true;
+        currentController.abort();
+      }, SCRIPT_AGENT_REQUEST_TIMEOUT_MS);
       const msg = resTool.newMessage("assistant", "\u7EDF\u7B79");
       const ctx = {
         socket,
@@ -258955,6 +259055,10 @@ var scriptAgent_default = (nsp) => {
             completed = true;
             break;
           } catch (err) {
+            if (timedOut) {
+              lastError = new Error(`\u6A21\u578B\u8BF7\u6C42\u8D85\u8FC7 ${SCRIPT_AGENT_REQUEST_TIMEOUT_MS / 1e3} \u79D2\u672A\u54CD\u5E94`);
+              break;
+            }
             if (err.name === "AbortError" || currentController.signal.aborted) throw err;
             lastError = err;
             const canRetry = !receivedText && isTransientAiError(err) && attempt < DECISION_MAX_ATTEMPTS;
@@ -258990,6 +259094,7 @@ var scriptAgent_default = (nsp) => {
           resTool.workflowStatus("error", `\u5F53\u524D\u6B65\u9AA4\u672A\u5B8C\u6210\uFF1A${errorMsg}`);
         }
       } finally {
+        clearTimeout(timeout);
         if (abortController === currentController) {
           abortController = null;
         }
@@ -259006,7 +259111,6 @@ var scriptAgent_default = (nsp) => {
 };
 
 // src/socket/routes/productionAgent.ts
-var import_jsonwebtoken3 = __toESM(require_jsonwebtoken());
 init_utils3();
 
 // src/agents/productionAgent/index.ts
@@ -259421,7 +259525,13 @@ async function getWorkflowContext2(projectId, scriptId) {
   const referencedAssetIds = panelCount ? (await utils_default.db("o_assets2Storyboard").whereIn("storyboardId", formalStoryboardIds).pluck("assetId")).map(Number) : parseStoryboardTableAssetBindings(String(flowData.storyboardTable || "")).flat();
   const uniqueReferencedAssetIds = [...new Set(referencedAssetIds)];
   const requiredAssets = uniqueReferencedAssetIds.length ? await utils_default.db("o_assets").leftJoin("o_image", "o_assets.imageId", "o_image.id").where("o_assets.projectId", projectId).whereIn("o_assets.id", uniqueReferencedAssetIds).select("o_assets.id", "o_assets.name", "o_image.filePath", "o_image.state") : [];
-  const missingAssets = requiredAssets.filter((asset) => !asset.filePath);
+  const assetAvailability = await Promise.all(
+    requiredAssets.map(async (asset) => ({
+      ...asset,
+      available: /^https?:\/\//i.test(String(asset.filePath || "")) || Boolean(asset.filePath) && await utils_default.oss.fileExists(String(asset.filePath))
+    }))
+  );
+  const missingAssets = assetAvailability.filter((asset) => !asset.available);
   const missingAssetLabel = missingAssets.map((asset) => `${asset.id}\uFF08${asset.name || "\u672A\u547D\u540D\u7D20\u6750"}\uFF09`).join("\u3001");
   const suggestedNext = !hasScriptPlan ? "\u5148\u6267\u884C\u5BFC\u6F14\u89C4\u5212" : !hasStoryboardTable ? "\u76F4\u63A5\u6784\u5EFA\u6B63\u5F0F\u5206\u955C\u8868" : missingAssets.length ? `\u5148\u751F\u6210\u5206\u955C\u660E\u786E\u5F15\u7528\u4F46\u5C1A\u65E0\u56FE\u7247\u7684\u7D20\u6750\uFF1A${missingAssetLabel}\uFF1B\u7D20\u6750\u5C31\u7EEA\u524D\u4E0D\u5F97\u8FDB\u5165\u5206\u955C\u9762\u677F\u6216\u89C6\u9891\u751F\u6210` : panelCount === 0 ? "\u76F4\u63A5\u628A\u5DF2\u4FDD\u5B58\u7684\u5206\u955C\u8868\u5199\u5165\u6B63\u5F0F\u5206\u955C\u9762\u677F\uFF0C\u4E0D\u8981\u91CD\u65B0\u8BE2\u95EE\u524D\u7F6E\u9636\u6BB5" : "\u6B63\u5F0F\u5206\u955C\u9762\u677F\u5DF2\u5B58\u5728\uFF0C\u7EE7\u7EED\u6267\u884C\u5206\u955C\u56FE\u751F\u6210\u6216\u5904\u7406\u5F53\u524D\u5931\u8D25\u9879";
   return [
@@ -259819,46 +259929,40 @@ async function waitBeforeRetry4(delayMs, signal) {
     signal?.addEventListener("abort", onAbort, { once: true });
   });
 }
-async function verifyToken2(rawToken) {
-  const setting = await utils_default.db("o_setting").where("key", "tokenKey").select("value").first();
-  if (!setting?.value || !rawToken) return false;
-  try {
-    import_jsonwebtoken3.default.verify(rawToken.replace("Bearer ", ""), String(setting.value));
-    return true;
-  } catch {
-    return false;
-  }
-}
 var productionAgent_default = (nsp) => {
   nsp.on("connection", async (socket) => {
     const auth = socket.handshake.auth;
-    if (!auth.token || !await verifyToken2(auth.token)) {
+    const user = await decodeSocketUser(auth.token);
+    const initialProjectId = Number(auth.projectId);
+    const initialScript = auth.scriptId == null ? true : Boolean(await utils_default.db("o_script").where({ id: Number(auth.scriptId), projectId: initialProjectId }).select("id").first());
+    if (!user || !await userOwnsProject(user, initialProjectId) || !initialScript) {
       console.log("[productionAgent] \u8FDE\u63A5\u5931\u8D25\uFF0Ctoken \u65E0\u6548");
       socket.emit("error", { code: "AUTH_FAILED", message: "\u767B\u5F55\u72B6\u6001\u65E0\u6548\uFF0C\u8BF7\u91CD\u65B0\u767B\u5F55" });
       socket.disconnect();
       return;
     }
-    let isolationKey = String(auth.isolationKey || "");
+    let isolationKey = `${user.id}:${String(auth.isolationKey || "")}`;
     if (!isolationKey) {
       socket.emit("error", { code: "CONTEXT_MISSING", message: "\u751F\u4EA7 Agent \u7F3A\u5C11\u4F1A\u8BDD\u4E0A\u4E0B\u6587" });
       socket.disconnect();
       return;
     }
     let resTool = new resTool_default(socket, {
-      projectId: Number(auth.projectId),
+      projectId: initialProjectId,
       scriptId: auth.scriptId == null ? void 0 : Number(auth.scriptId)
     });
     let abortController = null;
     const thinkConfig = { think: false, thinlLevel: 0 };
     console.log("[productionAgent] \u5DF2\u8FDE\u63A5:", socket.id, isolationKey);
-    socket.on("updateContext", (data, callback) => {
+    socket.on("updateContext", async (data, callback) => {
       const projectId = Number(data?.projectId);
       const scriptId = Number(data?.scriptId);
-      if (!data?.isolationKey || !Number.isFinite(projectId) || !Number.isFinite(scriptId)) {
+      const script = await utils_default.db("o_script").where({ id: scriptId, projectId }).select("id").first();
+      if (!data?.isolationKey || !Number.isFinite(projectId) || !Number.isFinite(scriptId) || !await userOwnsProject(user, projectId) || !script) {
         callback?.({ success: false, message: "\u9879\u76EE\u6216\u5267\u672C\u4E0A\u4E0B\u6587\u65E0\u6548" });
         return;
       }
-      isolationKey = String(data.isolationKey);
+      isolationKey = `${user.id}:${String(data.isolationKey)}`;
       resTool = new resTool_default(socket, { projectId, scriptId });
       callback?.({ success: true });
       console.log("[productionAgent] \u4E0A\u4E0B\u6587\u5DF2\u66F4\u65B0:", isolationKey);
@@ -259993,12 +260097,21 @@ async function startServe(randomPort = false) {
   app.use((0, import_cors.default)({ origin: "*" }));
   app.use(import_express122.default.json({ limit: "100mb" }));
   app.use(import_express122.default.urlencoded({ extended: true, limit: "100mb" }));
+  const webDir = utils_default.getPath("web");
+  if (import_fs16.default.existsSync(webDir)) app.use(import_express122.default.static(webDir));
+  app.use(authenticate);
+  app.use(authorizeRequest);
   const ossDir = utils_default.getPath("oss");
   if (!import_fs16.default.existsSync(ossDir)) {
     import_fs16.default.mkdirSync(ossDir, { recursive: true });
   }
   console.log("\u6587\u4EF6\u76EE\u5F55:", ossDir);
-  app.use("/oss", import_express122.default.static(ossDir));
+  app.use("/oss", async (req, res, next) => {
+    if (!req.authUser) return next();
+    const projectId = Number(req.path.split("/").filter(Boolean)[0]);
+    if (!req.authUser || !await userOwnsProject(req.authUser, projectId)) return res.status(403).send({ message: "\u65E0\u6743\u8BBF\u95EE\u8BE5\u9879\u76EE\u6587\u4EF6" });
+    next();
+  }, import_express122.default.static(ossDir));
   const skillsDir = utils_default.getPath("skills");
   if (!import_fs16.default.existsSync(skillsDir)) {
     import_fs16.default.mkdirSync(skillsDir, { recursive: true });
@@ -260017,29 +260130,6 @@ async function startServe(randomPort = false) {
   }
   console.log("\u6587\u4EF6\u76EE\u5F55:", assetsDir);
   app.use("/assets", import_express122.default.static(assetsDir));
-  const webDir = utils_default.getPath("web");
-  if (import_fs16.default.existsSync(webDir)) {
-    console.log("\u9759\u6001\u7F51\u7AD9\u76EE\u5F55:", webDir);
-    app.use(import_express122.default.static(webDir));
-  } else {
-    console.warn("\u9759\u6001\u7F51\u7AD9\u76EE\u5F55\u4E0D\u5B58\u5728:", webDir);
-  }
-  app.use(async (req, res, next) => {
-    const setting = await utils_default.db("o_setting").where("key", "tokenKey").select("value").first();
-    if (!setting) return res.status(444).send({ message: "\u670D\u52A1\u5668\u79D8\u94A5\u672A\u914D\u7F6E\uFF0C\u8BF7\u8054\u7CFB\u7BA1\u7406\u5458" });
-    const { value: tokenKey } = setting;
-    const rawToken = req.headers.authorization || req.query.token || "";
-    const token = rawToken.replace("Bearer ", "");
-    if (req.path === "/api/login/login") return next();
-    if (!token) return res.status(401).send({ message: "\u672A\u63D0\u4F9Btoken" });
-    try {
-      const decoded = import_jsonwebtoken5.default.verify(token, tokenKey);
-      req.user = decoded;
-      next();
-    } catch (err) {
-      return res.status(401).send({ message: "\u65E0\u6548\u7684token" });
-    }
-  });
   const router122 = await Promise.resolve().then(() => (init_router(), router_exports));
   await router122.default(app);
   app.use((_, res, next) => {

@@ -155,7 +155,15 @@ async function getWorkflowContext(projectId: number, scriptId: number) {
         .whereIn("o_assets.id", uniqueReferencedAssetIds)
         .select("o_assets.id", "o_assets.name", "o_image.filePath", "o_image.state")
     : [];
-  const missingAssets = requiredAssets.filter((asset) => !asset.filePath);
+  const assetAvailability = await Promise.all(
+    requiredAssets.map(async (asset) => ({
+      ...asset,
+      available:
+        /^https?:\/\//i.test(String(asset.filePath || "")) ||
+        (Boolean(asset.filePath) && await u.oss.fileExists(String(asset.filePath))),
+    })),
+  );
+  const missingAssets = assetAvailability.filter((asset) => !asset.available);
   const missingAssetLabel = missingAssets.map((asset) => `${asset.id}（${asset.name || "未命名素材"}）`).join("、");
   const suggestedNext = !hasScriptPlan
     ? "先执行导演规划"

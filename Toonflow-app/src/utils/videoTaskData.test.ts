@@ -119,3 +119,28 @@ test("matches restored storyboard rows whose scene header includes participants"
   assert.equal(groups[0].segment?.segmentTitle, "片段一");
   assert.equal(groups[0].storyboards[0].id, 1);
 });
+
+test("binds legacy storyboard rows by persisted order when videoDesc markers are absent", () => {
+  const segments = parseStoryboardTable(`
+## 场1：空天战舰外缘·押解处决 ｜ 参演角色：王胜
+### 片段一（约3s）
+| 序号 | 画面描述 | 时长 | 景别 | 运镜 | 台词 | 音效 |
+|---|---|---|---|---|---|---|
+| 1 | 王胜被固定在舱门外侧。 | 3 | 近景 | 固定 |  | 风声 |
+### 片段二（约2s）
+| 序号 | 画面描述 | 时长 | 景别 | 运镜 | 台词 | 音效 |
+|---|---|---|---|---|---|---|
+| 1 | 伞绳被切断。 | 2 | 特写 | 跟随 |  | 金属声 |
+`);
+
+  const groups = groupStoryboardRowsBySegments(
+    [
+      { id: 10, index: 0, videoDesc: "场1：空天战舰外缘·押解处决。画面描述：王胜被固定。" },
+      { id: 11, index: 1, videoDesc: "场1：空天战舰外缘·押解处决。画面描述：伞绳被切断。" },
+    ],
+    segments,
+  );
+
+  assert.deepEqual(groups.map((group) => group.storyboards.map((row) => row.id)), [[10], [11]]);
+  assert.deepEqual(groups.map((group) => group.segment?.segmentTitle), ["片段一", "片段二"]);
+});

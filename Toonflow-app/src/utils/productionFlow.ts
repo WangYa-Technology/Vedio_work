@@ -26,7 +26,7 @@ async function withSrc<T extends AnyObject>(row: T & { filePath?: string | null;
 
 async function loadAssets(projectId: number, scriptId: number) {
   const linkedAssetIds = (await u.db("o_scriptAssets").where({ scriptId }).pluck("assetId")).map(Number);
-  let baseRows = await u
+  const baseRows = await u
     .db("o_assets")
     .leftJoin("o_image", "o_assets.imageId", "o_image.id")
     .select(
@@ -37,16 +37,13 @@ async function loadAssets(projectId: number, scriptId: number) {
     )
     .where("o_assets.projectId", projectId);
 
-  if (linkedAssetIds.length) {
-    const linkedSet = new Set(linkedAssetIds);
-    const derivedParentIds = new Set(
-      baseRows.filter((row) => row.assetsId != null && linkedSet.has(Number(row.id))).map((row) => Number(row.assetsId)),
-    );
-    baseRows = baseRows.filter(
-      (row) => linkedSet.has(Number(row.id)) || linkedSet.has(Number(row.assetsId)) || derivedParentIds.has(Number(row.id)),
-    );
-  }
-  const rows = baseRows;
+  const linkedSet = new Set(linkedAssetIds);
+  const derivedParentIds = new Set(
+    baseRows.filter((row) => row.assetsId != null && linkedSet.has(Number(row.id))).map((row) => Number(row.assetsId)),
+  );
+  const rows = baseRows.filter(
+    (row) => linkedSet.has(Number(row.id)) || linkedSet.has(Number(row.assetsId)) || derivedParentIds.has(Number(row.id)),
+  );
 
   const roleIds = rows.filter((item) => item.type === "role").map((item) => Number(item.id)).filter(Number.isFinite);
   const voiceMap = new Map<number, AnyObject>();
@@ -104,6 +101,8 @@ async function loadAssets(projectId: number, scriptId: number) {
         flowId: child.flowId ?? undefined,
         errorReason: child.promptErrorReason || child.imageErrorReason || "",
       });
+      normalized.state = normalized.src ? child.imageState || "已完成" : "未生成";
+      normalized.imageState = normalized.state;
       if (child.type === "role") {
         const voiceReference = voiceMap.get(Number(child.id)) || null;
         normalized.voiceReference = voiceReference;
@@ -136,6 +135,8 @@ async function loadAssets(projectId: number, scriptId: number) {
         errorReason: parent.promptErrorReason || parent.imageErrorReason || "",
         derive: childMap.get(parent.id) || [],
       });
+      normalized.state = normalized.src ? parent.imageState || "已完成" : "未生成";
+      normalized.imageState = normalized.state;
       if (parent.type === "role") {
         const voiceReference = voiceMap.get(Number(parent.id)) || null;
         normalized.voiceReference = voiceReference;
@@ -176,37 +177,38 @@ async function loadStoryboard(projectId: number, scriptId: number) {
     relationMap.set(storyboardId, list);
   }
   return Promise.all(
-    formalRows.map(async (row) => ({
-      id: Number(row.id),
-      prompt: row.prompt || "",
-      src: row.filePath ? await u.oss.getFileUrl(row.filePath) : null,
-      state: row.state || "未生成",
-      duration: Number(row.duration) || 0,
-      trackId: row.trackId == null ? undefined : Number(row.trackId),
-      track: row.track || "",
-      index: row.index == null ? null : Number(row.index),
-      associateAssetsIds: relationMap.get(Number(row.id)) || [],
-      videoDesc: row.videoDesc || "",
-      shouldGenerateImage: Number(row.shouldGenerateImage) || 0,
-      flowId: row.flowId == null ? undefined : Number(row.flowId),
-      reason: row.reason || "",
-    })),
+    formalRows.map(async (row) => {
+      const src = row.filePath ? await u.oss.getFileUrl(row.filePath) : "";
+      return {
+        id: Number(row.id),
+        prompt: row.prompt || "",
+        src: src || null,
+        state: src ? row.state || "未生成" : "未生成",
+        duration: Number(row.duration) || 0,
+        trackId: row.trackId == null ? undefined : Number(row.trackId),
+        track: row.track || "",
+        index: row.index == null ? null : Number(row.index),
+        associateAssetsIds: relationMap.get(Number(row.id)) || [],
+        videoDesc: row.videoDesc || "",
+        shouldGenerateImage: Number(row.shouldGenerateImage) || 0,
+        flowId: row.flowId == null ? undefined : Number(row.flowId),
+        reason: row.reason || "",
+      };
+    }),
   );
 }
 
 export async function buildProductionFlowData(projectId: number, scriptId: number) {
   const script = await u.db("o_script").where({ projectId, id: scriptId }).first();
   const scriptAgent = await u.db("o_agentWorkData").where({ projectId, episodesId: scriptId, key: "scriptAgent" }).first();
-  const scriptAgentFallback = scriptAgent || (await u.db("o_agentWorkData").where({ projectId, key: "scriptAgent" }).first());
   const savedFlow = await u.db("o_agentWorkData").where({ projectId, episodesId: scriptId, key: "productionFlowData" }).first();
-  const scriptAgentData = safeJsonParse<AnyObject>(scriptAgentFallback?.data, {});
   const flowData = safeJsonParse<AnyObject>(savedFlow?.data, {});
   const storyboard = await loadStoryboard(projectId, scriptId);
   const assets = await loadAssets(projectId, scriptId);
 
   return {
     script: flowData.script || script?.content || "",
-    scriptPlan: flowData.scriptPlan || scriptAgentData.adaptationStrategy || "",
+    scriptPlan: flowData.scriptPlan || "",
     storyboardTable: flowData.storyboardTable || "",
     assets,
     storyboard,

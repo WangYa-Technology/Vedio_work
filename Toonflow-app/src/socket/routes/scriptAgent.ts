@@ -5,6 +5,7 @@ import ResTool from "@/socket/resTool";
 import { decodeSocketUser, userOwnsProject } from "@/middleware/auth";
 
 const DECISION_MAX_ATTEMPTS = 3;
+const SCRIPT_AGENT_REQUEST_TIMEOUT_MS = 120_000;
 
 function createAbortError() {
   const error = new Error("生成已停止");
@@ -56,6 +57,11 @@ export default (nsp: Namespace) => {
       abortController?.abort();
       abortController = new AbortController();
       const currentController = abortController;
+      let timedOut = false;
+      const timeout = setTimeout(() => {
+        timedOut = true;
+        currentController.abort();
+      }, SCRIPT_AGENT_REQUEST_TIMEOUT_MS);
 
       const msg = resTool.newMessage("assistant", "统筹");
       const ctx: agent.AgentContext = {
@@ -96,6 +102,10 @@ export default (nsp: Namespace) => {
             completed = true;
             break;
           } catch (err: any) {
+            if (timedOut) {
+              lastError = new Error(`模型请求超过 ${SCRIPT_AGENT_REQUEST_TIMEOUT_MS / 1000} 秒未响应`);
+              break;
+            }
             if (err.name === "AbortError" || currentController.signal.aborted) throw err;
             lastError = err;
             const canRetry = !receivedText && agent.isTransientAiError(err) && attempt < DECISION_MAX_ATTEMPTS;
@@ -132,6 +142,7 @@ export default (nsp: Namespace) => {
           resTool.workflowStatus("error", `当前步骤未完成：${errorMsg}`);
         }
       } finally {
+        clearTimeout(timeout);
         if (abortController === currentController) {
           abortController = null;
         }
