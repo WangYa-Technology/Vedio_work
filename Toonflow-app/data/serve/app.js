@@ -241912,7 +241912,7 @@ function normalizedSceneTitle(value) {
 }
 function storyboardSegmentKey(value) {
   const match = String(value || "").match(
-    /^\s*([^｜\n]+?)\s*｜\s*(片段[^｜\n]+?)\s*｜\s*序号/u
+    /^\s*([^｜\n]+?)\s*｜(?:\s*参演角色[^｜\n]*\s*｜)?\s*(片段[^｜\n]+?)\s*｜\s*序号/u
   );
   if (!match) return "";
   return `${normalizedSceneTitle(match[1])}::${match[2].replace(/\s+/g, "")}`;
@@ -242429,8 +242429,9 @@ async function buildVideoTaskData(projectId, scriptId, overrides = {}) {
     const track = groupTracks.find(
       (candidate) => String(candidate?.prompt || "").trim() && promptMatchesSegment(candidate)
     ) || groupTracks[0];
+    const structuredDescription = segment?.rows.map((row) => row.description).filter(Boolean).join("\n");
     const videoDescription = String(
-      storyboards.map((item) => item.videoDesc).filter(Boolean).join("\n") || segment?.rows.map((row) => row.description).join("\n") || ""
+      structuredDescription || storyboards.map((item) => item.videoDesc).filter(Boolean).join("\n") || ""
     ).trim();
     const mismatchedPrompt = Boolean(track?.prompt) && !promptMatchesSegment(track);
     const stalePrompt = mismatchedPrompt || excludesStoryboard && /分镜图|storyboard/i.test(String(track?.prompt || ""));

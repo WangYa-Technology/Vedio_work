@@ -100,3 +100,22 @@ test("groups one formal storyboard row per shot into one task per segment", () =
     [3],
   ]);
 });
+
+test("matches restored storyboard rows whose scene header includes participants", () => {
+  const segments = parseStoryboardTable(`
+## 场1：湖岸 ｜ 参演角色：王胜、宋嫣
+### 片段一（约5s）
+| 序号 | 画面描述 | 时长 | 景别 | 运镜 | 台词 | 音效 |
+|---|---|---|---|---|---|---|
+| 1 | 王胜浮出水面。 | 5 | 中景 | 固定 |  | 水声 |
+`);
+
+  const groups = groupStoryboardRowsBySegments(
+    [{ id: 1, videoDesc: "场1：湖岸 ｜ 参演角色：王胜、宋嫣｜片段一｜序号\n| 1 | 王胜浮出水面。 | 5 | 中景 | 固定 |  | 水声 |" }],
+    segments,
+  );
+
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].segment?.segmentTitle, "片段一");
+  assert.equal(groups[0].storyboards[0].id, 1);
+});
