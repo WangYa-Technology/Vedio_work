@@ -5,19 +5,14 @@ import {
 } from "@/constants/videoPromptDefaults";
 import { DEFAULT_OFFICIAL_VIDEO_PROMPT } from "@/utils/videoPromptTemplate";
 
-/** Keep the bundled defaults current without touching user-created templates. */
+/** Seed missing bundled defaults without overwriting templates edited in settings. */
 export async function syncVideoPromptDefaults(knex: Knex) {
-  await knex("o_prompt")
-    .where({ id: 3, type: "videoPromptGeneration" })
-    // Keep the bundled template visible in settings. The resolver recognizes
-    // this exact content as the official default and still appends runtime context.
-    .update({
-      name: "高冲突默认推理",
-      data: DEFAULT_OFFICIAL_VIDEO_PROMPT,
-      useData: DEFAULT_OFFICIAL_VIDEO_PROMPT,
-    });
-
   const defaults = [
+    {
+      id: 3,
+      name: "高冲突默认推理",
+      content: DEFAULT_OFFICIAL_VIDEO_PROMPT,
+    },
     {
       id: 1786742295618,
       name: "叙事张力型",
@@ -31,12 +26,17 @@ export async function syncVideoPromptDefaults(knex: Knex) {
   ];
 
   for (const item of defaults) {
-    await knex("o_prompt")
+    const existing = await knex("o_prompt")
       .where({ id: item.id, type: "videoPromptGeneration" })
-      .update({
-        name: item.name,
-        data: item.content,
-        useData: item.content,
-      });
+      .select("id")
+      .first();
+    if (existing) continue;
+    await knex("o_prompt").insert({
+      id: item.id,
+      name: item.name,
+      type: "videoPromptGeneration",
+      data: item.content,
+      useData: item.content,
+    });
   }
 }
