@@ -20,6 +20,7 @@
   "scripts": {
     "dev": "nodemon --inspect --exec tsx src/app.ts",
     "start": "cross-env NODE_ENV=prod node data/serve/app.js",
+    "check:runtime-db": "tsx scripts/verifyRuntimeDatabase.ts",
     "lint": "tsc --noEmit",
     "build": "cross-env NODE_ENV=prod tsx scripts/build.ts",
     "debug:ai": "npx @ai-sdk/devtools",
