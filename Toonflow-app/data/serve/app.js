@@ -106979,12 +106979,12 @@ non_diegetic_music: N/A
 
 // src/lib/syncVideoPromptDefaults.ts
 async function syncVideoPromptDefaults(knex4) {
-  await knex4("o_prompt").where({ id: 3, type: "videoPromptGeneration" }).update({
-    name: "\u9AD8\u51B2\u7A81\u9ED8\u8BA4\u63A8\u7406",
-    data: DEFAULT_OFFICIAL_VIDEO_PROMPT,
-    useData: DEFAULT_OFFICIAL_VIDEO_PROMPT
-  });
   const defaults2 = [
+    {
+      id: 3,
+      name: "\u9AD8\u51B2\u7A81\u9ED8\u8BA4\u63A8\u7406",
+      content: DEFAULT_OFFICIAL_VIDEO_PROMPT
+    },
     {
       id: 1786742295618,
       name: "\u53D9\u4E8B\u5F20\u529B\u578B",
@@ -106997,8 +106997,12 @@ async function syncVideoPromptDefaults(knex4) {
     }
   ];
   for (const item of defaults2) {
-    await knex4("o_prompt").where({ id: item.id, type: "videoPromptGeneration" }).update({
+    const existing = await knex4("o_prompt").where({ id: item.id, type: "videoPromptGeneration" }).select("id").first();
+    if (existing) continue;
+    await knex4("o_prompt").insert({
+      id: item.id,
       name: item.name,
+      type: "videoPromptGeneration",
       data: item.content,
       useData: item.content
     });
