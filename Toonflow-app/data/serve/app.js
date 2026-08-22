@@ -238350,6 +238350,14 @@ var init_assetInferenceTemplate = __esm({
         outputRules: ["\u4E0D\u5F3A\u5236\u5957\u7528\u89D2\u8272\u56DB\u89C6\u56FE\u6216\u9053\u5177\u56DB\u5BAB\u683C\uFF0C\u573A\u666F\u6309\u5355\u5E45\u4E3B\u89C6\u56FE\u8F93\u51FA", "\u4EC5\u8F93\u51FA\u4E00\u6761\u53EF\u76F4\u63A5\u7528\u4E8E\u56FE\u7247\u751F\u6210\u7684\u5B8C\u6574\u63D0\u793A\u8BCD"]
       }
     ];
+    const multiRegionTemplate = DEFAULT_ASSET_INFERENCE_TEMPLATES.find((template) => template.name === "\u4EBA\u7269\u591A\u533A\u57DF\u8BBE\u5B9A\u677F");
+    if (multiRegionTemplate) {
+      DEFAULT_ASSET_INFERENCE_TEMPLATES.push({
+        ...multiRegionTemplate,
+        name: "\u591A\u7EC6\u8282",
+        summary: "\u9002\u5408\u9700\u8981\u591A\u7EC6\u8282\u4EA4\u4ED8\u7684\u89D2\u8272\uFF1A\u4E3B\u8096\u50CF\u3001\u4E09\u89C6\u56FE\u3001\u8138\u90E8\u3001\u53D1\u9970\u3001\u670D\u88C5\u3001\u914D\u9970\u548C\u978B\u5C65\u5206\u533A\u3002"
+      });
+    }
   }
 });
 
