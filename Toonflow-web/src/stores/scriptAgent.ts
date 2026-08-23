@@ -74,6 +74,11 @@ export default defineStore(
       },
       autoConnect: false,
     });
+    const runtimeSnapshot = (projectId: number) => `toonflow:agent:script:${projectId}`;
+    function restoreRuntime(projectId: number) {
+      try { const saved = JSON.parse(localStorage.getItem(runtimeSnapshot(projectId)) || "null"); if (Array.isArray(saved?.messages)) messages.value = saved.messages; if (saved?.workflowStatus) workflowStatus.value = saved.workflowStatus; } catch { /* ignore malformed browser cache */ }
+    }
+    watch([currentProjectId, messages, workflowStatus], () => { const id = currentProjectId.value; if (!id) return; try { localStorage.setItem(runtimeSnapshot(id), JSON.stringify({ messages: messages.value, workflowStatus: workflowStatus.value })); } catch { /* ignore storage failures */ } }, { deep: true });
     // 注册 getPlanData 事件（无需依赖组件生命周期）
     watch(
       socket,
@@ -130,6 +135,7 @@ export default defineStore(
         contextVersion.value += 1;
         planData.value = createEmptyPlanData();
         clearMessages();
+        restoreRuntime(normalizedProjectId);
       }
 
       if (!connected.value) connect();

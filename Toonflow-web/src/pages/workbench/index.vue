@@ -66,12 +66,10 @@
   </div>
   <hello />
   <setting />
-  <migrateShow />
 </template>
 
 <script setup lang="ts">
 import setting from "@/components/setting/index.vue";
-import migrateShow from "@/components/migrateShow.vue";
 import hello from "@/components/hello.vue";
 import projectStore from "@/stores/project";
 const { project } = storeToRefs(projectStore());

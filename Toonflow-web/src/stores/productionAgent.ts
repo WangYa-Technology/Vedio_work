@@ -70,6 +70,9 @@ export default defineStore(
         window.$message.error(error.message || "生产 Agent 请求失败");
       },
     });
+    const runtimeSnapshot = (projectId: number, scriptId?: number) => `toonflow:agent:production:${projectId}:${scriptId ?? 0}`;
+    function restoreRuntime(projectId: number, scriptId?: number) { try { const saved = JSON.parse(localStorage.getItem(runtimeSnapshot(projectId, scriptId)) || "null"); if (Array.isArray(saved?.messages)) messages.value = saved.messages; if (saved?.workflowStatus) workflowStatus.value = saved.workflowStatus; } catch { /* ignore malformed browser cache */ } }
+    watch([currentProjectId, episodesId, messages, workflowStatus], () => { const projectId = currentProjectId.value; if (!projectId) return; try { localStorage.setItem(runtimeSnapshot(projectId, episodesId.value), JSON.stringify({ messages: messages.value, workflowStatus: workflowStatus.value })); } catch { /* ignore storage failures */ } }, { deep: true });
 
     // 注册 getPlanData 事件（无需依赖组件生命周期）
     watch(
@@ -148,6 +151,7 @@ export default defineStore(
       if (typeof scriptId === "number") episodesId.value = scriptId;
       const resolvedProjectId = resolveProjectId();
       if (!resolvedProjectId) return;
+      restoreRuntime(resolvedProjectId, episodesId.value);
       chatAuth.isolationKey = `${resolvedProjectId}:productionAgent${episodesId.value != null ? `:${episodesId.value}` : ""}`;
       chatAuth.projectId = resolvedProjectId;
       chatAuth.scriptId = episodesId.value;

@@ -17,12 +17,26 @@ export default defineStore(
 
     const currentScriptId = ref(<number | null>null);
 
+    const savedProjectId = Number(localStorage.getItem("toonflow:currentProjectId"));
+
     //设置当前项目
     async function setProjectById(id: number) {
       const res = await axios.post("/project/getSingleProject", { id: id });
-      project.value = res.data[0];
+      project.value = res.data?.[0] || null;
+      if (!project.value) {
+        localStorage.removeItem("toonflow:currentProjectId");
+        currentScriptId.value = null;
+        return;
+      }
+      localStorage.setItem("toonflow:currentProjectId", String(id));
       const scriptData = await axios.post("/script/getScrptApi", { projectId: id });
       currentScriptId.value = scriptData.data?.id || null;
+    }
+
+    if (Number.isSafeInteger(savedProjectId) && savedProjectId > 0) {
+      void setProjectById(savedProjectId).catch(() => {
+        localStorage.removeItem("toonflow:currentProjectId");
+      });
     }
 
     return { version, activeMenu, project, projectId, currentScriptId, setProjectById };

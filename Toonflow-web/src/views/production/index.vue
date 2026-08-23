@@ -1,8 +1,97 @@
 <template>
-  <div class="productionLayout">
-    <!-- Left Panel: Director plan and shot list -->
-    <div class="shotPanel">
-      <t-tabs v-model="activeWorkspaceTab" class="workspaceTabs">
+  <div class="scriptAgent productionAgent productionLayout">
+    <Splitpanes class="default-theme data f">
+      <!-- Keep the production agent shell identical to the script agent shell. -->
+      <Pane :size="30" :min-size="15" class="operate">
+        <div class="box pr">
+          <t-chat-list :clear-history="false">
+            <t-chat-message
+              v-for="message in renderableMessages"
+              :key="message.id"
+              :message="message"
+              :name="(message as any).name"
+              :placement="message.role === 'user' ? 'right' : 'left'"
+              :variant="message.role === 'user' ? 'base' : 'outline'"
+              :handleActions="message.role === 'user' ? {} : handleActions"
+              :status="message.status"
+              allowContentSegmentCustom />
+          </t-chat-list>
+
+          <div
+            v-if="showWorkflowStatus"
+            class="workflowStatus"
+            :class="`is-${workflowStatus.state}`"
+            role="status"
+            aria-live="polite">
+            <i-loading-four v-if="workflowBusy" class="workflowSpinner" size="16" />
+            <i-info v-else-if="workflowStatus.state === 'error'" size="16" />
+            <span>{{ workflowStatusLabel }}</span>
+          </div>
+          <div v-if="nextAction" class="nextAction">
+            <div class="nextActionCopy">
+              <span class="nextActionTitle">{{ nextAction.title }}</span>
+              <span>{{ nextAction.description }}</span>
+            </div>
+            <t-button size="small" theme="primary" :disabled="workflowBusy || loadingData || loadingHistory" @click="runNextAction">
+              {{ nextAction.label }}
+            </t-button>
+            <t-button v-if="nextAction.openAssets" size="small" variant="outline" :disabled="workflowBusy || loadingData || loadingHistory" @click="openAssetLibrary">
+              打开资产库
+            </t-button>
+          </div>
+
+          <t-chat-sender
+            class="inputBox"
+            :disabled="workflowBusy || !connected || loadingData || loadingHistory"
+            v-model="inputValue"
+            :loading="workflowBusy"
+            :textarea-props="{
+              placeholder: $t('workbench.production.chatBox.inputPlaceholder'),
+              autosize: { minRows: 2, maxRows: 5 },
+            }"
+            @send="handleSend"
+            @stop="handleStop">
+            <template #footer-prefix>
+              <t-popup trigger="click" placement="top-left">
+                <t-button shape="square" variant="outline" size="small">
+                  <template #icon>
+                    <i-setting-config size="16" />
+                  </template>
+                </t-button>
+                <template #content>
+                  <div class="settingMenu">
+                    <div class="settingMenuItem settingMenuControl">
+                      <span>思考级别</span>
+                      <t-select :value="thinkLevel" :options="thinkLevelOptions" autoWidth size="small" @change="handleThinkLevelChange" />
+                    </div>
+                    <div class="settingMenuItem" @click="handleReconnect">
+                      <i-api size="14" />
+                      <span>{{ $t("workbench.scriptAgent.reconnect") }}</span>
+                    </div>
+                    <div class="settingMenuItem" @click="handleClearMemory('message')">
+                      <i-delete size="14" />
+                      <span>{{ $t("workbench.production.chatBox.clearMessageMemory") }}</span>
+                    </div>
+                    <div class="settingMenuItem" @click="handleClearMemory('summary')">
+                      <i-close size="14" />
+                      <span>{{ $t("workbench.production.chatBox.clearSummaryMemory") }}</span>
+                    </div>
+                    <div class="settingMenuItem danger" @click="handleClearMemory('all')">
+                      <i-delete-one size="14" />
+                      <span>{{ $t("workbench.production.chatBox.clearAllMemory") }}</span>
+                    </div>
+                  </div>
+                </template>
+              </t-popup>
+            </template>
+          </t-chat-sender>
+          <i-dot class="dot" theme="outline" :fill="connected ? 'green' : 'red'" />
+        </div>
+      </Pane>
+
+      <Pane :size="70" :min-size="30" class="data shotPanel">
+        <div class="tabsWrapper">
+          <t-tabs v-model="activeWorkspaceTab">
         <template #action>
           <div class="workspaceActions">
             <t-select
@@ -80,99 +169,11 @@
           </div>
         </t-tab-panel>
       </t-tabs>
-    </div>
-
-    <!-- Right Panel: Chat interface -->
-    <div class="chatPanel">
-      <div class="chatHeader f ac jb">
-        <span class="f ac" style="gap: 6px">
-          <i-dot theme="outline" :fill="connected ? 'green' : 'red'" />
-          <span class="chatTitle">{{ currentEpisodeLabel || $t("workbench.production.productionAgent") }}</span>
-        </span>
-        <div class="f ac" style="gap: 6px">
-          <t-select :value="thinkLevel" :options="thinkLevelOptions" autoWidth size="small" @change="handleThinkLevelChange" />
-          <t-popup trigger="click" placement="bottom-right">
-            <t-button shape="square" variant="outline" size="small">
-              <template #icon>
-                <i-setting-config size="14" />
-              </template>
-            </t-button>
-            <template #content>
-              <div class="settingMenu">
-                <div class="settingMenuItem" @click="handleReconnect">
-                  <i-api size="14" />
-                  <span>{{ $t("workbench.scriptAgent.reconnect") }}</span>
-                </div>
-                <div class="settingMenuItem" @click="handleClearMemory('message')">
-                  <i-delete size="14" />
-                  <span>{{ $t("workbench.production.chatBox.clearMessageMemory") }}</span>
-                </div>
-                <div class="settingMenuItem" @click="handleClearMemory('summary')">
-                  <i-close size="14" />
-                  <span>{{ $t("workbench.production.chatBox.clearSummaryMemory") }}</span>
-                </div>
-                <div class="settingMenuItem danger" @click="handleClearMemory('all')">
-                  <i-delete-one size="14" />
-                  <span>{{ $t("workbench.production.chatBox.clearAllMemory") }}</span>
-                </div>
-              </div>
-            </template>
-          </t-popup>
         </div>
-      </div>
-
-      <div class="chatBody" v-loading="loadingHistory">
-        <t-chat-list :clear-history="false">
-          <t-chat-message
-            v-for="message in renderableMessages"
-            :key="message.id"
-            :message="message"
-            :name="(message as any).name"
-            :placement="message.role === 'user' ? 'right' : 'left'"
-            :variant="message.role === 'user' ? 'base' : 'outline'"
-            :handleActions="message.role === 'user' ? {} : handleActions"
-            :status="message.status"
-            allowContentSegmentCustom />
-        </t-chat-list>
-
-        <div
-          v-if="showWorkflowStatus"
-          class="workflowStatus"
-          :class="`is-${workflowStatus.state}`"
-          role="status"
-          aria-live="polite">
-          <i-loading-four v-if="workflowBusy" class="workflowSpinner" size="16" />
-          <i-info v-else-if="workflowStatus.state === 'error'" size="16" />
-          <span>{{ workflowStatusLabel }}</span>
-        </div>
-        <div v-if="nextAction" class="nextAction">
-          <div class="nextActionCopy">
-            <span class="nextActionTitle">{{ nextAction.title }}</span>
-            <span>{{ nextAction.description }}</span>
-          </div>
-          <t-button size="small" theme="primary" :disabled="workflowBusy || loadingData || loadingHistory" @click="runNextAction">
-            {{ nextAction.label }}
-          </t-button>
-          <t-button v-if="nextAction.openAssets" size="small" variant="outline" :disabled="workflowBusy || loadingData || loadingHistory" @click="openAssetLibrary">
-            打开资产库
-          </t-button>
-        </div>
-
-        <t-chat-sender
-          class="chatSender"
-          :disabled="workflowBusy || !connected || loadingData || loadingHistory"
-          v-model="inputValue"
-          :loading="workflowBusy"
-          :textarea-props="{
-            placeholder: $t('workbench.production.chatBox.inputPlaceholder'),
-            autosize: { minRows: 2, maxRows: 5 },
-          }"
-          @send="handleSend"
-          @stop="handleStop" />
-      </div>
-    </div>
+      </Pane>
+    </Splitpanes>
+    <workbench v-model:visible="workbenchVisible" />
   </div>
-  <workbench v-model:visible="workbenchVisible" />
 </template>
 
 <script setup lang="ts">
@@ -183,6 +184,7 @@ import workbench from "./components/workbench/index.vue";
 import { MdPreview } from "md-editor-v3";
 import "md-editor-v3/lib/preview.css";
 import { useRouter } from "vue-router";
+import { Splitpanes, Pane } from "splitpanes";
 
 const projectState = projectStore();
 const { project, allProject } = storeToRefs(projectState);
@@ -310,11 +312,6 @@ const nextAction = computed(() => {
     default:
       return null;
   }
-});
-
-const currentEpisodeLabel = computed(() => {
-  const ep = episodesOptions.value.find((o) => o.value === currentEpisodesId.value);
-  return ep?.label ?? "";
 });
 
 watch(
@@ -707,57 +704,174 @@ onUnmounted(() => {
 </script>
 
 <style lang="scss" scoped>
-.productionLayout {
+.scriptAgent {
+  height: calc(100% - 16px);
   display: flex;
-  height: 100%;
+  flex-direction: column;
   overflow: hidden;
 
-  .shotPanel {
-    width: 60%;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    border-right: 1px solid var(--td-border-level-1-color, #e7e7e7);
+  :deep(.splitpanes__pane) {
+    background-color: transparent !important;
+  }
+
+  :deep(.splitpanes__splitter) {
+    border-left: none;
+    margin-left: 1px;
+  }
+
+  .data {
+    flex: 1;
     overflow: hidden;
 
-    .workspaceTabs {
-      flex: 1;
-      min-height: 0;
+    :deep(.operate) {
       display: flex;
       flex-direction: column;
+      min-height: 0;
+      min-width: 250px;
+      height: 100%;
 
-      :deep(.t-tabs__header) {
-        flex-shrink: 0;
-        padding-left: 8px;
-      }
-
-      :deep(.t-tabs__content) {
+      .box {
+        padding-top: 8px;
         flex: 1;
-        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        border-radius: 10px;
+        border: 1px solid #e6e3e3;
+        background-color: #fff;
         overflow: hidden;
-      }
-
-      :deep(.t-tab-panel) {
+        position: relative;
+        width: 100%;
         height: 100%;
-        min-height: 0;
-        overflow: hidden;
+        padding-left: 8px;
+
+        .inputBox {
+          padding-right: 8px;
+          padding-bottom: 8px;
+        }
+
+        .workflowStatus {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          min-height: 36px;
+          margin: 0 8px 8px 0;
+          padding: 8px 10px;
+          color: var(--td-text-color-secondary);
+          font-size: 13px;
+          border: 1px solid var(--td-border-level-2-color);
+          border-radius: 6px;
+          background: var(--td-bg-color-container);
+
+          &.is-error {
+            color: var(--td-error-color);
+            border-color: var(--td-error-color-4);
+          }
+        }
+
+        .workflowSpinner {
+          animation: productionWorkflowRotate 0.9s linear infinite;
+          flex-shrink: 0;
+        }
+
+        .nextAction {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          margin: 0 8px 8px 0;
+          padding: 10px;
+          border: 1px solid var(--td-brand-color-3);
+          border-radius: 6px;
+          background: var(--td-brand-color-1);
+
+          .nextActionCopy {
+            display: flex;
+            min-width: 0;
+            flex-direction: column;
+            gap: 3px;
+            color: var(--td-text-color-secondary);
+            font-size: 12px;
+            line-height: 1.5;
+          }
+
+          .nextActionTitle {
+            color: var(--td-text-color-primary);
+            font-size: 13px;
+            font-weight: 600;
+          }
+        }
+
+        .dot {
+          position: absolute;
+          top: 10px;
+          left: 10px;
+        }
       }
 
-      :deep(.t-tabs__operations--right) {
-        top: 0;
-        bottom: 0;
-        padding-right: 12px;
-      }
-
-      :deep(.t-tabs__btn--right) {
-        display: none;
+      .t-chat__list {
+        padding-right: 8px;
       }
     }
 
+    :deep(.data) {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      position: relative;
+
+      .tabsWrapper {
+        flex: 1;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+
+        .t-tabs {
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+
+          .t-tabs__header {
+            flex-shrink: 0;
+          }
+
+          .t-tabs__content {
+            flex: 1;
+            overflow: hidden;
+          }
+
+          .t-tab-panel {
+            height: 100%;
+          }
+        }
+      }
+    }
+  }
+}
+
+.productionLayout {
+  .shotPanel {
     .workspaceActions {
       display: flex;
       align-items: center;
       gap: 8px;
+      min-height: 28px;
+
+      :deep(.t-select) {
+        width: min(250px, 28vw);
+        min-width: 190px;
+      }
+
+      :deep(.t-select__wrap) {
+        width: 100%;
+      }
+
+      :deep(.t-button) {
+        flex-shrink: 0;
+      }
+
+      .spin {
+        flex-shrink: 0;
+      }
     }
 
     .directorPlan {
@@ -962,108 +1076,59 @@ onUnmounted(() => {
       }
     }
   }
+}
 
-  .chatPanel {
-    width: 40%;
-    min-height: 0;
+/* Keep the tabs action area aligned with the tab header instead of letting
+ * TDesign position it flush against the split-pane edge. */
+.productionAgent .tabsWrapper {
+  :deep(.t-tabs__header) {
+    flex-shrink: 0;
+    padding-left: 8px;
+  }
+
+  :deep(.t-tabs__operations--right) {
+    top: 0;
+    bottom: 0;
+    right: 0;
+    padding-right: 12px;
     display: flex;
+    align-items: center;
+  }
+
+  :deep(.t-tabs__btn--right) {
+    display: none;
+  }
+}
+
+.productionAgent.productionLayout {
+  height: calc(100% - 16px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.productionAgent .box {
+  container: production-chat / inline-size;
+}
+
+@container production-chat (max-width: 360px) {
+  .productionAgent .box .nextAction {
     flex-direction: column;
-    overflow: hidden;
+    align-items: stretch;
+    gap: 8px;
+  }
 
-    .chatHeader {
-      padding: 10px 16px;
-      border-bottom: 1px solid var(--td-border-level-1-color, #e7e7e7);
-      flex-shrink: 0;
+  .productionAgent .box .nextActionCopy {
+    width: 100%;
+  }
 
-      .chatTitle {
-        font-size: 15px;
-        font-weight: 600;
-      }
-    }
-
-    .chatBody {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      padding: 0 8px;
-
-      :deep(.t-chat__list) {
-        flex: 1;
-        min-height: 0;
-        overflow-y: auto;
-      }
-
-      .workflowStatus {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        min-height: 34px;
-        margin: 0 8px 8px;
-        padding: 7px 10px;
-        border: 1px solid var(--td-brand-color-3, #b5c7e8);
-        border-radius: 6px;
-        background: var(--td-brand-color-1, #f0f5ff);
-        color: var(--td-brand-color, #0052d9);
-        font-size: 12px;
-        line-height: 1.4;
-
-        &.is-error {
-          border-color: var(--td-error-color-3, #f3b9bd);
-          background: var(--td-error-color-1, #fff0f0);
-          color: var(--td-error-color, #d54941);
-        }
-
-        .workflowSpinner {
-          flex-shrink: 0;
-          animation: productionWorkflowRotate 0.9s linear infinite;
-        }
-      }
-
-      .nextAction {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-        margin: 0 8px 8px;
-        padding: 9px 10px;
-        border: 1px solid var(--td-brand-color-3, #b5c7e8);
-        border-radius: 6px;
-        background: var(--td-brand-color-1, #f0f5ff);
-
-        .nextActionCopy {
-          display: flex;
-          min-width: 0;
-          flex-direction: column;
-          gap: 3px;
-          color: var(--td-text-color-secondary, #777);
-          font-size: 12px;
-          line-height: 1.45;
-        }
-
-        .nextActionTitle {
-          color: var(--td-text-color-primary, #333);
-          font-size: 13px;
-          font-weight: 600;
-        }
-      }
-
-      .chatSender {
-        flex-shrink: 0;
-        padding-bottom: 8px;
-
-        :deep(.t-chat-sender__textarea) {
-          border-color: var(--td-border-level-2-color, #d0d0d0);
-          background: var(--td-bg-color-container, #fff);
-        }
-
-        :deep(.t-textarea__inner::placeholder) {
-          color: var(--td-text-color-placeholder, #999);
-          opacity: 1;
-        }
-      }
-    }
+  .productionAgent .box .nextAction :deep(.t-button) {
+    width: 100%;
+    min-width: 0;
+    min-height: 30px;
+    height: auto;
+    white-space: normal;
+    line-height: 1.35;
   }
 }
 
