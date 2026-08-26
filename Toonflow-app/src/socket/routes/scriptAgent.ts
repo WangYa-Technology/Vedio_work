@@ -3,6 +3,7 @@ import u from "@/utils";
 import * as agent from "@/agents/scriptAgent/index";
 import ResTool from "@/socket/resTool";
 import { decodeSocketUser, userOwnsProject } from "@/middleware/auth";
+import { getAgentIsolationKey, ScriptAgentRuntimeRecorder } from "@/utils/agentPersistence";
 
 const DECISION_MAX_ATTEMPTS = 3;
 const SCRIPT_AGENT_REQUEST_TIMEOUT_MS = 120_000;
@@ -38,22 +39,22 @@ export default (nsp: Namespace) => {
       socket.disconnect();
       return;
     }
-    const isolationKey = `${user.id}:${String(socket.handshake.auth.isolationKey || "")}`;
-    if (!isolationKey) {
-      console.log("[scriptAgent] 连接失败，缺少 isolationKey");
-      socket.disconnect();
-      return;
-    }
+    const isolationKey = getAgentIsolationKey(user.id, projectId, "scriptAgent");
 
     console.log("[scriptAgent] 已连接:", socket.id);
 
     const resTool = new ResTool(socket, {
       projectId,
     });
+    const runtimeRecorder = new ScriptAgentRuntimeRecorder(projectId);
+    await runtimeRecorder.load();
+    socket.onAnyOutgoing((event, data) => runtimeRecorder.recordOutgoing(event, data));
     let abortController: AbortController | null = null;
 
     socket.on("chat", async (data: { content: string }) => {
       const { content } = data;
+      resTool.beginWorkflowRequest();
+      runtimeRecorder.addUserMessage(content);
       abortController?.abort();
       abortController = new AbortController();
       const currentController = abortController;
@@ -108,7 +109,8 @@ export default (nsp: Namespace) => {
             }
             if (err.name === "AbortError" || currentController.signal.aborted) throw err;
             lastError = err;
-            const canRetry = !receivedText && agent.isTransientAiError(err) && attempt < DECISION_MAX_ATTEMPTS;
+            const canRetry =
+              !receivedText && !resTool.getWorkflowFailure() && agent.isTransientAiError(err) && attempt < DECISION_MAX_ATTEMPTS;
             if (!canRetry) break;
             resTool.workflowStatus("retrying", `模型服务暂时不可用，正在自动重试（${attempt + 1}/${DECISION_MAX_ATTEMPTS}）`, "planning");
             await waitBeforeRetry(750 * attempt, currentController.signal);
@@ -116,10 +118,15 @@ export default (nsp: Namespace) => {
         }
 
         syncCurrentMessage();
-        if (completed) {
+        const workflowFailure = resTool.getWorkflowFailure();
+        if (completed && !workflowFailure) {
           text.complete();
           currentMsg.complete();
           resTool.workflowStatus("idle", "当前步骤已完成，请查看结果或继续下一阶段");
+        } else if (workflowFailure) {
+          text.complete();
+          currentMsg.complete();
+          resTool.workflowStatus("error", workflowFailure.label, workflowFailure.phase);
         } else if (lastError) {
           const errorMsg = u.error(lastError).message;
           text.append(`当前请求未完成：${errorMsg}。请稍后重试，已保存的工作区内容不会丢失。`).complete();
@@ -153,8 +160,12 @@ export default (nsp: Namespace) => {
       abortController?.abort();
       abortController = null;
     });
-  });
-  nsp.on("disconnect", (socket: Socket) => {
-    console.log("[scriptAgent] 已断开连接:", socket.id);
+    socket.on("disconnect", () => {
+      abortController?.abort();
+      abortController = null;
+      runtimeRecorder.markInterrupted();
+      void runtimeRecorder.flush();
+      console.log("[scriptAgent] 已断开连接:", socket.id);
+    });
   });
 };

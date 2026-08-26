@@ -43,6 +43,11 @@ const shouldInitDB = process.env.FORCE_DB_INIT === "1" || fs.statSync(dbPath).si
   if (shouldInitDB) {
     await fixDB(db);
   }
+  await db("o_script").whereIn("extractState", [0, 2]).update({
+    extractState: -1,
+    errorReason: "软件退出导致资产提取中断",
+    extractFinishedAt: Date.now(),
+  });
   if (process.env.NODE_ENV == "dev") await initKnexType(db);
 })();
 

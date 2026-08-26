@@ -41,6 +41,8 @@ export default router.post(
       content: i.content,
       extractState: i.extractState,
       errorReason: i.errorReason,
+      extractStartedAt: i.extractStartedAt,
+      extractFinishedAt: i.extractFinishedAt,
       createTime: i.createTime,
       relatedAssets: scriptAssetsMap[i.id!] || [],
     }));

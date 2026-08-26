@@ -3,14 +3,24 @@
     <Splitpanes class="default-theme data f">
       <Pane :size="30" :min-size="15" class="operate">
         <div class="box pr">
-          <t-chat-list :clear-history="false">
+          <div class="sidebarHeader">
+            <div class="sidebarHeading">
+              <span class="sidebarTitle">创作记录</span>
+              <span class="sidebarSubtitle">剧本策划</span>
+            </div>
+            <div class="connectionState" :class="{ 'is-offline': !connected }">
+              <i-dot theme="outline" :fill="connected ? 'green' : 'red'" />
+              <span>{{ connected ? "已连接" : "未连接" }}</span>
+            </div>
+          </div>
+          <t-chat-list :clear-history="false" :show-scroll-button="false">
             <t-chat-message
               v-for="message in renderableMessages"
               :key="message.id"
               :message="message"
               :name="(message as any).name"
               :placement="message.role === 'user' ? 'right' : 'left'"
-              :variant="message.role === 'user' ? 'base' : 'outline'"
+              :variant="message.role === 'user' ? 'base' : 'text'"
               :handleActions="message.role === 'user' ? {} : handleActions"
               :status="message.status"
               allowContentSegmentCustom>
@@ -77,7 +87,6 @@
               </t-popup>
             </template>
           </t-chat-sender>
-          <i-dot class="dot" theme="outline" :fill="connected ? 'green' : 'red'" />
           <transition name="fade">
             <div v-if="forceGenerateVisible" class="forceGenerateMask">
               <div class="forceGenerateCard">
@@ -193,6 +202,8 @@ import router from "@/router";
 const { project } = storeToRefs(projectStore());
 import editMdPreivew from "@/components/editMdPreivew.vue";
 import scriptAgentStore from "@/stores/scriptAgent";
+import { createEmptyProjectGlobalContext } from "@/types/projectGlobalContext";
+import type { ProjectGlobalMaterial } from "@/types/projectGlobalContext";
 import { normalizeScriptAgentContent } from "@/utils/scriptAgentContent";
 const scriptAgent = scriptAgentStore();
 const { connected, messages, renderableMessages, status, workflowStatus, planData } = storeToRefs(scriptAgent);
@@ -230,6 +241,15 @@ const remainingScriptCount = computed(() =>
 
 const nextAction = computed(() => {
   if (workflowBusy.value || loadingProjectData.value || !activeProjectId.value) return null;
+  if (workflowStatus.value.state === "error" && workflowStatus.value.phase === "supervision" && persistedScriptCount.value > 0) {
+    return {
+      title: "剧本审核未完成",
+      description: "已生成的剧本仍保留在工作区，请先重新完成逻辑审核。",
+      label: "重试审核",
+      prompt: "重试剧本逻辑审核",
+      type: "chat" as const,
+    };
+  }
   if (remainingScriptCount.value !== undefined && remainingScriptCount.value > 0) {
     const generatedCount = persistedScriptCount.value;
     return {
@@ -313,7 +333,7 @@ const defMsg: ChatMessagesData[] = [
 ];
 
 function resetProjectView() {
-  planData.value = { storySkeleton: "", adaptationStrategy: "", script: [] };
+  planData.value = { storySkeleton: "", adaptationStrategy: "", script: [], projectGlobalContext: createEmptyProjectGlobalContext() };
   novelData.value = [];
   forceGenerateVisible.value = false;
   messages.value = [...defMsg];
@@ -322,6 +342,13 @@ function resetProjectView() {
 function normalizePlanResponse(response: any) {
   const payload = response?.data ?? response ?? {};
   const value = payload?.data ?? payload;
+  const emptyGlobalContext = createEmptyProjectGlobalContext();
+  const normalizeGlobalMaterial = (material: any, fallback: ProjectGlobalMaterial): ProjectGlobalMaterial => ({
+    content: typeof material?.content === "string" ? material.content : fallback.content,
+    sourceName: typeof material?.sourceName === "string" ? material.sourceName : fallback.sourceName,
+    ...(Number.isFinite(Number(material?.updatedAt)) ? { updatedAt: Number(material.updatedAt) } : {}),
+    canonStatus: ["approved", "proposed", "unresolved"].includes(material?.canonStatus) ? material.canonStatus : fallback.canonStatus,
+  });
   return {
     storySkeleton: typeof value?.storySkeleton === "string" ? value.storySkeleton : "",
     adaptationStrategy: typeof value?.adaptationStrategy === "string" ? value.adaptationStrategy : "",
@@ -334,6 +361,11 @@ function normalizePlanResponse(response: any) {
             content: typeof item.content === "string" ? item.content : "",
           }))
       : [],
+    projectGlobalContext: {
+      plot: normalizeGlobalMaterial(value?.projectGlobalContext?.plot, emptyGlobalContext.plot),
+      character: normalizeGlobalMaterial(value?.projectGlobalContext?.character, emptyGlobalContext.character),
+      world: normalizeGlobalMaterial(value?.projectGlobalContext?.world, emptyGlobalContext.world),
+    },
   };
 }
 
@@ -394,6 +426,7 @@ function handleClearMemory(type: "message" | "summary" | "all") {
       const projectId = activeProjectId.value;
       if (!projectId) return;
       await axios.post(`/agents/clearMemory`, { projectId, agentType: "scriptAgent", type });
+      if (type === "message" || type === "all") await scriptAgent.clearRuntime(projectId);
       window.$message.success($t("workbench.scriptAgent.msg.memoryCleared", { type: memoryTypeLabel[type] }));
       dialog.destroy();
       await getHistory(projectId, projectLoadVersion.value);
@@ -418,12 +451,18 @@ const loadingHistory = ref(false);
 async function getHistory(projectId: number, loadVersion: number) {
   loadingHistory.value = true;
   try {
+    const restored = await scriptAgent.loadRuntime(projectId);
+    if (loadVersion !== projectLoadVersion.value || activeProjectId.value !== projectId) return;
+    if (restored) {
+      messages.value = [...defMsg, ...messages.value.filter((message) => message.id !== "welcome")];
+      return;
+    }
     const { data } = await axios.post(`/agents/getMemory`, {
       projectId,
       agentType: "scriptAgent",
     });
     if (loadVersion !== projectLoadVersion.value || activeProjectId.value !== projectId) return;
-    messages.value = [...defMsg, ...(Array.isArray(data) ? data : [])];
+    messages.value = [...defMsg, ...(Array.isArray(data) && data.length ? data : [])];
   } catch (error) {
     console.error("加载脚本 Agent 历史失败:", error);
   } finally {
@@ -576,34 +615,107 @@ onUnmounted(() => {
       min-width: 250px;
       height: 100%;
       .box {
-        padding-top: 8px;
         flex: 1;
         display: flex;
         flex-direction: column;
-        border-radius: 10px;
-        border: 1px solid #e6e3e3;
+        container: script-chat / inline-size;
+        border-radius: 8px;
+        border: 1px solid var(--td-border-level-2-color);
         background-color: #fff;
         overflow: hidden;
         position: relative;
         width: 100%;
         height: 100%;
-        padding-left: 8px;
+        --td-chat-item-gap: 18px;
+        --td-chat-font-size: 14px;
+        --td-chat-item-content-base-padding: 9px 11px;
+        --td-chat-item-content-radius: 6px;
+        --td-chat-item-content-gap: 6px;
+        --td-chat-item-text-padding: 8px 10px;
+        --td-chat-item-text-radius: 6px;
+        --td-chat-item-think-padding-tb: 7px;
+        --td-chat-item-think-padding-lr: 9px;
+        --td-chat-item-think-inner-padding: 0 9px 7px;
+        --td-chat-item-think-title-gap: 6px;
+        --td-chat-md-content-gap-main: 0 0 6px;
+        --td-chat-md-content-gap-t1: 14px 0 8px;
+        --td-chat-md-content-gap-t2: 12px 0 7px;
+        --td-chat-md-content-gap-t3: 10px 0 6px;
+        --td-chat-md-h1-font: 600 16px / 1.5 var(--td-font-family);
+        --td-chat-md-h2-font: 600 15px / 1.5 var(--td-font-family);
+        --td-chat-md-h3-font: 600 14px / 1.5 var(--td-font-family);
+        --td-chat-md-table-font-size: 12px;
+        --td-chat-md-table-th-font: 600 12px / 1.5 var(--td-font-family);
+        --td-chat-md-table-td-font: 400 12px / 1.5 var(--td-font-family);
+        --td-chat-md-table-th-padding: 6px 8px;
+
+        .sidebarHeader {
+          min-height: 52px;
+          padding: 10px 12px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          flex-shrink: 0;
+          border-bottom: 1px solid var(--td-border-level-1-color);
+          background: var(--td-bg-color-container);
+        }
+        .sidebarHeading {
+          min-width: 0;
+          display: flex;
+          align-items: baseline;
+          gap: 8px;
+        }
+        .sidebarTitle {
+          color: var(--td-text-color-primary);
+          font-size: 14px;
+          font-weight: 600;
+        }
+        .sidebarSubtitle {
+          color: var(--td-text-color-placeholder);
+          font-size: 12px;
+        }
+        .connectionState {
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          flex-shrink: 0;
+          color: var(--td-success-color);
+          font-size: 12px;
+
+          &.is-offline {
+            color: var(--td-error-color);
+          }
+        }
         .inputBox {
-          padding-right: 8px;
-          padding-bottom: 8px;
+          padding: 8px 12px 10px;
+          flex-shrink: 0;
+          border-top: 1px solid var(--td-border-level-1-color);
+          background: var(--td-bg-color-container);
+
+          .t-chat-sender__textarea {
+            padding: 9px 10px;
+          }
+          .t-chat-sender__textarea__wrapper {
+            height: 40px;
+          }
+          .t-textarea__inner {
+            min-height: 40px !important;
+            height: 40px !important;
+          }
         }
         .workflowStatus {
           display: flex;
           align-items: center;
           gap: 8px;
           min-height: 36px;
-          margin: 0 8px 8px 0;
-          padding: 8px 10px;
+          margin: 0 12px 10px;
+          padding: 8px 11px;
           color: var(--td-text-color-secondary);
           font-size: 13px;
           border: 1px solid var(--td-border-level-2-color);
           border-radius: 6px;
-          background: var(--td-bg-color-container);
+          background: var(--td-bg-color-secondarycontainer);
 
           &.is-error {
             color: var(--td-error-color);
@@ -619,11 +731,11 @@ onUnmounted(() => {
           align-items: center;
           justify-content: space-between;
           gap: 12px;
-          margin: 0 8px 8px 0;
-          padding: 10px;
+          margin: 0 12px 10px;
+          padding: 11px 12px;
           border: 1px solid var(--td-brand-color-3);
           border-radius: 6px;
-          background: var(--td-brand-color-1);
+          background: var(--td-bg-color-secondarycontainer);
 
           .nextActionCopy {
             display: flex;
@@ -640,14 +752,62 @@ onUnmounted(() => {
             font-weight: 600;
           }
         }
-        .dot {
-          position: absolute;
-          top: 10px;
-          left: 10px;
-        }
       }
       .t-chat__list {
-        padding-right: 8px;
+        min-height: 0;
+        padding: 14px 12px 4px;
+        scroll-padding-bottom: 12px;
+        background: #fbfbfb;
+      }
+      t-chat-item {
+        min-width: 0;
+      }
+      t-chat-item::part(t-chat__item__header) {
+        min-height: 20px;
+        padding: 0 0 5px;
+      }
+      t-chat-item::part(t-chat__item__name) {
+        padding: 0;
+        color: var(--td-text-color-secondary);
+        font-size: 12px;
+        font-weight: 600;
+      }
+      t-chat-item[placement="left"]::part(t-chat__item__content) {
+        padding: 0 0 0 10px;
+        border: 0;
+        border-left: 2px solid var(--td-border-level-2-color);
+        border-radius: 0;
+        background: transparent;
+      }
+      t-chat-item[placement="left"][status="error"]::part(t-chat__item__content) {
+        border-left-color: var(--td-error-color-4);
+      }
+      t-chat-item::part(t-chat__item__think__header__content) {
+        font-size: 12px;
+      }
+      t-chat-item::part(t-chat__item__think__inner) {
+        max-height: 132px;
+        overflow: auto;
+        font-size: 12px;
+        line-height: 1.55;
+      }
+      t-chat-item::part(md_h1),
+      t-chat-item::part(md_h2),
+      t-chat-item::part(md_h3),
+      t-chat-item::part(md_p),
+      t-chat-item::part(md_li) {
+        letter-spacing: 0;
+        overflow-wrap: anywhere;
+      }
+      t-chat-item::part(md_table) {
+        display: block;
+        max-width: 100%;
+        overflow-x: auto;
+      }
+      t-chat-item::part(md_th),
+      t-chat-item::part(md_td) {
+        min-width: 92px;
+        padding: 6px 8px;
       }
     }
     :deep(.data) {
@@ -678,6 +838,19 @@ onUnmounted(() => {
         }
       }
     }
+  }
+}
+
+@container script-chat (max-width: 420px) {
+  .scriptAgent .box .nextAction {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 9px;
+  }
+
+  .scriptAgent .box .nextAction .t-button {
+    width: 100%;
+    min-width: 0;
   }
 }
 

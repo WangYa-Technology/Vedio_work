@@ -59,6 +59,7 @@ import projectDialog from "./components/projectDialog.vue";
 import dayjs from "dayjs";
 import axios from "@/utils/axios";
 import projectStore from "@/stores/project";
+import type { ProjectGlobalContext } from "@/types/projectGlobalContext";
 const { allProject, project } = storeToRefs(projectStore());
 
 const dialogShow = ref(false);
@@ -163,6 +164,7 @@ function addProjectFn(data: {
   videoModel: string;
   imageQuality: string;
   mode: string;
+  projectGlobalContext?: ProjectGlobalContext;
 }) {
   axios
     .post("/project/addProject", data)

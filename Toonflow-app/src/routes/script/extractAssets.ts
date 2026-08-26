@@ -64,13 +64,21 @@ export default router.post(
     const { scriptIds, projectId, groupSize = 5 } = req.body;
 
     if (!scriptIds.length) return res.status(400).send(error("请先选择剧本"));
-    const scripts = await u.db("o_script").whereIn("id", scriptIds);
+    const scripts = await u.db("o_script").whereIn("id", scriptIds).where("projectId", projectId);
+    if (scripts.length !== new Set(scriptIds).size) return res.status(404).send(error("部分剧本不存在，请刷新后重试"));
+    const activeScripts = scripts.filter((script: o_script) => script.extractState === 0 || script.extractState === 2);
+    if (activeScripts.length) {
+      return res.status(409).send(error(`以下剧本正在提取资产：${activeScripts.map((script: o_script) => script.name || script.id).join("、")}`));
+    }
 
     // 构建 scriptId -> script 内容的映射
     const scriptMap = new Map(scripts.map((s: o_script) => [s.id, s]));
 
     await u.db("o_script").whereIn("id", scriptIds).update({
       extractState: 2,
+      errorReason: null,
+      extractStartedAt: Date.now(),
+      extractFinishedAt: null,
     });
 
     const errors: { scriptId: number; error: string }[] = [];
@@ -83,14 +91,20 @@ export default router.post(
     async function persistGroupResult(result: GroupResult) {
       if (!result) return;
       const { batchScriptIds, newAssets, existingRefs } = result;
-      if (!newAssets.length && !existingRefs.length) return;
+      const batchScriptIdSet = new Set(batchScriptIds);
 
       // 查询已有资产
       const existingAssets = await u.db("o_assets").where("projectId", projectId).select("id", "name");
       const existingMap = new Map(existingAssets.map((a) => [a.name!, a.id!]));
 
       // 插入新资产（不在已有列表中的）
-      const toInsert = newAssets.filter((asset) => !existingMap.has(asset.name));
+      const toInsert = Array.from(
+        new Map(
+          newAssets
+            .filter((asset) => asset.scriptIds.some((scriptId) => batchScriptIdSet.has(scriptId)) && !existingMap.has(asset.name))
+            .map((asset) => [asset.name, asset]),
+        ).values(),
+      );
       if (toInsert.length) {
         await u.db("o_assets").insert(
           toInsert.map((asset) => ({
@@ -109,38 +123,51 @@ export default router.post(
 
       // 收集所有资产与剧本的关联关系
       const scriptAssetRows: { scriptId: number; assetId: number }[] = [];
+      const appendAssetRows = (scriptIds: number[], assetId: number) => {
+        for (const scriptId of scriptIds) {
+          if (batchScriptIdSet.has(scriptId)) scriptAssetRows.push({ scriptId, assetId });
+        }
+      };
 
       // 新资产的关联
       for (const asset of newAssets) {
         const assetId = nameToId.get(asset.name);
-        if (assetId) {
-          for (const sid of asset.scriptIds) {
-            scriptAssetRows.push({ scriptId: sid, assetId });
-          }
-        }
+        if (assetId) appendAssetRows(asset.scriptIds, assetId);
       }
 
       // 已有资产的关联
       for (const ref of existingRefs) {
         const assetId = nameToId.get(ref.name);
-        if (assetId) {
-          for (const sid of ref.scriptIds) {
-            scriptAssetRows.push({ scriptId: sid, assetId });
-          }
+        if (assetId) appendAssetRows(ref.scriptIds, assetId);
+      }
+
+      const uniqueRows = Array.from(new Map(scriptAssetRows.map((row) => [`${row.scriptId}:${row.assetId}`, row])).values());
+      const successfulScriptIds = Array.from(new Set(uniqueRows.map((row) => row.scriptId)));
+      const failedScriptIds = batchScriptIds.filter((scriptId) => !successfulScriptIds.includes(scriptId));
+      const finishedAt = Date.now();
+
+      await u.db.transaction(async (trx) => {
+        if (successfulScriptIds.length) {
+          await trx("o_scriptAssets").whereIn("scriptId", successfulScriptIds).delete();
+          await trx("o_scriptAssets").insert(uniqueRows);
+          await trx("o_script").whereIn("id", successfulScriptIds).update({
+            extractState: 1,
+            errorReason: null,
+            extractFinishedAt: finishedAt,
+          });
         }
-      }
-
-      // 先删除本批 scriptId 的旧关联，再插入新的
-      await u.db("o_scriptAssets").whereIn("scriptId", batchScriptIds).delete();
-      if (scriptAssetRows.length) {
-        await u.db("o_scriptAssets").insert(scriptAssetRows);
-      }
-
-      // 本批成功的剧本状态更新为 1（成功）
-      await u.db("o_script").whereIn("id", batchScriptIds).update({
-        extractState: 1,
-        errorReason: null,
+        if (failedScriptIds.length) {
+          await trx("o_script").whereIn("id", failedScriptIds).update({
+            extractState: -1,
+            errorReason: newAssets.length || existingRefs.length ? "未匹配到该剧本的有效资产，原有关联已保留" : "AI 未返回任何资产",
+            extractFinishedAt: finishedAt,
+          });
+        }
       });
+
+      for (const scriptId of failedScriptIds) {
+        errors.push({ scriptId, error: "未匹配到有效资产" });
+      }
     }
     res.send(success("开始提取资产"));
 
@@ -167,6 +194,7 @@ export default router.post(
         // 修改状态为正在提取中
         await u.db("o_script").whereIn("id", validScriptIds).update({
           extractState: 0, // 正在提取
+          extractStartedAt: Date.now(),
         });
         // 查询当前项目已有的资产列表，提供给 AI 参考
         const existingAssets = await u.db("o_assets").where("projectId", projectId).select("name", "type");
@@ -207,7 +235,7 @@ export default router.post(
           const existingHint = existingAssetsList
             ? `\n\n【已有资产列表】：${existingAssetsList}\n对于已有资产，如果在剧本中出现，只需在 existingAssetRefs 中给出资产名称和对应的 scriptIds 数组即可，无需重复生成 desc/type。对于新发现的资产（不在已有列表中），请在 newAssets 中给出完整信息。`
             : "";
-          const output = await u.Ai.Text("universalAi").invoke({
+          await u.Ai.Text("universalAi").invoke({
             messages: [
               {
                 role: "system",
@@ -235,14 +263,7 @@ export default router.post(
             await u
               .db("o_script")
               .where("id", id)
-              .update({ extractState: -1, errorReason: u.error(e).message });
-          }
-          return;
-        }
-        if (!collectedNew.length && !collectedExisting.length) {
-          for (const { id } of validScripts) {
-            errors.push({ scriptId: id, error: "AI 未返回任何资产" });
-            await u.db("o_script").where("id", id).update({ extractState: -1, errorReason: "AI 未返回任何资产" });
+              .update({ extractState: -1, errorReason: u.error(e).message, extractFinishedAt: Date.now() });
           }
           return;
         }

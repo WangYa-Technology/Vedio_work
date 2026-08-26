@@ -350,7 +350,8 @@ import addAssets from "./components/addAssets.vue";
 import generateImage from "./components/generateImage.vue";
 import projectStore from "@/stores/project";
 import settingStore from "@/stores/setting";
-const { otherSetting } = storeToRefs(settingStore());
+import { resolveBackendAssetUrl } from "@/utils/backendUrl";
+const { otherSetting, baseUrl } = storeToRefs(settingStore());
 
 const props = withDefaults(
   defineProps<{
@@ -440,6 +441,21 @@ interface Asset {
   filePath: string;
 }
 const tableData = ref<Asset[]>([]);
+
+function resolveAssetMediaUrl(value?: string | null) {
+  return value ? resolveBackendAssetUrl(value, baseUrl.value) : "";
+}
+
+function normalizeAssetMedia(item: Asset): Asset {
+  return {
+    ...item,
+    src: resolveAssetMediaUrl(item.src || item.filePath),
+    filePath: resolveAssetMediaUrl(item.filePath),
+    sonAssets: Array.isArray(item.sonAssets)
+      ? item.sonAssets.map(normalizeAssetMedia)
+      : [],
+  };
+}
 // 分页配置
 const pagination = ref({
   page: 1,
@@ -462,7 +478,9 @@ async function getFilteredData(type: string) {
       limit: pagination.value.pageSize,
     });
 
-    tableData.value = data.data || [];
+    tableData.value = Array.isArray(data.data)
+      ? data.data.map((item: Asset) => normalizeAssetMedia(item))
+      : [];
     // 当 clip 类型且指定了 clipMediaTypes 时，进行二次过滤
     if (type === 'clip' && props.clipMediaTypes?.length) {
       tableData.value = tableData.value.filter((item) => {
@@ -1082,11 +1100,11 @@ async function pollingImageAssets() {
         const target = findAssetById(item.id);
         if (target) {
           target.state = item.state;
-          if (item.filePath !== undefined) target.filePath = item.filePath;
-          if (item.src !== undefined) target.src = item.src;
+          if (item.filePath !== undefined) target.filePath = resolveAssetMediaUrl(item.filePath);
+          if (item.src !== undefined) target.src = resolveAssetMediaUrl(item.src);
           // filePath 存在时也作为 src 使用，确保图片立即显示
           if (!item.src && item.filePath && item.state !== "生成中") {
-            target.src = item.filePath;
+            target.src = resolveAssetMediaUrl(item.filePath);
           }
         }
       });

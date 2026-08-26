@@ -391,6 +391,8 @@
         "save": "保存",
         "ok": "確定",
         "cancel": "キャンセル",
+        "projectMaterials": "プロジェクト資料",
+        "projectMaterialsDescription": "作成時にプロット、登場人物、世界観の資料を任意で入力でき、作成後も編集できます",
         "projectType": "プロジェクトタイプ",
         "selectType": "プロジェクトタイプを選択",
         "basedOnNovel": "小説の原文に基づく",
@@ -615,6 +617,12 @@
       "storySkeleton": "ストーリーの骨格",
       "adaptationStrategy": "脚色戦略",
       "script": "シナリオ",
+      "globalContext": {
+        "title": "プロジェクト資料", "plot": "プロットDB", "character": "人物DB", "world": "世界観DB",
+        "plotPlaceholder": "全体のプロット・事件・伏線資料を入力または読み込み", "characterPlaceholder": "人物・関係・成長アーク資料を入力または読み込み", "worldPlaceholder": "場所・勢力・組織・時系列資料を入力または読み込み",
+        "import": "読み込み", "save": "資料を保存", "clear": "クリア", "noSource": "手動入力", "characters": "文字", "approved": "承認済み", "proposed": "提案", "unresolved": "未解決",
+        "imported": "資料を読み込みました", "saved": "プロジェクト資料を保存しました", "saveFailed": "保存に失敗しました", "readFailed": "ファイルを読み込めません", "unsupportedType": "DOCX または TXT のみ対応", "fileTooLarge": "ファイルは10MB未満にしてください", "clearConfirm": "プロジェクト資料をクリア", "clearBody": "この資料をクリアしますか？"
+      },
       "noContent": "コンテンツがありません",
       "relatedAssets": "関連アセット",
       "editScript": "シナリオを編集",
@@ -739,7 +747,18 @@
         "batchDeleteBody": "選択した {count} 件のシナリオを削除してもよろしいですか？この操作は取り消せません。",
         "batchDeleteSuccess": "一括削除に成功しました",
         "extractingInProgress": "抽出中",
-        "projectNotFound": "アイテムが見つかりません"
+        "projectNotFound": "プロジェクトが見つかりません",
+        "statusNotExtracted": "アセット未抽出",
+        "statusQueued": "アセット抽出待ち",
+        "statusRunning": "アセットを抽出中",
+        "statusSucceeded": "{count} 件のアセットを抽出済み",
+        "statusFailed": "アセット抽出に失敗しました",
+        "statusStale": "シナリオが更新されました。再抽出が必要です",
+        "statusEmpty": "抽出結果が空です。再抽出してください",
+        "statusElapsed": "経過時間 {duration}",
+        "statusPreserved": "以前の関連アセット {count} 件を保持",
+        "statusManual": "{count} 件のアセットを手動で関連付け済み",
+        "retryExtract": "再抽出"
       },
       "add": {
         "title": "シナリオの追加",

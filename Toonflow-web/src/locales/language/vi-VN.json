@@ -383,6 +383,8 @@
         "save": "Lưu",
         "ok": "Xác nhận",
         "cancel": "Hủy",
+        "projectMaterials": "Tư liệu dự án",
+        "projectMaterialsDescription": "Có thể thêm tư liệu cốt truyện, nhân vật và thế giới khi tạo, rồi tiếp tục chỉnh sửa sau",
         "projectType": "Loại dự án",
         "selectType": "Chọn loại dự án",
         "basedOnNovel": "Dựa trên bản gốc tiểu thuyết",
@@ -607,6 +609,12 @@
       "storySkeleton": "Khung xương cốt truyện",
       "adaptationStrategy": "Chiến lược chuyển thể",
       "script": "Kịch bản",
+      "globalContext": {
+        "title": "Tư liệu dự án", "plot": "Cơ sở dữ liệu cốt truyện", "character": "Cơ sở dữ liệu nhân vật", "world": "Cơ sở dữ liệu thế giới",
+        "plotPlaceholder": "Nhập hoặc tải cốt truyện, sự kiện và phục bút toàn bộ phim", "characterPlaceholder": "Nhập hoặc tải nhân vật, quan hệ và hành trình phát triển", "worldPlaceholder": "Nhập hoặc tải địa điểm, thế lực, tổ chức và dòng thời gian",
+        "import": "Nhập", "save": "Lưu tư liệu", "clear": "Xóa", "noSource": "Nhập thủ công", "characters": "ký tự", "approved": "Đã duyệt", "proposed": "Đề xuất", "unresolved": "Chưa giải quyết",
+        "imported": "Đã nhập tư liệu", "saved": "Đã lưu tư liệu dự án", "saveFailed": "Lưu thất bại", "readFailed": "Đọc tệp thất bại", "unsupportedType": "Chỉ hỗ trợ DOCX hoặc TXT", "fileTooLarge": "Tệp phải nhỏ hơn 10MB", "clearConfirm": "Xóa tư liệu dự án", "clearBody": "Xóa loại tư liệu dự án này?"
+      },
       "noContent": "Chưa có nội dung",
       "relatedAssets": "Tài nguyên liên kết",
       "editScript": "Chỉnh sửa kịch bản",
@@ -731,7 +739,18 @@
         "batchDeleteBody": "Bạn có chắc chắn muốn xóa {count} kịch bản đã chọn không? Không thể hoàn tác thao tác này.",
         "batchDeleteSuccess": "Xóa hàng loạt thành công",
         "extractingInProgress": "Giải nén",
-        "projectNotFound": "Không tìm thấy mục"
+        "projectNotFound": "Không tìm thấy dự án",
+        "statusNotExtracted": "Chưa trích xuất tài sản",
+        "statusQueued": "Đang chờ trích xuất tài sản",
+        "statusRunning": "Đang trích xuất tài sản",
+        "statusSucceeded": "Đã trích xuất {count} tài sản",
+        "statusFailed": "Trích xuất tài sản thất bại",
+        "statusStale": "Kịch bản đã cập nhật; cần trích xuất lại",
+        "statusEmpty": "Không có kết quả; hãy trích xuất lại",
+        "statusElapsed": "Đã chạy {duration}",
+        "statusPreserved": "Đã giữ {count} liên kết tài sản cũ",
+        "statusManual": "Đã liên kết thủ công {count} tài sản",
+        "retryExtract": "Trích xuất lại"
       },
       "add": {
         "title": "Thêm kịch bản mới",

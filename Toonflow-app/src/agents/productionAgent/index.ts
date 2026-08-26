@@ -8,6 +8,7 @@ import u from "@/utils";
 import Memory from "@/utils/agent/memory";
 import ResTool from "@/socket/resTool";
 import useTools from "@/agents/productionAgent/tools";
+import useBaseAssetTools from "@/agents/productionAgent/baseAssetTools";
 import { parseStoryboardTableAssetBindings, saveProductionFlowArtifact } from "@/utils/productionFlow";
 import {
   CONTENT_SAFETY_SETTING_KEY,
@@ -131,6 +132,37 @@ async function getWorkflowContext(projectId: number, scriptId: number) {
   } catch {
     flowData = {};
   }
+  const pendingBaseAssetIds = Array.isArray(flowData.pendingBaseAssetIds)
+    ? [...new Set(flowData.pendingBaseAssetIds.map(Number).filter(Number.isSafeInteger))]
+    : [];
+  const pendingBaseAssets = pendingBaseAssetIds.length
+    ? await u
+        .db("o_assets")
+        .leftJoin("o_image", "o_assets.imageId", "o_image.id")
+        .where("o_assets.projectId", projectId)
+        .whereIn("o_assets.id", pendingBaseAssetIds)
+        .select(
+          "o_assets.id",
+          "o_assets.name",
+          "o_image.filePath",
+          "o_image.state",
+          "o_image.errorReason",
+        )
+    : [];
+  const pendingBaseAssetStatus = await Promise.all(
+    pendingBaseAssets.map(async (asset) => ({
+      ...asset,
+      available:
+        /^https?:\/\//i.test(String(asset.filePath || "")) ||
+        (Boolean(asset.filePath) && await u.oss.fileExists(String(asset.filePath))),
+    })),
+  );
+  const unavailablePendingBaseAssets = pendingBaseAssetStatus.filter((asset) => !asset.available);
+  const pendingBaseAssetLabel = pendingBaseAssetStatus
+    .map((asset) => `${asset.id}（${asset.name || "未命名素材"}）`)
+    .join("、");
+  const generatingPendingBaseAssets = unavailablePendingBaseAssets.filter((asset) => asset.state === "生成中");
+  const retryablePendingBaseAssets = unavailablePendingBaseAssets.filter((asset) => asset.state !== "生成中");
   const storyboardCount = await u.db("o_storyboard").where({ projectId, scriptId }).count("id as count").first();
   const panelCount = Number((storyboardCount as any)?.count ?? 0);
   const hasScriptPlan = typeof flowData.scriptPlan === "string" && flowData.scriptPlan.trim().length > 0;
@@ -169,6 +201,14 @@ async function getWorkflowContext(projectId: number, scriptId: number) {
     ? "先执行导演规划"
     : !hasStoryboardTable
       ? "直接构建正式分镜表"
+      : pendingBaseAssetIds.length && pendingBaseAssets.length !== pendingBaseAssetIds.length
+        ? "待补建基础资产记录不完整，先重新读取资产并报告缺失 ID，不得进入分镜面板"
+      : retryablePendingBaseAssets.length
+        ? `先重新生成补建资产图片：${retryablePendingBaseAssets.map((asset) => `${asset.id}（${asset.name || "未命名素材"}）`).join("、")}`
+      : generatingPendingBaseAssets.length
+        ? `补建资产图片仍在生成中：${generatingPendingBaseAssets.map((asset) => `${asset.id}（${asset.name || "未命名素材"}）`).join("、")}；等待就绪后再修复分镜表`
+      : pendingBaseAssetIds.length
+        ? `补建资产图片已就绪；先用真实资产 ID ${pendingBaseAssetLabel} 修复分镜表对应片段引用并重新审核`
       : missingAssets.length
         ? `先生成分镜明确引用但尚无图片的素材：${missingAssetLabel}；素材就绪前不得进入分镜面板或视频生成`
       : panelCount === 0
@@ -181,8 +221,9 @@ async function getWorkflowContext(projectId: number, scriptId: number) {
     `分镜表：${hasStoryboardTable ? "已保存" : "未生成"}`,
     `正式分镜面板：${panelCount}条`,
     `分镜引用素材：${uniqueReferencedAssetIds.length}项；缺少可用图片：${missingAssets.length ? missingAssetLabel : "无"}`,
+    `待写入分镜表的补建基础资产：${pendingBaseAssetIds.length ? pendingBaseAssetLabel || pendingBaseAssetIds.join("、") : "无"}`,
     `建议下一步：${suggestedNext}`,
-    "用户说“继续”“确认”“重试”时，必须按此快照推进；缺少引用素材图片时必须先派发素材生成，不得写入分镜面板或进入视频生成；不要重复询问已经保存的阶段，也不要把执行层的自然语言失败说明当作成功结果。",
+    "用户说“继续”“确认”“重试”时，必须按此快照推进；存在待写入分镜表的补建基础资产时，必须先等待或生成其图片，再用真实 ID 修复分镜表并重新审核；缺少引用素材图片时必须先派发素材生成，不得写入分镜面板或进入视频生成；不要重复询问已经保存的阶段，也不要把执行层的自然语言失败说明当作成功结果。",
   ].join("\n");
 }
 
@@ -270,7 +311,7 @@ function buildChoiceDirective(text: string) {
   return [
     "[系统执行约束] 用户正在回复上一条审核报告中的选项。必须按用户选择逐项执行，不得只复述选择或再次提出同一问题。",
     "涉及分镜时长的 A/B/C：必须调用分镜表执行层，按对应方案修改并保存 storyboardTable，回读确认保存成功后才能再次审核；如果未发生实际保存，必须明确报告未完成。",
-    "涉及资产的 A/B：若资产已存在，必须用真实资产 ID 修改片段引用并保存；若不存在，必须明确引导用户到资产库新增并生成图片，禁止虚构 ID。",
+    "涉及资产的 A：若缺少基础资产，必须调用 run_sub_agent_base_assets，按审核报告中的名称和类型补建、关联当前剧本并提交图片生成；图片就绪后才能用真实资产 ID 修改片段引用。涉及资产的 B：按审核报告将其改为不可辨识背景元素并保存。禁止虚构 ID。",
     "涉及字段结构的 3A：必须输出标准七列表（序号、画面描述、时长、景别、运镜、台词、音效），并删除额外字段审核；不要把 3A 当作保留扩展字段。",
   ].join("\n");
 }
@@ -347,6 +388,7 @@ async function createSubAgents(
     format?: string;
     requiredArtifact?: "scriptPlan" | "storyboardTable";
     isSupervision?: boolean;
+    includeBaseAssetTools?: boolean;
   }) {
     if (supervisionStarted || supervisionCompleted) {
       return "审核已开始或完成。本轮必须立即停止并等待用户下一条消息，不能继续执行或再次审核。";
@@ -385,7 +427,12 @@ async function createSubAgents(
           system,
           messages: attemptMessages,
           abortSignal,
-          tools: useTools({ resTool, msg: subMsg }),
+          tools: {
+            ...useTools({ resTool, msg: subMsg }),
+            ...(config.includeBaseAssetTools
+              ? useBaseAssetTools({ resTool, msg: subMsg })
+              : {}),
+          },
         });
 
         for await (const chunk of textStream) {
@@ -528,6 +575,19 @@ async function createSubAgents(
     prompt: z.string().describe("交给执行层的具体任务"),
   });
   return {
+    run_sub_agent_base_assets: tool({
+      description: "派发缺失基础资产补建、剧本关联与图片生成任务",
+      inputSchema: promptInput,
+      execute: ({ prompt }) =>
+        runAgent({
+          key: "productionAgent:baseAssetsAgent",
+          prompt,
+          skill: "production_execution_base_assets.md",
+          name: "资产执行导演",
+          memoryKey: "assistant:execution",
+          includeBaseAssetTools: true,
+        }),
+    }),
     run_sub_agent_derive_assets: tool({
       description: "派发衍生资产分析与写入任务",
       inputSchema: promptInput,

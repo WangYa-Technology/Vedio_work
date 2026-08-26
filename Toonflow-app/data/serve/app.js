@@ -20936,16 +20936,16 @@ var require_router = __commonJS({
         return new Router(options);
       }
       const opts = options || {};
-      function router126(req, res, next) {
-        router126.handle(req, res, next);
+      function router129(req, res, next) {
+        router129.handle(req, res, next);
       }
-      Object.setPrototypeOf(router126, this);
-      router126.caseSensitive = opts.caseSensitive;
-      router126.mergeParams = opts.mergeParams;
-      router126.params = {};
-      router126.strict = opts.strict;
-      router126.stack = [];
-      return router126;
+      Object.setPrototypeOf(router129, this);
+      router129.caseSensitive = opts.caseSensitive;
+      router129.mergeParams = opts.mergeParams;
+      router129.params = {};
+      router129.strict = opts.strict;
+      router129.stack = [];
+      return router129;
     }
     Router.prototype = function() {
     };
@@ -21333,7 +21333,7 @@ var require_application = __commonJS({
     var app2 = exports2 = module2.exports = {};
     var trustProxyDefaultSymbol = "@@symbol:trust_proxy_default";
     app2.init = function init() {
-      var router126 = null;
+      var router129 = null;
       this.cache = /* @__PURE__ */ Object.create(null);
       this.engines = /* @__PURE__ */ Object.create(null);
       this.settings = /* @__PURE__ */ Object.create(null);
@@ -21342,13 +21342,13 @@ var require_application = __commonJS({
         configurable: true,
         enumerable: true,
         get: function getrouter() {
-          if (router126 === null) {
-            router126 = new Router({
+          if (router129 === null) {
+            router129 = new Router({
               caseSensitive: this.enabled("case sensitive routing"),
               strict: this.enabled("strict routing")
             });
           }
-          return router126;
+          return router129;
         }
       });
     };
@@ -21419,15 +21419,15 @@ var require_application = __commonJS({
       if (fns.length === 0) {
         throw new TypeError("app.use() requires a middleware function");
       }
-      var router126 = this.router;
+      var router129 = this.router;
       fns.forEach(function(fn2) {
         if (!fn2 || !fn2.handle || !fn2.set) {
-          return router126.use(path23, fn2);
+          return router129.use(path23, fn2);
         }
         debug(".use app under %s", path23);
         fn2.mountpath = path23;
         fn2.parent = this;
-        router126.use(path23, function mounted_app(req, res, next) {
+        router129.use(path23, function mounted_app(req, res, next) {
           var orig = req.app;
           fn2.handle(req, res, function(err) {
             Object.setPrototypeOf(req, orig.request);
@@ -48834,8 +48834,8 @@ var require_lib4 = __commonJS({
         getWss: function getWss() {
           return wsServer;
         },
-        applyTo: function applyTo(router126) {
-          (0, _addWsMethod2.default)(router126);
+        applyTo: function applyTo(router129) {
+          (0, _addWsMethod2.default)(router129);
         }
       };
     }
@@ -105296,6 +105296,8 @@ A medium tracking shot follows the woman from behind as she ascends and approach
             table.text("content");
             table.integer("projectId");
             table.integer("extractState");
+            table.integer("extractStartedAt");
+            table.integer("extractFinishedAt");
             table.integer("createTime");
             table.text("errorReason");
             table.primary(["id"]);
@@ -105990,6 +105992,15 @@ A medium tracking shot follows the woman from behind as she ascends and approach
       }
       if (await knex3.schema.hasColumn("o_project", "negativePrompt")) {
         await knex3("o_project").where((builder) => builder.whereNull("negativePrompt").orWhere("negativePrompt", "")).update({ negativePrompt: DEFAULT_IMAGE_NEGATIVE_PROMPT });
+      }
+      if (await knex3.schema.hasTable("o_script")) {
+        for (const column of ["extractStartedAt", "extractFinishedAt"]) {
+          if (await knex3.schema.hasColumn("o_script", column)) continue;
+          await knex3.schema.alterTable("o_script", (table) => {
+            table.integer(column);
+          });
+          console.log("[\u521D\u59CB\u5316\u6570\u636E\u5E93] \u5DF2\u8865\u5145\u5267\u672C\u8D44\u4EA7\u63D0\u53D6\u65F6\u95F4\u5B57\u6BB5:", column);
+        }
       }
       if (await knex3.schema.hasTable("o_assets") && !await knex3.schema.hasColumn("o_assets", "originalPrompt")) {
         await knex3.schema.alterTable("o_assets", (table) => {
@@ -116671,6 +116682,11 @@ var init_db = __esm({
       if (shouldInitDB) {
         await fixDB_default(db);
       }
+      await db("o_script").whereIn("extractState", [0, 2]).update({
+        extractState: -1,
+        errorReason: "\u8F6F\u4EF6\u9000\u51FA\u5BFC\u81F4\u8D44\u4EA7\u63D0\u53D6\u4E2D\u65AD",
+        extractFinishedAt: Date.now()
+      });
       if (process.env.NODE_ENV == "dev") await initKnexType(db);
     })();
     dbClient = db;
@@ -199205,13 +199221,13 @@ var require_dist9 = __commonJS({
       };
     }
     var import_provider_utils210 = require_dist8();
-    var import_zod111 = require_zod();
-    var qwenErrorDataSchema = import_zod111.z.object({
-      object: import_zod111.z.literal("error"),
-      message: import_zod111.z.string(),
-      type: import_zod111.z.string(),
-      param: import_zod111.z.string().nullable(),
-      code: import_zod111.z.string().nullable()
+    var import_zod116 = require_zod();
+    var qwenErrorDataSchema = import_zod116.z.object({
+      object: import_zod116.z.literal("error"),
+      message: import_zod116.z.string(),
+      type: import_zod116.z.string(),
+      param: import_zod116.z.string().nullable(),
+      code: import_zod116.z.string().nullable()
     });
     var qwenFailedResponseHandler = (0, import_provider_utils210.createJsonErrorResponseHandler)({
       errorSchema: qwenErrorDataSchema,
@@ -237766,6 +237782,31 @@ var init_utils3 = __esm({
   }
 });
 
+// src/schemas/projectGlobalContext.ts
+var ProjectGlobalMaterialSchema, ProjectGlobalContextSchema, EMPTY_PROJECT_GLOBAL_CONTEXT;
+var init_projectGlobalContext = __esm({
+  "src/schemas/projectGlobalContext.ts"() {
+    "use strict";
+    init_zod();
+    ProjectGlobalMaterialSchema = external_exports.object({
+      content: external_exports.string().default("").describe("\u8D44\u6599\u6B63\u6587"),
+      sourceName: external_exports.string().default("").describe("\u8D44\u6599\u6765\u6E90\u6587\u4EF6\u540D"),
+      updatedAt: external_exports.number().optional().describe("\u6700\u540E\u66F4\u65B0\u65F6\u95F4"),
+      canonStatus: external_exports.enum(["approved", "proposed", "unresolved"]).default("approved").describe("\u8BBE\u5B9A\u72B6\u6001")
+    });
+    ProjectGlobalContextSchema = external_exports.object({
+      plot: ProjectGlobalMaterialSchema.default({ content: "", sourceName: "", canonStatus: "approved" }),
+      character: ProjectGlobalMaterialSchema.default({ content: "", sourceName: "", canonStatus: "approved" }),
+      world: ProjectGlobalMaterialSchema.default({ content: "", sourceName: "", canonStatus: "approved" })
+    });
+    EMPTY_PROJECT_GLOBAL_CONTEXT = {
+      plot: { content: "", sourceName: "", canonStatus: "approved" },
+      character: { content: "", sourceName: "", canonStatus: "approved" },
+      world: { content: "", sourceName: "", canonStatus: "approved" }
+    };
+  }
+});
+
 // src/lib/responseFormat.ts
 function success3(data = null, message = "\u6210\u529F") {
   return {
@@ -237896,6 +237937,202 @@ var init_auth = __esm({
       [/\/production\/workbench\/(?:deleteTrack)/, "o_videoTrack", "id"],
       [/\/task\/taskDetails/, "o_tasks", "taskId"]
     ];
+  }
+});
+
+// src/utils/agentPersistence.ts
+function getAgentIsolationKey(userId, projectId, agentType, episodesId) {
+  return `${userId}:${projectId}:${agentType}${episodesId !== void 0 ? `:${episodesId}` : ""}`;
+}
+function emptyRuntime() {
+  const now2 = Date.now();
+  return {
+    version: 1,
+    messages: [],
+    workflowStatus: { state: "idle", label: "" },
+    runState: { state: "idle", updatedAt: now2, resumable: false },
+    updatedAt: now2
+  };
+}
+async function readScriptAgentRuntime(projectId) {
+  const row = await utils_default.db("o_agentWorkData").where({ projectId, key: SCRIPT_AGENT_RUNTIME_KEY }).select("data").first();
+  if (!row?.data) return null;
+  try {
+    const data = JSON.parse(row.data);
+    if (!Array.isArray(data.messages)) return null;
+    const fallback = emptyRuntime();
+    return {
+      version: 1,
+      messages: data.messages,
+      workflowStatus: data.workflowStatus ?? fallback.workflowStatus,
+      runState: data.runState ?? fallback.runState,
+      updatedAt: Number(data.updatedAt) || fallback.updatedAt
+    };
+  } catch {
+    return null;
+  }
+}
+async function writeScriptAgentRuntime(projectId, runtime) {
+  const now2 = Date.now();
+  const payload = JSON.stringify({ ...runtime, version: 1, updatedAt: runtime.updatedAt || now2 });
+  await utils_default.db.transaction(async (trx) => {
+    const row = await trx("o_agentWorkData").where({ projectId, key: SCRIPT_AGENT_RUNTIME_KEY }).select("id", "data").first();
+    if (row) {
+      try {
+        const savedUpdatedAt = Number(JSON.parse(row.data ?? "{}").updatedAt) || 0;
+        if (savedUpdatedAt > runtime.updatedAt) return;
+      } catch {
+      }
+      await trx("o_agentWorkData").where({ id: row.id, projectId, key: SCRIPT_AGENT_RUNTIME_KEY }).update({ data: payload, updateTime: now2 });
+    } else {
+      await trx("o_agentWorkData").insert({ projectId, key: SCRIPT_AGENT_RUNTIME_KEY, data: payload, createTime: now2, updateTime: now2 });
+    }
+  });
+}
+function deepMerge(target, source) {
+  if (!source || typeof source !== "object") return source;
+  const result = { ...target && typeof target === "object" ? target : {} };
+  for (const [key, value] of Object.entries(source)) {
+    if (Array.isArray(value)) result[key] = [...Array.isArray(result[key]) ? result[key] : [], ...value];
+    else if (value && typeof value === "object") result[key] = deepMerge(result[key], value);
+    else if (value !== void 0) result[key] = value;
+  }
+  return result;
+}
+var SCRIPT_AGENT_RUNTIME_KEY, ScriptAgentRuntimeRecorder;
+var init_agentPersistence = __esm({
+  "src/utils/agentPersistence.ts"() {
+    "use strict";
+    init_utils3();
+    SCRIPT_AGENT_RUNTIME_KEY = "scriptAgentRuntime";
+    ScriptAgentRuntimeRecorder = class {
+      constructor(projectId) {
+        this.projectId = projectId;
+      }
+      runtime = emptyRuntime();
+      saveTimer = null;
+      saveQueue = Promise.resolve();
+      async load() {
+        this.runtime = await readScriptAgentRuntime(this.projectId) ?? emptyRuntime();
+      }
+      addUserMessage(content) {
+        const now2 = Date.now();
+        this.runtime.messages.push({
+          id: `user_${now2}`,
+          role: "user",
+          status: "complete",
+          datetime: new Date(now2).toISOString(),
+          content: [{ type: "text", data: content, status: "complete" }]
+        });
+        this.runtime.runState = { state: "running", startedAt: now2, updatedAt: now2, resumable: false };
+        this.touch();
+      }
+      recordOutgoing(event, data) {
+        if (event === "message") {
+          this.runtime.messages.push(data);
+        } else if (event === "message:update") {
+          const message = this.runtime.messages.find((item) => item.id === data?.id);
+          if (message) {
+            if (data.status) message.status = data.status;
+            if (data.ext) message.ext = { ...message.ext, ...data.ext };
+          }
+        } else if (event === "content:add") {
+          const message = this.runtime.messages.find((item) => item.id === data?.messageId);
+          if (message?.role === "assistant") {
+            message.content ??= [];
+            const content = data.content;
+            if (content.type === "thinking") {
+              const firstNonThinking = message.content.findIndex((item) => item.type !== "thinking");
+              if (firstNonThinking === -1) message.content.push(content);
+              else message.content.splice(firstNonThinking, 0, content);
+            } else {
+              message.content.push(content);
+            }
+          }
+        } else if (event === "content:update") {
+          this.updateContent(data);
+        } else if (event === "workflow:status") {
+          this.updateWorkflow(data);
+        } else {
+          return;
+        }
+        this.touch(event === "workflow:status" || data?.status === "complete" || data?.status === "error" || data?.status === "stop");
+      }
+      markInterrupted() {
+        if (this.runtime.runState.state !== "running") return;
+        const now2 = Date.now();
+        for (const message of this.runtime.messages) {
+          if (message.status === "pending" || message.status === "streaming") message.status = "error";
+          if (message.role === "assistant") {
+            for (const content of message.content ?? []) {
+              if (content.status === "pending" || content.status === "streaming") content.status = "error";
+            }
+          }
+        }
+        this.runtime.workflowStatus = { state: "error", label: "\u4E0A\u6B21\u751F\u6210\u5DF2\u4E2D\u65AD\uFF0C\u53EF\u7EE7\u7EED", phase: this.runtime.runState.phase };
+        this.runtime.runState = { ...this.runtime.runState, state: "interrupted", updatedAt: now2, resumable: true };
+        this.touch(true);
+      }
+      async flush() {
+        if (this.saveTimer) {
+          clearTimeout(this.saveTimer);
+          this.saveTimer = null;
+        }
+        await this.enqueueSave();
+      }
+      updateContent(data) {
+        const message = this.runtime.messages.find((item) => item.id === data?.messageId);
+        if (message?.role !== "assistant") return;
+        const content = message.content?.find((item) => item.id === data?.contentId);
+        if (!content) return;
+        if (data.status) content.status = data.status;
+        if (data.data === void 0 || data.data === null) return;
+        if (data.strategy === "append") {
+          if (typeof content.data === "string" && typeof data.data === "string") content.data += data.data;
+          else content.data = deepMerge(content.data, data.data);
+        } else if (content.data && typeof content.data === "object" && typeof data.data === "object") {
+          content.data = { ...content.data, ...data.data };
+        } else {
+          content.data = data.data;
+        }
+      }
+      updateWorkflow(data) {
+        const now2 = Date.now();
+        this.runtime.workflowStatus = {
+          state: data.state ?? "idle",
+          label: data.label ?? "",
+          ...data.phase ? { phase: data.phase } : {}
+        };
+        if (data.state === "working" || data.state === "retrying") {
+          this.runtime.runState = { ...this.runtime.runState, state: "running", phase: data.phase, updatedAt: now2, resumable: false };
+        } else if (data.state === "error") {
+          this.runtime.runState = { ...this.runtime.runState, state: "error", phase: data.phase, updatedAt: now2, resumable: true };
+        } else if (data.state === "idle" || data.state === "complete") {
+          this.runtime.runState = { ...this.runtime.runState, state: "complete", phase: data.phase, updatedAt: now2, resumable: false };
+        }
+      }
+      touch(immediate = false) {
+        this.runtime.updatedAt = Date.now();
+        if (immediate) {
+          if (this.saveTimer) clearTimeout(this.saveTimer);
+          this.saveTimer = null;
+          void this.enqueueSave();
+          return;
+        }
+        if (this.saveTimer) return;
+        this.saveTimer = setTimeout(() => {
+          this.saveTimer = null;
+          void this.enqueueSave();
+        }, 300);
+      }
+      enqueueSave() {
+        const snapshot = JSON.parse(JSON.stringify(this.runtime));
+        this.saveQueue = this.saveQueue.then(() => writeScriptAgentRuntime(this.projectId, snapshot)).catch((error60) => {
+          console.error("[scriptAgent] \u8FD0\u884C\u8BB0\u5F55\u4FDD\u5B58\u5931\u8D25:", error60);
+        });
+        return this.saveQueue;
+      }
+    };
   }
 });
 
@@ -238125,7 +238362,13 @@ async function saveProductionFlowArtifact(projectId, scriptId, key, content) {
     } catch {
       throw new Error("\u73B0\u6709\u751F\u4EA7\u5DE5\u4F5C\u533A\u6570\u636E\u683C\u5F0F\u65E0\u6548\uFF0C\u5DF2\u963B\u6B62\u8986\u76D6");
     }
-    const payload = JSON.stringify({ ...current, [key]: content });
+    const pendingBaseAssetIds = Array.isArray(current.pendingBaseAssetIds) ? current.pendingBaseAssetIds.map(Number).filter(Number.isSafeInteger) : [];
+    const referencedIds = key === "storyboardTable" ? new Set(parseStoryboardTableAssetBindings(content).flat()) : /* @__PURE__ */ new Set();
+    const remainingPendingIds = key === "storyboardTable" ? pendingBaseAssetIds.filter((id) => !referencedIds.has(id)) : pendingBaseAssetIds;
+    const next = { ...current, [key]: content };
+    if (remainingPendingIds.length) next.pendingBaseAssetIds = remainingPendingIds;
+    else delete next.pendingBaseAssetIds;
+    const payload = JSON.stringify(next);
     const now2 = Date.now();
     if (existing) {
       await trx("o_agentWorkData").where({ id: existing.id, projectId, episodesId: scriptId }).update({ data: payload, updateTime: now2 });
@@ -238406,8 +238649,8 @@ function parseAssetInferenceTemplate(value) {
     return null;
   }
 }
-function isAssetInferenceTemplateApplicable(template, assetType) {
-  return Boolean(template?.applicableTypes?.includes(assetType));
+function isAssetInferenceTemplateApplicable(template, assetType2) {
+  return Boolean(template?.applicableTypes?.includes(assetType2));
 }
 function buildAssetInferenceTemplatePrompt(template) {
   const panels = template.layout.panels.map((panel, index) => `${index + 1}. ${panel.label}\uFF1A${panel.view}${panel.camera ? `\uFF1B\u955C\u5934\uFF1A${panel.camera}` : ""}${panel.required ? "\uFF1B\u5FC5\u987B\u4FDD\u7559" : ""}`).join("\n");
@@ -239067,6 +239310,7 @@ var init_clearMemory = __esm({
     init_zod();
     init_responseFormat();
     init_middleware();
+    init_agentPersistence();
     router = import_express.default.Router();
     clearMemory_default = router.post(
       "/",
@@ -239078,7 +239322,7 @@ var init_clearMemory = __esm({
       }),
       async (req, res) => {
         const { projectId, episodesId, agentType, type = "all" } = req.body;
-        const isolationKey = `${projectId}:${agentType}${episodesId !== void 0 ? `:${episodesId}` : ""}`;
+        const isolationKey = getAgentIsolationKey(req.authUser.id, projectId, agentType, episodesId);
         if (type === "all") {
           await utils_default.db("memories").where({ isolationKey }).del();
         } else if (type === "message") {
@@ -239094,21 +239338,45 @@ var init_clearMemory = __esm({
   }
 });
 
-// src/routes/agents/getMemory.ts
-function normalizeRole(role) {
-  return role?.startsWith("assistant") ? "assistant" : "user";
-}
-var import_express2, router2, getMemory_default;
-var init_getMemory = __esm({
-  "src/routes/agents/getMemory.ts"() {
+// src/routes/agents/clearRuntime.ts
+var import_express2, router2, clearRuntime_default;
+var init_clearRuntime = __esm({
+  "src/routes/agents/clearRuntime.ts"() {
     "use strict";
     import_express2 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
+    init_agentPersistence();
     router2 = import_express2.default.Router();
-    getMemory_default = router2.post(
+    clearRuntime_default = router2.post(
+      "/",
+      validateFields({ projectId: external_exports.number(), agentType: external_exports.literal("scriptAgent") }),
+      async (req, res) => {
+        await utils_default.db("o_agentWorkData").where({ projectId: req.body.projectId, key: SCRIPT_AGENT_RUNTIME_KEY }).del();
+        res.status(200).send(success3(null));
+      }
+    );
+  }
+});
+
+// src/routes/agents/getMemory.ts
+function normalizeRole(role) {
+  return role?.startsWith("assistant") ? "assistant" : "user";
+}
+var import_express3, router3, getMemory_default;
+var init_getMemory = __esm({
+  "src/routes/agents/getMemory.ts"() {
+    "use strict";
+    import_express3 = __toESM(require_express2());
+    init_utils3();
+    init_zod();
+    init_responseFormat();
+    init_middleware();
+    init_agentPersistence();
+    router3 = import_express3.default.Router();
+    getMemory_default = router3.post(
       "/",
       validateFields({
         projectId: external_exports.number(),
@@ -239117,7 +239385,7 @@ var init_getMemory = __esm({
       }),
       async (req, res) => {
         const { projectId, agentType, episodesId } = req.body;
-        const isolationKey = `${projectId}:${agentType}${episodesId !== void 0 ? `:${episodesId}` : ""}`;
+        const isolationKey = getAgentIsolationKey(req.authUser.id, projectId, agentType, episodesId);
         const rows = await utils_default.db("memories").where({ isolationKey, type: "message" }).orderBy("createTime", "asc").select("id", "role", "name", "content", "createTime");
         const history = rows.map((row) => ({
           id: row.id,
@@ -239134,19 +239402,80 @@ var init_getMemory = __esm({
   }
 });
 
+// src/routes/agents/getRuntime.ts
+var import_express4, router4, getRuntime_default;
+var init_getRuntime = __esm({
+  "src/routes/agents/getRuntime.ts"() {
+    "use strict";
+    import_express4 = __toESM(require_express2());
+    init_zod();
+    init_responseFormat();
+    init_middleware();
+    init_agentPersistence();
+    router4 = import_express4.default.Router();
+    getRuntime_default = router4.post(
+      "/",
+      validateFields({ projectId: external_exports.number(), agentType: external_exports.literal("scriptAgent") }),
+      async (req, res) => {
+        res.status(200).send(success3(await readScriptAgentRuntime(req.body.projectId)));
+      }
+    );
+  }
+});
+
+// src/routes/agents/setRuntime.ts
+var import_express5, router5, workflowState, runState, setRuntime_default;
+var init_setRuntime = __esm({
+  "src/routes/agents/setRuntime.ts"() {
+    "use strict";
+    import_express5 = __toESM(require_express2());
+    init_zod();
+    init_responseFormat();
+    init_middleware();
+    init_agentPersistence();
+    router5 = import_express5.default.Router();
+    workflowState = external_exports.enum(["idle", "working", "retrying", "complete", "error"]);
+    runState = external_exports.enum(["idle", "running", "interrupted", "complete", "error"]);
+    setRuntime_default = router5.post(
+      "/",
+      validateFields({
+        projectId: external_exports.number(),
+        agentType: external_exports.literal("scriptAgent"),
+        data: external_exports.object({
+          version: external_exports.literal(1),
+          messages: external_exports.array(external_exports.record(external_exports.string(), external_exports.unknown())).max(500),
+          workflowStatus: external_exports.object({ state: workflowState, label: external_exports.string(), phase: external_exports.string().optional() }),
+          runState: external_exports.object({
+            state: runState,
+            phase: external_exports.string().optional(),
+            startedAt: external_exports.number().optional(),
+            updatedAt: external_exports.number(),
+            resumable: external_exports.boolean()
+          }),
+          updatedAt: external_exports.number()
+        })
+      }),
+      async (req, res) => {
+        await writeScriptAgentRuntime(req.body.projectId, req.body.data);
+        res.status(200).send(success3(null));
+      }
+    );
+  }
+});
+
 // src/routes/artStyle/addArtStyle.ts
-var import_express3, router3, addArtStyle_default;
+var import_express6, router6, addArtStyle_default;
 var init_addArtStyle = __esm({
   "src/routes/artStyle/addArtStyle.ts"() {
     "use strict";
-    import_express3 = __toESM(require_express2());
+    import_express6 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_dist_node();
     init_responseFormat();
     init_middleware();
-    router3 = import_express3.default.Router();
-    addArtStyle_default = router3.post(
+    router6 = import_express6.default.Router();
+    addArtStyle_default = router6.post(
       "/",
       validateFields({
         name: external_exports.string(),
@@ -239172,18 +239501,18 @@ var init_addArtStyle = __esm({
 });
 
 // src/routes/artStyle/editArtStyle.ts
-var import_express4, router4, editArtStyle_default;
+var import_express7, router7, editArtStyle_default;
 var init_editArtStyle = __esm({
   "src/routes/artStyle/editArtStyle.ts"() {
     "use strict";
-    import_express4 = __toESM(require_express2());
+    import_express7 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_dist_node();
     init_responseFormat();
     init_middleware();
-    router4 = import_express4.default.Router();
-    editArtStyle_default = router4.post(
+    router7 = import_express7.default.Router();
+    editArtStyle_default = router7.post(
       "/",
       validateFields({
         id: external_exports.number(),
@@ -239210,17 +239539,17 @@ var init_editArtStyle = __esm({
 });
 
 // src/routes/artStyle/extractStylePrompt.ts
-var import_express5, router5, extractStylePrompt_default;
+var import_express8, router8, extractStylePrompt_default;
 var init_extractStylePrompt = __esm({
   "src/routes/artStyle/extractStylePrompt.ts"() {
     "use strict";
-    import_express5 = __toESM(require_express2());
+    import_express8 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router5 = import_express5.default.Router();
-    extractStylePrompt_default = router5.post(
+    router8 = import_express8.default.Router();
+    extractStylePrompt_default = router8.post(
       "/",
       validateFields({
         images: external_exports.array(external_exports.string())
@@ -239253,15 +239582,15 @@ var init_extractStylePrompt = __esm({
 });
 
 // src/routes/artStyle/getArtStyle.ts
-var import_express6, router6, getArtStyle_default;
+var import_express9, router9, getArtStyle_default;
 var init_getArtStyle = __esm({
   "src/routes/artStyle/getArtStyle.ts"() {
     "use strict";
-    import_express6 = __toESM(require_express2());
+    import_express9 = __toESM(require_express2());
     init_utils3();
     init_responseFormat();
-    router6 = import_express6.default.Router();
-    getArtStyle_default = router6.post("/", async (req, res) => {
+    router9 = import_express9.default.Router();
+    getArtStyle_default = router9.post("/", async (req, res) => {
       const list2 = await utils_default.db("o_artStyle").select("*");
       const data = await Promise.all(
         list2.map(async (item) => {
@@ -239275,17 +239604,17 @@ var init_getArtStyle = __esm({
 });
 
 // src/routes/assets/addAssets.ts
-var import_express7, router7, addAssets_default;
+var import_express10, router10, addAssets_default;
 var init_addAssets = __esm({
   "src/routes/assets/addAssets.ts"() {
     "use strict";
-    import_express7 = __toESM(require_express2());
+    import_express10 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router7 = import_express7.default.Router();
-    addAssets_default = router7.post(
+    router10 = import_express10.default.Router();
+    addAssets_default = router10.post(
       "/",
       validateFields({
         name: external_exports.string(),
@@ -239313,17 +239642,17 @@ var init_addAssets = __esm({
 });
 
 // src/routes/assets/batchDelete.ts
-var import_express8, router8, batchDelete_default;
+var import_express11, router11, batchDelete_default;
 var init_batchDelete = __esm({
   "src/routes/assets/batchDelete.ts"() {
     "use strict";
-    import_express8 = __toESM(require_express2());
+    import_express11 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router8 = import_express8.default.Router();
-    batchDelete_default = router8.post(
+    router11 = import_express11.default.Router();
+    batchDelete_default = router11.post(
       "/",
       validateFields({
         id: external_exports.array(external_exports.number())
@@ -239338,17 +239667,17 @@ var init_batchDelete = __esm({
 });
 
 // src/routes/assets/batchGenerationData.ts
-var import_express9, router9, batchGenerationData_default;
+var import_express12, router12, batchGenerationData_default;
 var init_batchGenerationData = __esm({
   "src/routes/assets/batchGenerationData.ts"() {
     "use strict";
-    import_express9 = __toESM(require_express2());
+    import_express12 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router9 = import_express9.default.Router();
-    batchGenerationData_default = router9.post(
+    router12 = import_express12.default.Router();
+    batchGenerationData_default = router12.post(
       "/",
       validateFields({
         projectId: external_exports.number(),
@@ -239377,17 +239706,17 @@ var init_batchGenerationData = __esm({
 });
 
 // src/routes/assets/delAssets.ts
-var import_express10, router10, delAssets_default;
+var import_express13, router13, delAssets_default;
 var init_delAssets = __esm({
   "src/routes/assets/delAssets.ts"() {
     "use strict";
-    import_express10 = __toESM(require_express2());
+    import_express13 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router10 = import_express10.default.Router();
-    delAssets_default = router10.post(
+    router13 = import_express13.default.Router();
+    delAssets_default = router13.post(
       "/",
       validateFields({
         id: external_exports.number()
@@ -239415,17 +239744,17 @@ var init_delAssets = __esm({
 });
 
 // src/routes/assets/delImage.ts
-var import_express11, router11, delImage_default;
+var import_express14, router14, delImage_default;
 var init_delImage = __esm({
   "src/routes/assets/delImage.ts"() {
     "use strict";
-    import_express11 = __toESM(require_express2());
+    import_express14 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router11 = import_express11.default.Router();
-    delImage_default = router11.post(
+    router14 = import_express14.default.Router();
+    delImage_default = router14.post(
       "/",
       validateFields({
         id: external_exports.number()
@@ -239445,17 +239774,17 @@ var init_delImage = __esm({
 });
 
 // src/routes/assets/getAssetsApi.ts
-var import_express12, router12, getAssetsApi_default;
+var import_express15, router15, getAssetsApi_default;
 var init_getAssetsApi = __esm({
   "src/routes/assets/getAssetsApi.ts"() {
     "use strict";
-    import_express12 = __toESM(require_express2());
+    import_express15 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router12 = import_express12.default.Router();
-    getAssetsApi_default = router12.post(
+    router15 = import_express15.default.Router();
+    getAssetsApi_default = router15.post(
       "/",
       validateFields({
         projectId: external_exports.number(),
@@ -239502,17 +239831,17 @@ var init_getAssetsApi = __esm({
 });
 
 // src/routes/assets/getImage.ts
-var import_express13, router13, getImage_default;
+var import_express16, router16, getImage_default;
 var init_getImage = __esm({
   "src/routes/assets/getImage.ts"() {
     "use strict";
-    import_express13 = __toESM(require_express2());
+    import_express16 = __toESM(require_express2());
     init_utils3();
     init_responseFormat();
     init_zod();
     init_middleware();
-    router13 = import_express13.default.Router();
-    getImage_default = router13.post(
+    router16 = import_express16.default.Router();
+    getImage_default = router16.post(
       "/",
       validateFields({
         assetsId: external_exports.number()
@@ -239540,19 +239869,19 @@ var init_getImage = __esm({
 });
 
 // src/routes/assets/getMaterialData.ts
-var import_express14, import_node_fs2, import_node_path4, router14, getMaterialData_default;
+var import_express17, import_node_fs2, import_node_path4, router17, getMaterialData_default;
 var init_getMaterialData = __esm({
   "src/routes/assets/getMaterialData.ts"() {
     "use strict";
-    import_express14 = __toESM(require_express2());
+    import_express17 = __toESM(require_express2());
     import_node_fs2 = __toESM(require("node:fs"));
     import_node_path4 = __toESM(require("node:path"));
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router14 = import_express14.default.Router();
-    getMaterialData_default = router14.post(
+    router17 = import_express17.default.Router();
+    getMaterialData_default = router17.post(
       "/",
       validateFields({
         projectId: external_exports.number(),
@@ -239602,17 +239931,17 @@ var init_getMaterialData = __esm({
 });
 
 // src/routes/assets/pollingImageAssets.ts
-var import_express15, router15, pollingImageAssets_default;
+var import_express18, router18, pollingImageAssets_default;
 var init_pollingImageAssets = __esm({
   "src/routes/assets/pollingImageAssets.ts"() {
     "use strict";
-    import_express15 = __toESM(require_express2());
+    import_express18 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router15 = import_express15.default.Router();
-    pollingImageAssets_default = router15.post(
+    router18 = import_express18.default.Router();
+    pollingImageAssets_default = router18.post(
       "/",
       validateFields({
         ids: external_exports.array(external_exports.number())
@@ -239633,17 +239962,17 @@ var init_pollingImageAssets = __esm({
 });
 
 // src/routes/assets/pollingPromptAssets.ts
-var import_express16, router16, pollingPromptAssets_default;
+var import_express19, router19, pollingPromptAssets_default;
 var init_pollingPromptAssets = __esm({
   "src/routes/assets/pollingPromptAssets.ts"() {
     "use strict";
-    import_express16 = __toESM(require_express2());
+    import_express19 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router16 = import_express16.default.Router();
-    pollingPromptAssets_default = router16.post(
+    router19 = import_express19.default.Router();
+    pollingPromptAssets_default = router19.post(
       "/",
       validateFields({
         ids: external_exports.array(external_exports.number())
@@ -239658,17 +239987,17 @@ var init_pollingPromptAssets = __esm({
 });
 
 // src/routes/assets/removeVoiceReference.ts
-var import_express17, router17, removeVoiceReference_default;
+var import_express20, router20, removeVoiceReference_default;
 var init_removeVoiceReference = __esm({
   "src/routes/assets/removeVoiceReference.ts"() {
     "use strict";
-    import_express17 = __toESM(require_express2());
+    import_express20 = __toESM(require_express2());
     init_zod();
     init_utils3();
     init_responseFormat();
     init_middleware();
-    router17 = import_express17.default.Router();
-    removeVoiceReference_default = router17.post(
+    router20 = import_express20.default.Router();
+    removeVoiceReference_default = router20.post(
       "/",
       validateFields({ projectId: external_exports.number(), roleAssetId: external_exports.number() }),
       async (req, res) => {
@@ -239698,18 +240027,18 @@ var init_removeVoiceReference = __esm({
 });
 
 // src/routes/assets/saveAssets.ts
-var import_express18, router18, saveAssets_default;
+var import_express21, router21, saveAssets_default;
 var init_saveAssets = __esm({
   "src/routes/assets/saveAssets.ts"() {
     "use strict";
-    import_express18 = __toESM(require_express2());
+    import_express21 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_dist_node();
     init_responseFormat();
     init_middleware();
-    router18 = import_express18.default.Router();
-    saveAssets_default = router18.post(
+    router21 = import_express21.default.Router();
+    saveAssets_default = router21.post(
       "/",
       validateFields({
         id: external_exports.number(),
@@ -239773,17 +240102,17 @@ var init_saveAssets = __esm({
 });
 
 // src/routes/assets/updateAssets.ts
-var import_express19, router19, updateAssets_default;
+var import_express22, router22, updateAssets_default;
 var init_updateAssets = __esm({
   "src/routes/assets/updateAssets.ts"() {
     "use strict";
-    import_express19 = __toESM(require_express2());
+    import_express22 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router19 = import_express19.default.Router();
-    updateAssets_default = router19.post(
+    router22 = import_express22.default.Router();
+    updateAssets_default = router22.post(
       "/",
       validateFields({
         id: external_exports.number(),
@@ -239824,18 +240153,18 @@ function getExtFromBase64(base64Data) {
   };
   return mimeMap[mime] ?? "bin";
 }
-var import_express20, router20, uploadClip_default;
+var import_express23, router23, uploadClip_default;
 var init_uploadClip = __esm({
   "src/routes/assets/uploadClip.ts"() {
     "use strict";
-    import_express20 = __toESM(require_express2());
+    import_express23 = __toESM(require_express2());
     init_utils3();
     init_responseFormat();
     init_middleware();
     init_zod();
     init_dist_node();
-    router20 = import_express20.default.Router();
-    uploadClip_default = router20.post(
+    router23 = import_express23.default.Router();
+    uploadClip_default = router23.post(
       "/",
       validateFields({
         projectId: external_exports.number(),
@@ -239878,17 +240207,17 @@ function parseAudioBase64(value) {
   if (!extension || !/^[a-z0-9]+$/i.test(extension)) throw new Error("\u53EA\u652F\u6301\u97F3\u9891\u683C\u5F0F\u7684\u58F0\u97F3\u53C2\u8003\u7D20\u6750");
   return { extension, buffer: Buffer.from(match[2], "base64") };
 }
-var import_express21, router21, AUDIO_EXTENSIONS, uploadVoiceReference_default;
+var import_express24, router24, AUDIO_EXTENSIONS, uploadVoiceReference_default;
 var init_uploadVoiceReference = __esm({
   "src/routes/assets/uploadVoiceReference.ts"() {
     "use strict";
-    import_express21 = __toESM(require_express2());
+    import_express24 = __toESM(require_express2());
     init_zod();
     init_dist_node();
     init_utils3();
     init_responseFormat();
     init_middleware();
-    router21 = import_express21.default.Router();
+    router24 = import_express24.default.Router();
     AUDIO_EXTENSIONS = {
       "audio/mpeg": "mp3",
       "audio/mp3": "mp3",
@@ -239900,7 +240229,7 @@ var init_uploadVoiceReference = __esm({
       "audio/mp4": "m4a",
       "audio/x-m4a": "m4a"
     };
-    uploadVoiceReference_default = router21.post(
+    uploadVoiceReference_default = router24.post(
       "/",
       validateFields({
         projectId: external_exports.number(),
@@ -240035,19 +240364,19 @@ function extractJson(value) {
     return null;
   }
 }
-var import_express22, router22, analyzeAssetPromptCase_default;
+var import_express25, router25, analyzeAssetPromptCase_default;
 var init_analyzeAssetPromptCase = __esm({
   "src/routes/assetsGenerate/analyzeAssetPromptCase.ts"() {
     "use strict";
-    import_express22 = __toESM(require_express2());
+    import_express25 = __toESM(require_express2());
     init_zod();
     init_utils3();
     init_responseFormat();
     init_middleware();
     init_assetInferenceTemplate();
     init_assetPromptTemplateStore();
-    router22 = import_express22.default.Router();
-    analyzeAssetPromptCase_default = router22.post(
+    router25 = import_express25.default.Router();
+    analyzeAssetPromptCase_default = router25.post(
       "/",
       validateFields({
         caseText: external_exports.string().trim().min(20).max(3e4),
@@ -240077,16 +240406,16 @@ var init_analyzeAssetPromptCase = __esm({
 });
 
 // src/routes/assetsGenerate/batchGenerateImageAssets.ts
-var import_express23, router23, requestSchema, batchGenerateImageAssets_default;
+var import_express26, router26, requestSchema, batchGenerateImageAssets_default;
 var init_batchGenerateImageAssets = __esm({
   "src/routes/assetsGenerate/batchGenerateImageAssets.ts"() {
     "use strict";
-    import_express23 = __toESM(require_express2());
+    import_express26 = __toESM(require_express2());
     init_zod();
     init_responseFormat();
     init_middleware();
     init_imageGeneration();
-    router23 = import_express23.default.Router();
+    router26 = import_express26.default.Router();
     requestSchema = {
       projectId: external_exports.number(),
       model: external_exports.string(),
@@ -240104,7 +240433,7 @@ var init_batchGenerateImageAssets = __esm({
         })
       )
     };
-    batchGenerateImageAssets_default = router23.post(
+    batchGenerateImageAssets_default = router26.post(
       "/",
       validateFields(requestSchema),
       async (req, res) => {
@@ -240121,11 +240450,11 @@ function findItemByName(items, name28, type) {
     (item) => (!type || item.type === type) && item.name === name28
   );
 }
-var import_express24, router24, batchPolishAssetsPrompt_default;
+var import_express27, router27, batchPolishAssetsPrompt_default;
 var init_batchPolishAssetsPrompt = __esm({
   "src/routes/assetsGenerate/batchPolishAssetsPrompt.ts"() {
     "use strict";
-    import_express24 = __toESM(require_express2());
+    import_express27 = __toESM(require_express2());
     init_utils3();
     init_p_limit();
     init_zod();
@@ -240133,8 +240462,8 @@ var init_batchPolishAssetsPrompt = __esm({
     init_middleware();
     init_imagePrompt();
     init_assetInferenceTemplate();
-    router24 = import_express24.default.Router();
-    batchPolishAssetsPrompt_default = router24.post(
+    router27 = import_express27.default.Router();
+    batchPolishAssetsPrompt_default = router27.post(
       "/",
       validateFields({
         items: array(
@@ -240299,17 +240628,17 @@ var init_batchPolishAssetsPrompt = __esm({
 });
 
 // src/routes/assetsGenerate/cancelGenerate.ts
-var import_express25, router25, cancelGenerate_default;
+var import_express28, router28, cancelGenerate_default;
 var init_cancelGenerate = __esm({
   "src/routes/assetsGenerate/cancelGenerate.ts"() {
     "use strict";
-    import_express25 = __toESM(require_express2());
+    import_express28 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router25 = import_express25.default.Router();
-    cancelGenerate_default = router25.post(
+    router28 = import_express28.default.Router();
+    cancelGenerate_default = router28.post(
       "/",
       validateFields({
         id: external_exports.number()
@@ -240327,11 +240656,11 @@ var init_cancelGenerate = __esm({
 });
 
 // src/routes/assetsGenerate/generateAssets.ts
-var import_express26, router26, assetTypeConfig2, requestSchema2, generateAssets_default;
+var import_express29, router29, assetTypeConfig2, requestSchema2, generateAssets_default;
 var init_generateAssets = __esm({
   "src/routes/assetsGenerate/generateAssets.ts"() {
     "use strict";
-    import_express26 = __toESM(require_express2());
+    import_express29 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_dist_node();
@@ -240340,7 +240669,7 @@ var init_generateAssets = __esm({
     init_modelRef();
     init_imagePrompt();
     init_assetInferenceTemplate();
-    router26 = import_express26.default.Router();
+    router29 = import_express29.default.Router();
     assetTypeConfig2 = {
       role: {
         label: "\u89D2\u8272",
@@ -240385,7 +240714,7 @@ var init_generateAssets = __esm({
       referenceImageId: external_exports.number().optional().nullable(),
       templateId: external_exports.number().optional().nullable()
     };
-    generateAssets_default = router26.post(
+    generateAssets_default = router29.post(
       "/",
       validateFields(requestSchema2),
       async (req, res) => {
@@ -240497,15 +240826,15 @@ var init_generateAssets = __esm({
 });
 
 // src/routes/assetsGenerate/getAssetPromptTemplates.ts
-var import_express27, router27, getAssetPromptTemplates_default;
+var import_express30, router30, getAssetPromptTemplates_default;
 var init_getAssetPromptTemplates = __esm({
   "src/routes/assetsGenerate/getAssetPromptTemplates.ts"() {
     "use strict";
-    import_express27 = __toESM(require_express2());
+    import_express30 = __toESM(require_express2());
     init_responseFormat();
     init_assetPromptTemplateStore();
-    router27 = import_express27.default.Router();
-    getAssetPromptTemplates_default = router27.post("/", async (_req, res) => {
+    router30 = import_express30.default.Router();
+    getAssetPromptTemplates_default = router30.post("/", async (_req, res) => {
       const data = await getAssetInferenceTemplates();
       res.status(200).send(success3(data));
     });
@@ -240518,19 +240847,19 @@ function findItemByName2(items, name28, type) {
     (item) => (!type || item.type === type) && item.name === name28
   );
 }
-var import_express28, router28, polishAssetsPrompt_default;
+var import_express31, router31, polishAssetsPrompt_default;
 var init_polishAssetsPrompt = __esm({
   "src/routes/assetsGenerate/polishAssetsPrompt.ts"() {
     "use strict";
-    import_express28 = __toESM(require_express2());
+    import_express31 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
     init_imagePrompt();
     init_assetInferenceTemplate();
-    router28 = import_express28.default.Router();
-    polishAssetsPrompt_default = router28.post(
+    router31 = import_express31.default.Router();
+    polishAssetsPrompt_default = router31.post(
       "/",
       validateFields({
         assetsId: number2(),
@@ -240712,11 +241041,11 @@ function renderTemplate(source, asset) {
   ].join("\n");
   return source.replace(/\{\{(?:输入文本|文本|测试文本|输入内容|提示词)\}\}/g, input).replace(/\{\{名称\}\}/g, name28).replace(/\{\{类型\}\}/g, type).replace(/\{\{描述\}\}/g, describe4).replace(/\{\{当前提示词\}\}/g, asset.prompt || "\u65E0");
 }
-var import_express29, router29, reasonAssetPrompt_default;
+var import_express32, router32, reasonAssetPrompt_default;
 var init_reasonAssetPrompt = __esm({
   "src/routes/assetsGenerate/reasonAssetPrompt.ts"() {
     "use strict";
-    import_express29 = __toESM(require_express2());
+    import_express32 = __toESM(require_express2());
     init_zod();
     init_utils3();
     init_responseFormat();
@@ -240724,8 +241053,8 @@ var init_reasonAssetPrompt = __esm({
     init_stylePromptReasoning();
     init_imagePrompt();
     init_assetInferenceTemplate();
-    router29 = import_express29.default.Router();
-    reasonAssetPrompt_default = router29.post(
+    router32 = import_express32.default.Router();
+    reasonAssetPrompt_default = router32.post(
       "/",
       validateFields({
         projectId: external_exports.number(),
@@ -240847,18 +241176,18 @@ var init_reasonAssetPrompt = __esm({
 });
 
 // src/routes/assetsGenerate/saveAssetPromptTemplate.ts
-var import_express30, router30, saveAssetPromptTemplate_default;
+var import_express33, router33, saveAssetPromptTemplate_default;
 var init_saveAssetPromptTemplate = __esm({
   "src/routes/assetsGenerate/saveAssetPromptTemplate.ts"() {
     "use strict";
-    import_express30 = __toESM(require_express2());
+    import_express33 = __toESM(require_express2());
     init_zod();
     init_responseFormat();
     init_middleware();
     init_assetInferenceTemplate();
     init_assetPromptTemplateStore();
-    router30 = import_express30.default.Router();
-    saveAssetPromptTemplate_default = router30.post(
+    router33 = import_express33.default.Router();
+    saveAssetPromptTemplate_default = router33.post(
       "/",
       validateFields({ data: external_exports.union([external_exports.string(), external_exports.record(external_exports.string(), external_exports.any())]) }),
       async (req, res) => {
@@ -240872,17 +241201,17 @@ var init_saveAssetPromptTemplate = __esm({
 });
 
 // src/routes/cornerScape/getAllAssets.ts
-var import_express31, router31, getAllAssets_default;
+var import_express34, router34, getAllAssets_default;
 var init_getAllAssets = __esm({
   "src/routes/cornerScape/getAllAssets.ts"() {
     "use strict";
-    import_express31 = __toESM(require_express2());
+    import_express34 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router31 = import_express31.default.Router();
-    getAllAssets_default = router31.post(
+    router34 = import_express34.default.Router();
+    getAllAssets_default = router34.post(
       "/",
       validateFields({
         projectId: external_exports.number(),
@@ -240952,17 +241281,17 @@ var init_getAllAssets = __esm({
 });
 
 // src/routes/general/generalStatistics.ts
-var import_express32, router32, generalStatistics_default;
+var import_express35, router35, generalStatistics_default;
 var init_generalStatistics = __esm({
   "src/routes/general/generalStatistics.ts"() {
     "use strict";
-    import_express32 = __toESM(require_express2());
+    import_express35 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router32 = import_express32.default.Router();
-    generalStatistics_default = router32.post(
+    router35 = import_express35.default.Router();
+    generalStatistics_default = router35.post(
       "/",
       validateFields({
         projectId: external_exports.number()
@@ -240988,17 +241317,17 @@ var init_generalStatistics = __esm({
 });
 
 // src/routes/general/getSingleProject.ts
-var import_express33, router33, getSingleProject_default;
+var import_express36, router36, getSingleProject_default;
 var init_getSingleProject = __esm({
   "src/routes/general/getSingleProject.ts"() {
     "use strict";
-    import_express33 = __toESM(require_express2());
+    import_express36 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router33 = import_express33.default.Router();
-    getSingleProject_default = router33.post(
+    router36 = import_express36.default.Router();
+    getSingleProject_default = router36.post(
       "/",
       validateFields({
         id: external_exports.number()
@@ -241013,17 +241342,17 @@ var init_getSingleProject = __esm({
 });
 
 // src/routes/general/updateProject.ts
-var import_express34, router34, updateProject_default;
+var import_express37, router37, updateProject_default;
 var init_updateProject = __esm({
   "src/routes/general/updateProject.ts"() {
     "use strict";
-    import_express34 = __toESM(require_express2());
+    import_express37 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router34 = import_express34.default.Router();
-    updateProject_default = router34.post(
+    router37 = import_express37.default.Router();
+    updateProject_default = router37.post(
       "/",
       validateFields({
         id: external_exports.number(),
@@ -241058,19 +241387,19 @@ function setToken(payload, expiresIn, secret) {
   }
   return import_jsonwebtoken3.default.sign(payload, secret, { expiresIn });
 }
-var import_express35, import_jsonwebtoken3, router35, login_default;
+var import_express38, import_jsonwebtoken3, router38, login_default;
 var init_login = __esm({
   "src/routes/login/login.ts"() {
     "use strict";
-    import_express35 = __toESM(require_express2());
+    import_express38 = __toESM(require_express2());
     init_utils3();
     import_jsonwebtoken3 = __toESM(require_jsonwebtoken());
     init_responseFormat();
     init_middleware();
     init_zod();
     init_password();
-    router35 = import_express35.default.Router();
-    login_default = router35.post(
+    router38 = import_express38.default.Router();
+    login_default = router38.post(
       "/",
       validateFields({
         username: external_exports.string(),
@@ -241105,18 +241434,18 @@ var init_login = __esm({
 });
 
 // src/routes/login/register.ts
-var import_express36, router36, register_default;
+var import_express39, router39, register_default;
 var init_register = __esm({
   "src/routes/login/register.ts"() {
     "use strict";
-    import_express36 = __toESM(require_express2());
+    import_express39 = __toESM(require_express2());
     init_utils3();
     init_responseFormat();
     init_middleware();
     init_password();
     init_zod();
-    router36 = import_express36.default.Router();
-    register_default = router36.post(
+    router39 = import_express39.default.Router();
+    register_default = router39.post(
       "/",
       validateFields({ username: external_exports.string().trim().min(2).max(50), password: external_exports.string().min(8).max(200) }),
       async (req, res) => {
@@ -241133,18 +241462,18 @@ var init_register = __esm({
 });
 
 // src/routes/modelSelect/getModelDetail.ts
-var import_express37, router37, getModelDetail_default;
+var import_express40, router40, getModelDetail_default;
 var init_getModelDetail = __esm({
   "src/routes/modelSelect/getModelDetail.ts"() {
     "use strict";
-    import_express37 = __toESM(require_express2());
+    import_express40 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
     init_modelRef();
-    router37 = import_express37.default.Router();
-    getModelDetail_default = router37.post(
+    router40 = import_express40.default.Router();
+    getModelDetail_default = router40.post(
       "/",
       validateFields({
         modelId: external_exports.string()
@@ -241165,17 +241494,17 @@ var init_getModelDetail = __esm({
 });
 
 // src/routes/modelSelect/getModelList.ts
-var import_express38, router38, getModelList_default;
+var import_express41, router41, getModelList_default;
 var init_getModelList = __esm({
   "src/routes/modelSelect/getModelList.ts"() {
     "use strict";
-    import_express38 = __toESM(require_express2());
+    import_express41 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router38 = import_express38.default.Router();
-    getModelList_default = router38.post(
+    router41 = import_express41.default.Router();
+    getModelList_default = router41.post(
       "/",
       validateFields({
         type: external_exports.enum(["text", "image", "video", "all"])
@@ -241204,17 +241533,17 @@ var init_getModelList = __esm({
 });
 
 // src/routes/novel/addNovel.ts
-var import_express39, router39, addNovel_default;
+var import_express42, router42, addNovel_default;
 var init_addNovel = __esm({
   "src/routes/novel/addNovel.ts"() {
     "use strict";
-    import_express39 = __toESM(require_express2());
+    import_express42 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router39 = import_express39.default.Router();
-    addNovel_default = router39.post(
+    router42 = import_express42.default.Router();
+    addNovel_default = router42.post(
       "/",
       validateFields({
         projectId: external_exports.number(),
@@ -241260,17 +241589,17 @@ var init_addNovel = __esm({
 });
 
 // src/routes/novel/batchDeleteNovel.ts
-var import_express40, router40, batchDeleteNovel_default;
+var import_express43, router43, batchDeleteNovel_default;
 var init_batchDeleteNovel = __esm({
   "src/routes/novel/batchDeleteNovel.ts"() {
     "use strict";
-    import_express40 = __toESM(require_express2());
+    import_express43 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router40 = import_express40.default.Router();
-    batchDeleteNovel_default = router40.post(
+    router43 = import_express43.default.Router();
+    batchDeleteNovel_default = router43.post(
       "/",
       validateFields({
         ids: external_exports.array(external_exports.number())
@@ -241292,17 +241621,17 @@ var init_batchDeleteNovel = __esm({
 });
 
 // src/routes/novel/delNovel.ts
-var import_express41, router41, delNovel_default;
+var import_express44, router44, delNovel_default;
 var init_delNovel = __esm({
   "src/routes/novel/delNovel.ts"() {
     "use strict";
-    import_express41 = __toESM(require_express2());
+    import_express44 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router41 = import_express41.default.Router();
-    delNovel_default = router41.post(
+    router44 = import_express44.default.Router();
+    delNovel_default = router44.post(
       "/",
       validateFields({
         id: external_exports.number()
@@ -241321,17 +241650,17 @@ var init_delNovel = __esm({
 });
 
 // src/routes/novel/event/batchDeleteEvent.ts
-var import_express42, router42, batchDeleteEvent_default;
+var import_express45, router45, batchDeleteEvent_default;
 var init_batchDeleteEvent = __esm({
   "src/routes/novel/event/batchDeleteEvent.ts"() {
     "use strict";
-    import_express42 = __toESM(require_express2());
+    import_express45 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router42 = import_express42.default.Router();
-    batchDeleteEvent_default = router42.post(
+    router45 = import_express45.default.Router();
+    batchDeleteEvent_default = router45.post(
       "/",
       validateFields({
         ids: external_exports.array(external_exports.number())
@@ -241347,17 +241676,17 @@ var init_batchDeleteEvent = __esm({
 });
 
 // src/routes/novel/event/deletEvent.ts
-var import_express43, router43, deletEvent_default;
+var import_express46, router46, deletEvent_default;
 var init_deletEvent = __esm({
   "src/routes/novel/event/deletEvent.ts"() {
     "use strict";
-    import_express43 = __toESM(require_express2());
+    import_express46 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router43 = import_express43.default.Router();
-    deletEvent_default = router43.post(
+    router46 = import_express46.default.Router();
+    deletEvent_default = router46.post(
       "/",
       validateFields({
         id: external_exports.number()
@@ -241373,17 +241702,17 @@ var init_deletEvent = __esm({
 });
 
 // src/routes/novel/event/generateEvents.ts
-var import_express44, router44, generateEvents_default;
+var import_express47, router47, generateEvents_default;
 var init_generateEvents = __esm({
   "src/routes/novel/event/generateEvents.ts"() {
     "use strict";
-    import_express44 = __toESM(require_express2());
+    import_express47 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router44 = import_express44.default.Router();
-    generateEvents_default = router44.post(
+    router47 = import_express47.default.Router();
+    generateEvents_default = router47.post(
       "/",
       validateFields({
         projectId: external_exports.number(),
@@ -241411,18 +241740,18 @@ var init_generateEvents = __esm({
 });
 
 // src/routes/novel/event/getEvent.ts
-var import_express45, router45, getEvent_default;
+var import_express48, router48, getEvent_default;
 var init_getEvent = __esm({
   "src/routes/novel/event/getEvent.ts"() {
     "use strict";
-    import_express45 = __toESM(require_express2());
+    import_express48 = __toESM(require_express2());
     init_utils3();
     init_db();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router45 = import_express45.default.Router();
-    getEvent_default = router45.post(
+    router48 = import_express48.default.Router();
+    getEvent_default = router48.post(
       "/",
       validateFields({
         projectId: external_exports.number(),
@@ -241456,17 +241785,17 @@ var init_getEvent = __esm({
 });
 
 // src/routes/novel/getNovel.ts
-var import_express46, router46, getNovel_default;
+var import_express49, router49, getNovel_default;
 var init_getNovel = __esm({
   "src/routes/novel/getNovel.ts"() {
     "use strict";
-    import_express46 = __toESM(require_express2());
+    import_express49 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router46 = import_express46.default.Router();
-    getNovel_default = router46.post(
+    router49 = import_express49.default.Router();
+    getNovel_default = router49.post(
       "/",
       validateFields({
         projectId: external_exports.number(),
@@ -241494,17 +241823,17 @@ var init_getNovel = __esm({
 });
 
 // src/routes/novel/getNovelData.ts
-var import_express47, router47, getNovelData_default;
+var import_express50, router50, getNovelData_default;
 var init_getNovelData = __esm({
   "src/routes/novel/getNovelData.ts"() {
     "use strict";
-    import_express47 = __toESM(require_express2());
+    import_express50 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router47 = import_express47.default.Router();
-    getNovelData_default = router47.post(
+    router50 = import_express50.default.Router();
+    getNovelData_default = router50.post(
       "/",
       validateFields({
         projectId: external_exports.number()
@@ -241519,17 +241848,17 @@ var init_getNovelData = __esm({
 });
 
 // src/routes/novel/getNovelEventState.ts
-var import_express48, router48, getNovelEventState_default;
+var import_express51, router51, getNovelEventState_default;
 var init_getNovelEventState = __esm({
   "src/routes/novel/getNovelEventState.ts"() {
     "use strict";
-    import_express48 = __toESM(require_express2());
+    import_express51 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router48 = import_express48.default.Router();
-    getNovelEventState_default = router48.post(
+    router51 = import_express51.default.Router();
+    getNovelEventState_default = router51.post(
       "/",
       validateFields({
         ids: external_exports.array(external_exports.number())
@@ -241544,17 +241873,17 @@ var init_getNovelEventState = __esm({
 });
 
 // src/routes/novel/getNovelIndex.ts
-var import_express49, router49, getNovelIndex_default;
+var import_express52, router52, getNovelIndex_default;
 var init_getNovelIndex = __esm({
   "src/routes/novel/getNovelIndex.ts"() {
     "use strict";
-    import_express49 = __toESM(require_express2());
+    import_express52 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router49 = import_express49.default.Router();
-    getNovelIndex_default = router49.post(
+    router52 = import_express52.default.Router();
+    getNovelIndex_default = router52.post(
       "/",
       validateFields({
         projectId: external_exports.number()
@@ -241569,17 +241898,17 @@ var init_getNovelIndex = __esm({
 });
 
 // src/routes/novel/updateNovel.ts
-var import_express50, router50, updateNovel_default;
+var import_express53, router53, updateNovel_default;
 var init_updateNovel = __esm({
   "src/routes/novel/updateNovel.ts"() {
     "use strict";
-    import_express50 = __toESM(require_express2());
+    import_express53 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router50 = import_express50.default.Router();
-    updateNovel_default = router50.post(
+    router53 = import_express53.default.Router();
+    updateNovel_default = router53.post(
       "/",
       validateFields({
         id: external_exports.number(),
@@ -241605,16 +241934,16 @@ var init_updateNovel = __esm({
 });
 
 // src/routes/other/deleteAllData.ts
-var import_express51, router51, deleteAllData_default;
+var import_express54, router54, deleteAllData_default;
 var init_deleteAllData = __esm({
   "src/routes/other/deleteAllData.ts"() {
     "use strict";
-    import_express51 = __toESM(require_express2());
+    import_express54 = __toESM(require_express2());
     init_initDB();
     init_db();
     init_responseFormat();
-    router51 = import_express51.default.Router();
-    deleteAllData_default = router51.post(
+    router54 = import_express54.default.Router();
+    deleteAllData_default = router54.post(
       "/",
       async (req, res) => {
         await initDB_default(db, true);
@@ -241625,15 +241954,15 @@ var init_deleteAllData = __esm({
 });
 
 // src/routes/other/getVersion.ts
-var import_express52, router52, getVersion_default;
+var import_express55, router55, getVersion_default;
 var init_getVersion = __esm({
   "src/routes/other/getVersion.ts"() {
     "use strict";
-    import_express52 = __toESM(require_express2());
+    import_express55 = __toESM(require_express2());
     init_responseFormat();
     init_writeVersion();
-    router52 = import_express52.default.Router();
-    getVersion_default = router52.get("/", async (req, res) => {
+    router55 = import_express55.default.Router();
+    getVersion_default = router55.get("/", async (req, res) => {
       const version3 = await getVersion();
       res.status(200).send(success3(version3));
     });
@@ -241641,17 +241970,17 @@ var init_getVersion = __esm({
 });
 
 // src/routes/production/getFlowData.ts
-var import_express53, router53, getFlowData_default;
+var import_express56, router56, getFlowData_default;
 var init_getFlowData = __esm({
   "src/routes/production/getFlowData.ts"() {
     "use strict";
-    import_express53 = __toESM(require_express2());
+    import_express56 = __toESM(require_express2());
     init_zod();
     init_middleware();
     init_responseFormat();
     init_productionFlow();
-    router53 = import_express53.default.Router();
-    getFlowData_default = router53.post(
+    router56 = import_express56.default.Router();
+    getFlowData_default = router56.post(
       "/",
       validateFields({
         projectId: external_exports.number(),
@@ -241667,17 +241996,17 @@ var init_getFlowData = __esm({
 });
 
 // src/routes/production/saveFlowData.ts
-var import_express54, router54, saveFlowData_default;
+var import_express57, router57, saveFlowData_default;
 var init_saveFlowData = __esm({
   "src/routes/production/saveFlowData.ts"() {
     "use strict";
-    import_express54 = __toESM(require_express2());
+    import_express57 = __toESM(require_express2());
     init_zod();
     init_middleware();
     init_responseFormat();
     init_productionFlow();
-    router54 = import_express54.default.Router();
-    saveFlowData_default = router54.post(
+    router57 = import_express57.default.Router();
+    saveFlowData_default = router57.post(
       "/",
       validateFields({
         projectId: external_exports.number(),
@@ -241694,17 +242023,17 @@ var init_saveFlowData = __esm({
 });
 
 // src/routes/production/workbench/addTrack.ts
-var import_express55, router55, addTrack_default;
+var import_express58, router58, addTrack_default;
 var init_addTrack = __esm({
   "src/routes/production/workbench/addTrack.ts"() {
     "use strict";
-    import_express55 = __toESM(require_express2());
+    import_express58 = __toESM(require_express2());
     init_zod();
     init_utils3();
     init_middleware();
     init_responseFormat();
-    router55 = import_express55.default.Router();
-    addTrack_default = router55.post(
+    router58 = import_express58.default.Router();
+    addTrack_default = router58.post(
       "/",
       validateFields({ projectId: external_exports.number(), scriptId: external_exports.number() }),
       async (req, res) => {
@@ -241719,17 +242048,17 @@ var init_addTrack = __esm({
 });
 
 // src/routes/production/workbench/deleteTrack.ts
-var import_express56, router56, deleteTrack_default;
+var import_express59, router59, deleteTrack_default;
 var init_deleteTrack = __esm({
   "src/routes/production/workbench/deleteTrack.ts"() {
     "use strict";
-    import_express56 = __toESM(require_express2());
+    import_express59 = __toESM(require_express2());
     init_zod();
     init_utils3();
     init_middleware();
     init_responseFormat();
-    router56 = import_express56.default.Router();
-    deleteTrack_default = router56.post("/", validateFields({ id: external_exports.number() }), async (req, res) => {
+    router59 = import_express59.default.Router();
+    deleteTrack_default = router59.post("/", validateFields({ id: external_exports.number() }), async (req, res) => {
       const linked = await utils_default.db("o_storyboard").where({ trackId: req.body.id }).first();
       if (linked) throw new Error("\u5206\u955C\u7247\u6BB5\u5BF9\u5E94\u7684\u4E3B\u8F68\u9053\u4E0D\u80FD\u5220\u9664");
       const videos = await utils_default.db("o_video").where({ videoTrackId: req.body.id });
@@ -241748,17 +242077,17 @@ var init_deleteTrack = __esm({
 });
 
 // src/routes/production/workbench/delVideo.ts
-var import_express57, router57, delVideo_default;
+var import_express60, router60, delVideo_default;
 var init_delVideo = __esm({
   "src/routes/production/workbench/delVideo.ts"() {
     "use strict";
-    import_express57 = __toESM(require_express2());
+    import_express60 = __toESM(require_express2());
     init_zod();
     init_utils3();
     init_middleware();
     init_responseFormat();
-    router57 = import_express57.default.Router();
-    delVideo_default = router57.post("/", validateFields({ id: external_exports.number() }), async (req, res) => {
+    router60 = import_express60.default.Router();
+    delVideo_default = router60.post("/", validateFields({ id: external_exports.number() }), async (req, res) => {
       const video = await utils_default.db("o_video").where({ id: req.body.id }).first();
       if (video?.filePath) {
         try {
@@ -242816,11 +243145,11 @@ function normalizeVideoMode(mode) {
 function hashPromptTemplate(value) {
   return (0, import_node_crypto6.createHash)("sha256").update(String(value || "")).digest("hex").slice(0, 16);
 }
-var import_express58, import_node_crypto6, router58, generateVideo_default;
+var import_express61, import_node_crypto6, router61, generateVideo_default;
 var init_generateVideo = __esm({
   "src/routes/production/workbench/generateVideo.ts"() {
     "use strict";
-    import_express58 = __toESM(require_express2());
+    import_express61 = __toESM(require_express2());
     import_node_crypto6 = require("node:crypto");
     init_zod();
     init_utils3();
@@ -242832,8 +243161,8 @@ var init_generateVideo = __esm({
     init_videoOutputAudit();
     init_videoOutputProbe();
     init_videoPromptMigration();
-    router58 = import_express58.default.Router();
-    generateVideo_default = router58.post(
+    router61 = import_express61.default.Router();
+    generateVideo_default = router61.post(
       "/",
       validateFields({
         projectId: external_exports.number(),
@@ -243767,11 +244096,11 @@ function buildSceneInput(tasks, projectConfig, narrativeContext = {}, creativeVa
     }
   );
 }
-var import_express59, import_node_crypto7, router59, DEFAULT_VIDEO_PROMPT_TIMEOUT_MS, MAX_VIDEO_PROMPT_TIMEOUT_MS, GeneratedPromptSchema, generateVideoPrompt_default;
+var import_express62, import_node_crypto7, router62, DEFAULT_VIDEO_PROMPT_TIMEOUT_MS, MAX_VIDEO_PROMPT_TIMEOUT_MS, GeneratedPromptSchema, generateVideoPrompt_default;
 var init_generateVideoPrompt = __esm({
   "src/routes/production/workbench/generateVideoPrompt.ts"() {
     "use strict";
-    import_express59 = __toESM(require_express2());
+    import_express62 = __toESM(require_express2());
     import_node_crypto7 = require("node:crypto");
     init_dist22();
     init_zod();
@@ -243786,14 +244115,14 @@ var init_generateVideoPrompt = __esm({
     init_videoPromptContract();
     init_videoPromptVariation();
     init_contentSafety();
-    router59 = import_express59.default.Router();
+    router62 = import_express62.default.Router();
     DEFAULT_VIDEO_PROMPT_TIMEOUT_MS = 12e4;
     MAX_VIDEO_PROMPT_TIMEOUT_MS = 6e5;
     GeneratedPromptSchema = external_exports.object({
       trackId: external_exports.number(),
       prompt: external_exports.string().min(1)
     });
-    generateVideoPrompt_default = router59.post(
+    generateVideoPrompt_default = router62.post(
       "/",
       validateFields({
         projectId: external_exports.number(),
@@ -244100,17 +244429,17 @@ ${contentSafety}
 });
 
 // src/routes/production/workbench/getGenerateData.ts
-var import_express60, router60, getGenerateData_default;
+var import_express63, router63, getGenerateData_default;
 var init_getGenerateData = __esm({
   "src/routes/production/workbench/getGenerateData.ts"() {
     "use strict";
-    import_express60 = __toESM(require_express2());
+    import_express63 = __toESM(require_express2());
     init_zod();
     init_middleware();
     init_responseFormat();
     init_videoTaskData();
-    router60 = import_express60.default.Router();
-    getGenerateData_default = router60.post(
+    router63 = import_express63.default.Router();
+    getGenerateData_default = router63.post(
       "/",
       validateFields({
         projectId: external_exports.number(),
@@ -244130,18 +244459,18 @@ function fileUrl2(filePath) {
   if (/^https?:\/\//i.test(filePath)) return filePath;
   return `/oss/${String(filePath).replace(/^[/\\]+/, "").replace(/\\/g, "/")}`;
 }
-var import_express61, router61, getVideoList_default;
+var import_express64, router64, getVideoList_default;
 var init_getVideoList = __esm({
   "src/routes/production/workbench/getVideoList.ts"() {
     "use strict";
-    import_express61 = __toESM(require_express2());
+    import_express64 = __toESM(require_express2());
     init_zod();
     init_utils3();
     init_middleware();
     init_responseFormat();
     init_videoTaskRecovery();
-    router61 = import_express61.default.Router();
-    getVideoList_default = router61.post(
+    router64 = import_express64.default.Router();
+    getVideoList_default = router64.post(
       "/",
       validateFields({
         projectId: external_exports.number(),
@@ -244181,17 +244510,17 @@ var init_getVideoList = __esm({
 });
 
 // src/routes/production/workbench/selectVideo.ts
-var import_express62, router62, selectVideo_default;
+var import_express65, router65, selectVideo_default;
 var init_selectVideo = __esm({
   "src/routes/production/workbench/selectVideo.ts"() {
     "use strict";
-    import_express62 = __toESM(require_express2());
+    import_express65 = __toESM(require_express2());
     init_zod();
     init_utils3();
     init_middleware();
     init_responseFormat();
-    router62 = import_express62.default.Router();
-    selectVideo_default = router62.post(
+    router65 = import_express65.default.Router();
+    selectVideo_default = router65.post(
       "/",
       validateFields({ projectId: external_exports.number(), scriptId: external_exports.number(), videoId: external_exports.number(), trackId: external_exports.number() }),
       async (req, res) => {
@@ -244206,19 +244535,19 @@ var init_selectVideo = __esm({
 });
 
 // src/routes/project/addDirectorManual.ts
-var import_express63, import_fs7, import_path10, router63, addDirectorManual_default;
+var import_express66, import_fs7, import_path10, router66, addDirectorManual_default;
 var init_addDirectorManual = __esm({
   "src/routes/project/addDirectorManual.ts"() {
     "use strict";
-    import_express63 = __toESM(require_express2());
+    import_express66 = __toESM(require_express2());
     init_utils3();
     init_responseFormat();
     import_fs7 = __toESM(require("fs"));
     import_path10 = __toESM(require("path"));
     init_middleware();
     init_zod();
-    router63 = import_express63.default.Router();
-    addDirectorManual_default = router63.post(
+    router66 = import_express66.default.Router();
+    addDirectorManual_default = router66.post(
       "/",
       validateFields({
         name: external_exports.string(),
@@ -244296,18 +244625,19 @@ var init_addDirectorManual = __esm({
 });
 
 // src/routes/project/addProject.ts
-var import_express64, router64, addProject_default;
+var import_express67, router67, addProject_default;
 var init_addProject = __esm({
   "src/routes/project/addProject.ts"() {
     "use strict";
-    import_express64 = __toESM(require_express2());
+    import_express67 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
     init_imagePromptDefaults();
-    router64 = import_express64.default.Router();
-    addProject_default = router64.post(
+    init_projectGlobalContext();
+    router67 = import_express67.default.Router();
+    addProject_default = router67.post(
       "/",
       validateFields({
         projectType: external_exports.string(),
@@ -244321,47 +244651,77 @@ var init_addProject = __esm({
         imageModel: external_exports.string(),
         videoModel: external_exports.string(),
         imageQuality: external_exports.string(),
-        mode: external_exports.string()
+        mode: external_exports.string(),
+        projectGlobalContext: ProjectGlobalContextSchema.optional()
       }),
       async (req, res) => {
-        const { projectType, name: name28, intro, type, directorManual, artStyle, negativePrompt, videoRatio, imageModel, videoModel, imageQuality, mode } = req.body;
-        await utils_default.db("o_project").insert({
-          id: Date.now(),
+        const {
           projectType,
           name: name28,
           intro,
           type,
-          artStyle,
-          negativePrompt: String(negativePrompt ?? DEFAULT_IMAGE_NEGATIVE_PROMPT).trim(),
-          videoRatio,
           directorManual,
-          userId: req.authUser.id,
+          artStyle,
+          negativePrompt,
+          videoRatio,
           imageModel,
           videoModel,
-          createTime: Date.now(),
           imageQuality,
-          mode
+          mode,
+          projectGlobalContext
+        } = req.body;
+        const projectId = Date.now();
+        const normalizedGlobalContext = ProjectGlobalContextSchema.parse(projectGlobalContext ?? EMPTY_PROJECT_GLOBAL_CONTEXT);
+        await utils_default.db.transaction(async (trx) => {
+          await trx("o_project").insert({
+            id: projectId,
+            projectType,
+            name: name28,
+            intro,
+            type,
+            artStyle,
+            negativePrompt: String(negativePrompt ?? DEFAULT_IMAGE_NEGATIVE_PROMPT).trim(),
+            videoRatio,
+            directorManual,
+            userId: req.authUser.id,
+            imageModel,
+            videoModel,
+            createTime: projectId,
+            imageQuality,
+            mode
+          });
+          await trx("o_agentWorkData").insert({
+            projectId,
+            key: "scriptAgent",
+            data: JSON.stringify({
+              storySkeleton: "",
+              adaptationStrategy: "",
+              projectGlobalContext: normalizedGlobalContext
+            }),
+            createTime: projectId,
+            updateTime: projectId
+          });
         });
-        res.status(200).send(success3({ message: "\u65B0\u589E\u9879\u76EE\u6210\u529F" }));
+        res.status(200).send(success3({ message: "\u65B0\u589E\u9879\u76EE\u6210\u529F", projectId }));
       }
     );
   }
 });
 
 // src/routes/project/addVisualManual.ts
-var import_express65, import_fs8, import_path11, router65, addVisualManual_default;
+var import_express68, import_fs8, import_path11, router68, addVisualManual_default;
 var init_addVisualManual = __esm({
   "src/routes/project/addVisualManual.ts"() {
     "use strict";
-    import_express65 = __toESM(require_express2());
+    import_express68 = __toESM(require_express2());
     init_utils3();
     init_responseFormat();
     import_fs8 = __toESM(require("fs"));
     import_path11 = __toESM(require("path"));
     init_middleware();
     init_zod();
-    router65 = import_express65.default.Router();
-    addVisualManual_default = router65.post(
+    router68 = import_express68.default.Router();
+    addVisualManual_default = router68.post(
       "/",
       validateFields({
         name: external_exports.string(),
@@ -244449,18 +244809,18 @@ var init_addVisualManual = __esm({
 });
 
 // src/routes/project/deleteDirectorManual.ts
-var import_express66, import_promises4, router66, deleteDirectorManual_default;
+var import_express69, import_promises4, router69, deleteDirectorManual_default;
 var init_deleteDirectorManual = __esm({
   "src/routes/project/deleteDirectorManual.ts"() {
     "use strict";
-    import_express66 = __toESM(require_express2());
+    import_express69 = __toESM(require_express2());
     init_utils3();
     import_promises4 = __toESM(require("node:fs/promises"));
     init_zod();
     init_responseFormat();
     init_middleware();
-    router66 = import_express66.default.Router();
-    deleteDirectorManual_default = router66.post(
+    router69 = import_express69.default.Router();
+    deleteDirectorManual_default = router69.post(
       "/",
       validateFields({
         name: external_exports.string()
@@ -244492,18 +244852,18 @@ var init_deleteDirectorManual = __esm({
 });
 
 // src/routes/project/deleteVisualManual.ts
-var import_express67, import_promises5, router67, deleteVisualManual_default;
+var import_express70, import_promises5, router70, deleteVisualManual_default;
 var init_deleteVisualManual = __esm({
   "src/routes/project/deleteVisualManual.ts"() {
     "use strict";
-    import_express67 = __toESM(require_express2());
+    import_express70 = __toESM(require_express2());
     init_utils3();
     import_promises5 = __toESM(require("node:fs/promises"));
     init_zod();
     init_responseFormat();
     init_middleware();
-    router67 = import_express67.default.Router();
-    deleteVisualManual_default = router67.post(
+    router70 = import_express70.default.Router();
+    deleteVisualManual_default = router70.post(
       "/",
       validateFields({
         name: external_exports.string()
@@ -244535,17 +244895,17 @@ var init_deleteVisualManual = __esm({
 });
 
 // src/routes/project/delProject.ts
-var import_express68, router68, delProject_default;
+var import_express71, router71, delProject_default;
 var init_delProject = __esm({
   "src/routes/project/delProject.ts"() {
     "use strict";
-    import_express68 = __toESM(require_express2());
+    import_express71 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router68 = import_express68.default.Router();
-    delProject_default = router68.post(
+    router71 = import_express71.default.Router();
+    delProject_default = router71.post(
       "/",
       validateFields({
         id: external_exports.number()
@@ -244597,19 +244957,19 @@ var init_delProject = __esm({
 });
 
 // src/routes/project/editDirectorlManual.ts
-var import_express69, import_fs9, import_path12, router69, editDirectorlManual_default;
+var import_express72, import_fs9, import_path12, router72, editDirectorlManual_default;
 var init_editDirectorlManual = __esm({
   "src/routes/project/editDirectorlManual.ts"() {
     "use strict";
-    import_express69 = __toESM(require_express2());
+    import_express72 = __toESM(require_express2());
     init_utils3();
     init_responseFormat();
     import_fs9 = __toESM(require("fs"));
     import_path12 = __toESM(require("path"));
     init_middleware();
     init_zod();
-    router69 = import_express69.default.Router();
-    editDirectorlManual_default = router69.post(
+    router72 = import_express72.default.Router();
+    editDirectorlManual_default = router72.post(
       "/",
       validateFields({
         name: external_exports.string(),
@@ -244689,17 +245049,17 @@ ${item.data}` : item.data;
 });
 
 // src/routes/project/editProject.ts
-var import_express70, router70, editProject_default;
+var import_express73, router73, editProject_default;
 var init_editProject = __esm({
   "src/routes/project/editProject.ts"() {
     "use strict";
-    import_express70 = __toESM(require_express2());
+    import_express73 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router70 = import_express70.default.Router();
-    editProject_default = router70.post(
+    router73 = import_express73.default.Router();
+    editProject_default = router73.post(
       "/",
       validateFields({
         id: external_exports.number(),
@@ -244739,19 +245099,19 @@ var init_editProject = __esm({
 });
 
 // src/routes/project/editVisualManual.ts
-var import_express71, import_fs10, import_path13, router71, editVisualManual_default;
+var import_express74, import_fs10, import_path13, router74, editVisualManual_default;
 var init_editVisualManual = __esm({
   "src/routes/project/editVisualManual.ts"() {
     "use strict";
-    import_express71 = __toESM(require_express2());
+    import_express74 = __toESM(require_express2());
     init_utils3();
     init_responseFormat();
     import_fs10 = __toESM(require("fs"));
     import_path13 = __toESM(require("path"));
     init_middleware();
     init_zod();
-    router71 = import_express71.default.Router();
-    editVisualManual_default = router71.post(
+    router74 = import_express74.default.Router();
+    editVisualManual_default = router74.post(
       "/",
       validateFields({
         name: external_exports.string(),
@@ -244841,15 +245201,15 @@ ${item.data}` : item.data;
 });
 
 // src/routes/project/getProject.ts
-var import_express72, router72, getProject_default;
+var import_express75, router75, getProject_default;
 var init_getProject = __esm({
   "src/routes/project/getProject.ts"() {
     "use strict";
-    import_express72 = __toESM(require_express2());
+    import_express75 = __toESM(require_express2());
     init_utils3();
     init_responseFormat();
-    router72 = import_express72.default.Router();
-    getProject_default = router72.post("/", async (req, res) => {
+    router75 = import_express75.default.Router();
+    getProject_default = router75.post("/", async (req, res) => {
       const data = await utils_default.db("o_project").where({ userId: req.authUser.id }).select("*");
       res.status(200).send(success3(data));
     });
@@ -244882,16 +245242,16 @@ async function readAllImages(imagesDir) {
     return [];
   }
 }
-var import_express73, import_fs11, import_path14, router73, DATA_MAP, getVisualManual_default;
+var import_express76, import_fs11, import_path14, router76, DATA_MAP, getVisualManual_default;
 var init_getVisualManual = __esm({
   "src/routes/project/getVisualManual.ts"() {
     "use strict";
-    import_express73 = __toESM(require_express2());
+    import_express76 = __toESM(require_express2());
     init_utils3();
     init_responseFormat();
     import_fs11 = __toESM(require("fs"));
     import_path14 = __toESM(require("path"));
-    router73 = import_express73.default.Router();
+    router76 = import_express76.default.Router();
     DATA_MAP = [
       { label: "README", value: "README" },
       { label: "\u524D\u7F00", value: "prefix" },
@@ -244919,7 +245279,7 @@ var init_getVisualManual = __esm({
         subDir: "driector_skills"
       }
     ];
-    getVisualManual_default = router73.post("/", async (req, res) => {
+    getVisualManual_default = router76.post("/", async (req, res) => {
       try {
         const artPromptsDir = utils_default.getPath(["skills", "art_skills"]);
         const styleDirs = import_fs11.default.readdirSync(artPromptsDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
@@ -244981,22 +245341,22 @@ async function readAllImages2(imagesDir) {
     return [];
   }
 }
-var import_express74, import_fs12, import_path15, router74, DATA_MAP2, queryDirectorManual_default;
+var import_express77, import_fs12, import_path15, router77, DATA_MAP2, queryDirectorManual_default;
 var init_queryDirectorManual = __esm({
   "src/routes/project/queryDirectorManual.ts"() {
     "use strict";
-    import_express74 = __toESM(require_express2());
+    import_express77 = __toESM(require_express2());
     init_utils3();
     init_responseFormat();
     import_fs12 = __toESM(require("fs"));
     import_path15 = __toESM(require("path"));
-    router74 = import_express74.default.Router();
+    router77 = import_express77.default.Router();
     DATA_MAP2 = [
       { label: "README", value: "README" },
       { label: "\u5BFC\u6F14\u89C4\u5212", value: "director_planning_narrative", subDir: "driector_skills" },
       { label: "\u5206\u955C\u8868", value: "director_storyboard_table_narrative", subDir: "driector_skills" }
     ];
-    queryDirectorManual_default = router74.post("/", async (req, res) => {
+    queryDirectorManual_default = router77.post("/", async (req, res) => {
       try {
         const artPromptsDir = utils_default.getPath(["skills", "story_skills"]);
         const styleDirs = import_fs12.default.readdirSync(artPromptsDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
@@ -245037,17 +245397,17 @@ var init_queryDirectorManual = __esm({
 });
 
 // src/routes/project/updateArtStyle.ts
-var import_express75, router75, updateArtStyle_default;
+var import_express78, router78, updateArtStyle_default;
 var init_updateArtStyle = __esm({
   "src/routes/project/updateArtStyle.ts"() {
     "use strict";
-    import_express75 = __toESM(require_express2());
+    import_express78 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router75 = import_express75.default.Router();
-    updateArtStyle_default = router75.post(
+    router78 = import_express78.default.Router();
+    updateArtStyle_default = router78.post(
       "/",
       validateFields({
         projectId: external_exports.number(),
@@ -245064,19 +245424,19 @@ var init_updateArtStyle = __esm({
 });
 
 // src/routes/project/visualManual.ts
-var import_express76, import_fs13, import_path16, router76, visualManual_default;
+var import_express79, import_fs13, import_path16, router79, visualManual_default;
 var init_visualManual = __esm({
   "src/routes/project/visualManual.ts"() {
     "use strict";
-    import_express76 = __toESM(require_express2());
+    import_express79 = __toESM(require_express2());
     init_zod();
     init_responseFormat();
     init_middleware();
     init_getPath();
     import_fs13 = __toESM(require("fs"));
     import_path16 = __toESM(require("path"));
-    router76 = import_express76.default.Router();
-    visualManual_default = router76.post(
+    router79 = import_express79.default.Router();
+    visualManual_default = router79.post(
       "/",
       validateFields({
         type: external_exports.string()
@@ -245110,17 +245470,17 @@ var init_visualManual = __esm({
 });
 
 // src/routes/script/addScript.ts
-var import_express77, router77, addScript_default;
+var import_express80, router80, addScript_default;
 var init_addScript = __esm({
   "src/routes/script/addScript.ts"() {
     "use strict";
-    import_express77 = __toESM(require_express2());
+    import_express80 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router77 = import_express77.default.Router();
-    addScript_default = router77.post(
+    router80 = import_express80.default.Router();
+    addScript_default = router80.post(
       "/",
       validateFields({
         name: external_exports.string(),
@@ -245157,17 +245517,17 @@ var init_addScript = __esm({
 });
 
 // src/routes/script/batchAddScript.ts
-var import_express78, router78, batchAddScript_default;
+var import_express81, router81, batchAddScript_default;
 var init_batchAddScript = __esm({
   "src/routes/script/batchAddScript.ts"() {
     "use strict";
-    import_express78 = __toESM(require_express2());
+    import_express81 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router78 = import_express78.default.Router();
-    batchAddScript_default = router78.post(
+    router81 = import_express81.default.Router();
+    batchAddScript_default = router81.post(
       "/",
       validateFields({
         data: external_exports.array(
@@ -245197,17 +245557,17 @@ var init_batchAddScript = __esm({
 });
 
 // src/routes/script/delScript.ts
-var import_express79, router79, delScript_default;
+var import_express82, router82, delScript_default;
 var init_delScript = __esm({
   "src/routes/script/delScript.ts"() {
     "use strict";
-    import_express79 = __toESM(require_express2());
+    import_express82 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router79 = import_express79.default.Router();
-    delScript_default = router79.post(
+    router82 = import_express82.default.Router();
+    delScript_default = router82.post(
       "/",
       validateFields({
         ids: external_exports.array(external_exports.number())
@@ -255414,17 +255774,17 @@ var require_compressing = __commonJS({
 });
 
 // src/routes/script/exportScript.ts
-var import_express80, import_compressing, router80, exportScript_default;
+var import_express83, import_compressing, router83, exportScript_default;
 var init_exportScript = __esm({
   "src/routes/script/exportScript.ts"() {
     "use strict";
-    import_express80 = __toESM(require_express2());
+    import_express83 = __toESM(require_express2());
     init_utils3();
     init_zod();
     import_compressing = __toESM(require_compressing());
     init_middleware();
-    router80 = import_express80.default.Router();
-    exportScript_default = router80.post(
+    router83 = import_express83.default.Router();
+    exportScript_default = router83.post(
       "/",
       validateFields({
         id: external_exports.array(external_exports.number())
@@ -255457,17 +255817,17 @@ function chunkArray(arr, groupSize) {
   }
   return groupChunks;
 }
-var import_express81, router81, NewAssetSchema, ExistingAssetRefSchema, AssetSchema, extractAssets_default;
+var import_express84, router84, NewAssetSchema, ExistingAssetRefSchema, AssetSchema, extractAssets_default;
 var init_extractAssets = __esm({
   "src/routes/script/extractAssets.ts"() {
     "use strict";
-    import_express81 = __toESM(require_express2());
+    import_express84 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
     init_dist22();
-    router81 = import_express81.default.Router();
+    router84 = import_express84.default.Router();
     NewAssetSchema = external_exports.object({
       name: external_exports.string().describe("\u8D44\u4EA7\u540D\u79F0,\u4EC5\u4E3A\u540D\u79F0\u4E0D\u505A\u5176\u4ED6\u4EFB\u4F55\u8868\u8FF0"),
       desc: external_exports.string().describe("\u8D44\u4EA7\u63CF\u8FF0"),
@@ -255483,7 +255843,7 @@ var init_extractAssets = __esm({
       desc: external_exports.string().describe("\u8D44\u4EA7\u63CF\u8FF0"),
       type: external_exports.enum(["role", "tool", "scene"]).describe("\u8D44\u4EA7\u7C7B\u578B")
     });
-    extractAssets_default = router81.post(
+    extractAssets_default = router84.post(
       "/",
       validateFields({
         scriptIds: external_exports.array(external_exports.number()),
@@ -255493,10 +255853,18 @@ var init_extractAssets = __esm({
       async (req, res) => {
         const { scriptIds, projectId, groupSize = 5 } = req.body;
         if (!scriptIds.length) return res.status(400).send(error50("\u8BF7\u5148\u9009\u62E9\u5267\u672C"));
-        const scripts = await utils_default.db("o_script").whereIn("id", scriptIds);
+        const scripts = await utils_default.db("o_script").whereIn("id", scriptIds).where("projectId", projectId);
+        if (scripts.length !== new Set(scriptIds).size) return res.status(404).send(error50("\u90E8\u5206\u5267\u672C\u4E0D\u5B58\u5728\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5"));
+        const activeScripts = scripts.filter((script) => script.extractState === 0 || script.extractState === 2);
+        if (activeScripts.length) {
+          return res.status(409).send(error50(`\u4EE5\u4E0B\u5267\u672C\u6B63\u5728\u63D0\u53D6\u8D44\u4EA7\uFF1A${activeScripts.map((script) => script.name || script.id).join("\u3001")}`));
+        }
         const scriptMap = new Map(scripts.map((s) => [s.id, s]));
         await utils_default.db("o_script").whereIn("id", scriptIds).update({
-          extractState: 2
+          extractState: 2,
+          errorReason: null,
+          extractStartedAt: Date.now(),
+          extractFinishedAt: null
         });
         const errors = [];
         let successCount = 0;
@@ -255504,10 +255872,14 @@ var init_extractAssets = __esm({
         async function persistGroupResult(result) {
           if (!result) return;
           const { batchScriptIds, newAssets, existingRefs } = result;
-          if (!newAssets.length && !existingRefs.length) return;
+          const batchScriptIdSet = new Set(batchScriptIds);
           const existingAssets = await utils_default.db("o_assets").where("projectId", projectId).select("id", "name");
           const existingMap = new Map(existingAssets.map((a) => [a.name, a.id]));
-          const toInsert = newAssets.filter((asset) => !existingMap.has(asset.name));
+          const toInsert = Array.from(
+            new Map(
+              newAssets.filter((asset) => asset.scriptIds.some((scriptId) => batchScriptIdSet.has(scriptId)) && !existingMap.has(asset.name)).map((asset) => [asset.name, asset])
+            ).values()
+          );
           if (toInsert.length) {
             await utils_default.db("o_assets").insert(
               toInsert.map((asset) => ({
@@ -255522,30 +255894,44 @@ var init_extractAssets = __esm({
           const allAssets = await utils_default.db("o_assets").where("projectId", projectId).select("id", "name");
           const nameToId = new Map(allAssets.map((a) => [a.name, a.id]));
           const scriptAssetRows = [];
+          const appendAssetRows = (scriptIds2, assetId) => {
+            for (const scriptId of scriptIds2) {
+              if (batchScriptIdSet.has(scriptId)) scriptAssetRows.push({ scriptId, assetId });
+            }
+          };
           for (const asset of newAssets) {
             const assetId = nameToId.get(asset.name);
-            if (assetId) {
-              for (const sid of asset.scriptIds) {
-                scriptAssetRows.push({ scriptId: sid, assetId });
-              }
-            }
+            if (assetId) appendAssetRows(asset.scriptIds, assetId);
           }
           for (const ref of existingRefs) {
             const assetId = nameToId.get(ref.name);
-            if (assetId) {
-              for (const sid of ref.scriptIds) {
-                scriptAssetRows.push({ scriptId: sid, assetId });
-              }
+            if (assetId) appendAssetRows(ref.scriptIds, assetId);
+          }
+          const uniqueRows = Array.from(new Map(scriptAssetRows.map((row) => [`${row.scriptId}:${row.assetId}`, row])).values());
+          const successfulScriptIds = Array.from(new Set(uniqueRows.map((row) => row.scriptId)));
+          const failedScriptIds = batchScriptIds.filter((scriptId) => !successfulScriptIds.includes(scriptId));
+          const finishedAt = Date.now();
+          await utils_default.db.transaction(async (trx) => {
+            if (successfulScriptIds.length) {
+              await trx("o_scriptAssets").whereIn("scriptId", successfulScriptIds).delete();
+              await trx("o_scriptAssets").insert(uniqueRows);
+              await trx("o_script").whereIn("id", successfulScriptIds).update({
+                extractState: 1,
+                errorReason: null,
+                extractFinishedAt: finishedAt
+              });
             }
-          }
-          await utils_default.db("o_scriptAssets").whereIn("scriptId", batchScriptIds).delete();
-          if (scriptAssetRows.length) {
-            await utils_default.db("o_scriptAssets").insert(scriptAssetRows);
-          }
-          await utils_default.db("o_script").whereIn("id", batchScriptIds).update({
-            extractState: 1,
-            errorReason: null
+            if (failedScriptIds.length) {
+              await trx("o_script").whereIn("id", failedScriptIds).update({
+                extractState: -1,
+                errorReason: newAssets.length || existingRefs.length ? "\u672A\u5339\u914D\u5230\u8BE5\u5267\u672C\u7684\u6709\u6548\u8D44\u4EA7\uFF0C\u539F\u6709\u5173\u8054\u5DF2\u4FDD\u7559" : "AI \u672A\u8FD4\u56DE\u4EFB\u4F55\u8D44\u4EA7",
+                extractFinishedAt: finishedAt
+              });
+            }
           });
+          for (const scriptId of failedScriptIds) {
+            errors.push({ scriptId, error: "\u672A\u5339\u914D\u5230\u6709\u6548\u8D44\u4EA7" });
+          }
         }
         res.send(success3("\u5F00\u59CB\u63D0\u53D6\u8D44\u4EA7"));
         function processGroup(group) {
@@ -255568,8 +255954,9 @@ var init_extractAssets = __esm({
             if (!validScripts.length) return;
             const validScriptIds = validScripts.map((v) => v.id);
             await utils_default.db("o_script").whereIn("id", validScriptIds).update({
-              extractState: 0
+              extractState: 0,
               // 正在提取
+              extractStartedAt: Date.now()
             });
             const existingAssets = await utils_default.db("o_assets").where("projectId", projectId).select("name", "type");
             const existingAssetsList = existingAssets.map((a) => `${a.name}(${a.type})`).join("\u3001");
@@ -255602,7 +255989,7 @@ ${script.content}`).join("\n\n");
 
 \u3010\u5DF2\u6709\u8D44\u4EA7\u5217\u8868\u3011\uFF1A${existingAssetsList}
 \u5BF9\u4E8E\u5DF2\u6709\u8D44\u4EA7\uFF0C\u5982\u679C\u5728\u5267\u672C\u4E2D\u51FA\u73B0\uFF0C\u53EA\u9700\u5728 existingAssetRefs \u4E2D\u7ED9\u51FA\u8D44\u4EA7\u540D\u79F0\u548C\u5BF9\u5E94\u7684 scriptIds \u6570\u7EC4\u5373\u53EF\uFF0C\u65E0\u9700\u91CD\u590D\u751F\u6210 desc/type\u3002\u5BF9\u4E8E\u65B0\u53D1\u73B0\u7684\u8D44\u4EA7\uFF08\u4E0D\u5728\u5DF2\u6709\u5217\u8868\u4E2D\uFF09\uFF0C\u8BF7\u5728 newAssets \u4E2D\u7ED9\u51FA\u5B8C\u6574\u4FE1\u606F\u3002` : "";
-              const output = await utils_default.Ai.Text("universalAi").invoke({
+              await utils_default.Ai.Text("universalAi").invoke({
                 messages: [
                   {
                     role: "system",
@@ -255628,14 +256015,7 @@ ${scriptsContent}`
               console.error(`[extractAssets] group=[${validScriptIds.join(",")}] \u63D0\u53D6\u5931\u8D25:`, e);
               for (const { id, script } of validScripts) {
                 errors.push({ scriptId: id, error: (script.name || "") + ":" + utils_default.error(e).message });
-                await utils_default.db("o_script").where("id", id).update({ extractState: -1, errorReason: utils_default.error(e).message });
-              }
-              return;
-            }
-            if (!collectedNew.length && !collectedExisting.length) {
-              for (const { id } of validScripts) {
-                errors.push({ scriptId: id, error: "AI \u672A\u8FD4\u56DE\u4EFB\u4F55\u8D44\u4EA7" });
-                await utils_default.db("o_script").where("id", id).update({ extractState: -1, errorReason: "AI \u672A\u8FD4\u56DE\u4EFB\u4F55\u8D44\u4EA7" });
+                await utils_default.db("o_script").where("id", id).update({ extractState: -1, errorReason: utils_default.error(e).message, extractFinishedAt: Date.now() });
               }
               return;
             }
@@ -255648,17 +256028,17 @@ ${scriptsContent}`
 });
 
 // src/routes/script/getScrptApi.ts
-var import_express82, router82, getScrptApi_default;
+var import_express85, router85, getScrptApi_default;
 var init_getScrptApi = __esm({
   "src/routes/script/getScrptApi.ts"() {
     "use strict";
-    import_express82 = __toESM(require_express2());
+    import_express85 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router82 = import_express82.default.Router();
-    getScrptApi_default = router82.post(
+    router85 = import_express85.default.Router();
+    getScrptApi_default = router85.post(
       "/",
       validateFields({
         projectId: external_exports.number(),
@@ -255689,6 +256069,8 @@ var init_getScrptApi = __esm({
           content: i.content,
           extractState: i.extractState,
           errorReason: i.errorReason,
+          extractStartedAt: i.extractStartedAt,
+          extractFinishedAt: i.extractFinishedAt,
           createTime: i.createTime,
           relatedAssets: scriptAssetsMap[i.id] || []
         }));
@@ -255699,24 +256081,30 @@ var init_getScrptApi = __esm({
 });
 
 // src/routes/script/pollScriptAssets.ts
-var import_express83, router83, pollScriptAssets_default;
+var import_express86, router86, pollScriptAssets_default;
 var init_pollScriptAssets = __esm({
   "src/routes/script/pollScriptAssets.ts"() {
     "use strict";
-    import_express83 = __toESM(require_express2());
+    import_express86 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router83 = import_express83.default.Router();
-    pollScriptAssets_default = router83.post(
+    router86 = import_express86.default.Router();
+    pollScriptAssets_default = router86.post(
       "/",
       validateFields({
         ids: external_exports.array(external_exports.number())
       }),
       async (req, res) => {
         const { ids } = req.body;
-        const data = await utils_default.db("o_script").whereIn("id", ids).whereNot("extractState", "\u751F\u6210\u4E2D").select("id", "extractState", "errorReason");
+        const timeoutBefore = Date.now() - 15 * 60 * 1e3;
+        await utils_default.db("o_script").whereIn("id", ids).whereIn("extractState", [0, 2]).whereNotNull("extractStartedAt").where("extractStartedAt", "<", timeoutBefore).update({
+          extractState: -1,
+          errorReason: "\u8D44\u4EA7\u63D0\u53D6\u8D85\u8FC715\u5206\u949F\uFF0C\u8BF7\u91CD\u65B0\u63D0\u53D6",
+          extractFinishedAt: Date.now()
+        });
+        const data = await utils_default.db("o_script").whereIn("id", ids).select("id", "extractState", "errorReason", "extractStartedAt", "extractFinishedAt");
         res.status(200).send(success3(data));
       }
     );
@@ -255724,17 +256112,17 @@ var init_pollScriptAssets = __esm({
 });
 
 // src/routes/script/updateScript.ts
-var import_express84, router84, updateScript_default;
+var import_express87, router87, updateScript_default;
 var init_updateScript = __esm({
   "src/routes/script/updateScript.ts"() {
     "use strict";
-    import_express84 = __toESM(require_express2());
+    import_express87 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router84 = import_express84.default.Router();
-    updateScript_default = router84.post(
+    router87 = import_express87.default.Router();
+    updateScript_default = router87.post(
       "/",
       validateFields({
         id: external_exports.number(),
@@ -255745,23 +256133,29 @@ var init_updateScript = __esm({
       async (req, res) => {
         const { id, name: name28, content, assets } = req.body;
         if (content.length >= 3e3) return res.status(400).send(error50("\u5185\u5BB9\u4E0D\u80FD\u8D85\u8FC73000\u5B57"));
-        await utils_default.db("o_script").where({ id }).update({
-          name: name28,
-          content
-        });
-        if (assets.length) {
-          const assetsData = await utils_default.db("o_assets").whereIn("id", assets).select();
-          await utils_default.db("o_scriptAssets").where({ scriptId: id }).delete();
-          if (assetsData.length) {
-            const insertData = assetsData.map((item) => {
-              return {
-                scriptId: id,
-                assetId: item.id
-              };
-            });
-            await utils_default.db("o_scriptAssets").insert(insertData);
-          }
+        const currentScript = await utils_default.db("o_script").where({ id }).select("content", "projectId", "extractState").first();
+        if (!currentScript) return res.status(404).send(error50("\u5267\u672C\u4E0D\u5B58\u5728"));
+        if (currentScript.extractState === 0 || currentScript.extractState === 2) {
+          return res.status(409).send(error50("\u8D44\u4EA7\u6B63\u5728\u63D0\u53D6\u4E2D\uFF0C\u8BF7\u5B8C\u6210\u540E\u518D\u7F16\u8F91\u5267\u672C"));
         }
+        const contentChanged = currentScript.content !== content;
+        await utils_default.db.transaction(async (trx) => {
+          await trx("o_script").where({ id }).update({
+            name: name28,
+            content,
+            ...contentChanged ? {
+              extractState: -2,
+              errorReason: null,
+              extractStartedAt: null,
+              extractFinishedAt: null
+            } : {}
+          });
+          const assetsData = assets.length ? await trx("o_assets").whereIn("id", assets).where("projectId", currentScript.projectId).select("id") : [];
+          await trx("o_scriptAssets").where({ scriptId: id }).delete();
+          if (assetsData.length) {
+            await trx("o_scriptAssets").insert(assetsData.map((item) => ({ scriptId: id, assetId: item.id })));
+          }
+        });
         res.status(200).send(success3({ message: "\u7F16\u8F91\u5267\u672C\u6210\u529F" }));
       }
     );
@@ -255769,17 +256163,18 @@ var init_updateScript = __esm({
 });
 
 // src/routes/scriptAgent/getPlanData.ts
-var import_express85, router85, getPlanData_default;
+var import_express88, router88, getPlanData_default;
 var init_getPlanData = __esm({
   "src/routes/scriptAgent/getPlanData.ts"() {
     "use strict";
-    import_express85 = __toESM(require_express2());
+    import_express88 = __toESM(require_express2());
     init_responseFormat();
     init_utils3();
     init_zod();
     init_middleware();
-    router85 = import_express85.default.Router();
-    getPlanData_default = router85.post(
+    init_projectGlobalContext();
+    router88 = import_express88.default.Router();
+    getPlanData_default = router88.post(
       "/",
       validateFields({
         projectId: external_exports.number(),
@@ -255795,7 +256190,8 @@ var init_getPlanData = __esm({
             key: agentType,
             data: JSON.stringify({
               storySkeleton: "",
-              adaptationStrategy: ""
+              adaptationStrategy: "",
+              projectGlobalContext: EMPTY_PROJECT_GLOBAL_CONTEXT
             }),
             createTime: now2,
             updateTime: now2
@@ -255805,7 +256201,8 @@ var init_getPlanData = __esm({
               data: {
                 storySkeleton: "",
                 adaptationStrategy: "",
-                script: []
+                script: [],
+                projectGlobalContext: EMPTY_PROJECT_GLOBAL_CONTEXT
               },
               id
             })
@@ -255817,6 +256214,9 @@ var init_getPlanData = __esm({
         } catch {
           data = {};
         }
+        if (!data.projectGlobalContext || typeof data.projectGlobalContext !== "object") {
+          data.projectGlobalContext = EMPTY_PROJECT_GLOBAL_CONTEXT;
+        }
         data.script = await utils_default.db("o_script").where({ projectId }).select("id", "name", "content");
         res.status(200).send(success3({ data, id: row.id }));
       }
@@ -255825,17 +256225,18 @@ var init_getPlanData = __esm({
 });
 
 // src/routes/scriptAgent/setPlanData.ts
-var import_express86, router86, setPlanData_default;
+var import_express89, router89, setPlanData_default;
 var init_setPlanData = __esm({
   "src/routes/scriptAgent/setPlanData.ts"() {
     "use strict";
-    import_express86 = __toESM(require_express2());
+    import_express89 = __toESM(require_express2());
     init_responseFormat();
     init_utils3();
     init_zod();
     init_middleware();
-    router86 = import_express86.default.Router();
-    setPlanData_default = router86.post(
+    init_projectGlobalContext();
+    router89 = import_express89.default.Router();
+    setPlanData_default = router89.post(
       "/",
       validateFields({
         projectId: external_exports.number(),
@@ -255843,6 +256244,7 @@ var init_setPlanData = __esm({
         data: external_exports.object({
           storySkeleton: external_exports.string(),
           adaptationStrategy: external_exports.string(),
+          projectGlobalContext: ProjectGlobalContextSchema.optional(),
           script: external_exports.array(
             external_exports.object({
               id: external_exports.number().optional(),
@@ -255857,9 +256259,17 @@ var init_setPlanData = __esm({
         const now2 = Date.now();
         await utils_default.db.transaction(async (trx) => {
           const workData = await trx("o_agentWorkData").where({ projectId, key: agentType }).first();
+          let existingData = {};
+          try {
+            existingData = JSON.parse(workData?.data ?? "{}");
+          } catch {
+            existingData = {};
+          }
+          const existingGlobalContext = ProjectGlobalContextSchema.safeParse(existingData.projectGlobalContext);
           const persistedData = {
             storySkeleton: data.storySkeleton,
-            adaptationStrategy: data.adaptationStrategy
+            adaptationStrategy: data.adaptationStrategy,
+            projectGlobalContext: data.projectGlobalContext ?? (existingGlobalContext.success ? existingGlobalContext.data : ProjectGlobalContextSchema.parse(EMPTY_PROJECT_GLOBAL_CONTEXT))
           };
           if (workData) {
             await trx("o_agentWorkData").where({ id: workData.id }).update({
@@ -255899,23 +256309,25 @@ var init_setPlanData = __esm({
 });
 
 // src/routes/scriptAgent/updateData.ts
-var import_express87, router87, updateData_default;
+var import_express90, router90, updateData_default;
 var init_updateData = __esm({
   "src/routes/scriptAgent/updateData.ts"() {
     "use strict";
-    import_express87 = __toESM(require_express2());
+    import_express90 = __toESM(require_express2());
     init_responseFormat();
     init_utils3();
     init_zod();
     init_middleware();
-    router87 = import_express87.default.Router();
-    updateData_default = router87.post(
+    init_projectGlobalContext();
+    router90 = import_express90.default.Router();
+    updateData_default = router90.post(
       "/",
       validateFields({
         id: external_exports.number(),
         data: external_exports.object({
           storySkeleton: external_exports.string(),
           adaptationStrategy: external_exports.string(),
+          projectGlobalContext: ProjectGlobalContextSchema.optional(),
           script: external_exports.array(
             external_exports.object({
               id: external_exports.number().optional(),
@@ -255927,8 +256339,19 @@ var init_updateData = __esm({
       }),
       async (req, res) => {
         const { id, data } = req.body;
+        const current = await utils_default.db("o_agentWorkData").where({ id }).first();
+        let currentData = {};
+        try {
+          currentData = JSON.parse(current?.data ?? "{}");
+        } catch {
+          currentData = {};
+        }
         await utils_default.db("o_agentWorkData").where({ id }).update({
-          data: JSON.stringify(data)
+          data: JSON.stringify({
+            ...currentData,
+            ...data,
+            projectGlobalContext: data.projectGlobalContext ?? currentData.projectGlobalContext
+          })
         });
         res.status(200).send(success3("\u66F4\u65B0\u6210\u529F"));
       }
@@ -255937,17 +256360,17 @@ var init_updateData = __esm({
 });
 
 // src/routes/setting/agentDeploy/agentSetKey.ts
-var import_express88, router88, agentSetKey_default;
+var import_express91, router91, agentSetKey_default;
 var init_agentSetKey = __esm({
   "src/routes/setting/agentDeploy/agentSetKey.ts"() {
     "use strict";
-    import_express88 = __toESM(require_express2());
+    import_express91 = __toESM(require_express2());
     init_responseFormat();
     init_utils3();
     init_zod();
     init_middleware();
-    router88 = import_express88.default.Router();
-    agentSetKey_default = router88.post(
+    router91 = import_express91.default.Router();
+    agentSetKey_default = router91.post(
       "/",
       validateFields({
         key: external_exports.string().optional()
@@ -255997,17 +256420,17 @@ var init_agentSetKey = __esm({
 });
 
 // src/routes/setting/agentDeploy/deployAgentModel.ts
-var import_express89, router89, deployAgentModel_default;
+var import_express92, router92, deployAgentModel_default;
 var init_deployAgentModel = __esm({
   "src/routes/setting/agentDeploy/deployAgentModel.ts"() {
     "use strict";
-    import_express89 = __toESM(require_express2());
+    import_express92 = __toESM(require_express2());
     init_responseFormat();
     init_utils3();
     init_zod();
     init_middleware();
-    router89 = import_express89.default.Router();
-    deployAgentModel_default = router89.post(
+    router92 = import_express92.default.Router();
+    deployAgentModel_default = router92.post(
       "/",
       validateFields({
         id: external_exports.number(),
@@ -256027,15 +256450,15 @@ var init_deployAgentModel = __esm({
 });
 
 // src/routes/setting/agentDeploy/getAgentDeploy.ts
-var import_express90, router90, getAgentDeploy_default;
+var import_express93, router93, getAgentDeploy_default;
 var init_getAgentDeploy = __esm({
   "src/routes/setting/agentDeploy/getAgentDeploy.ts"() {
     "use strict";
-    import_express90 = __toESM(require_express2());
+    import_express93 = __toESM(require_express2());
     init_responseFormat();
     init_utils3();
-    router90 = import_express90.default.Router();
-    getAgentDeploy_default = router90.post("/", async (req, res) => {
+    router93 = import_express93.default.Router();
+    getAgentDeploy_default = router93.post("/", async (req, res) => {
       const data = await utils_default.db("o_agentDeploy").leftJoin("o_vendorConfig", "o_vendorConfig.id", "o_agentDeploy.vendorId").select("o_agentDeploy.*", "o_vendorConfig.icon");
       res.status(200).send(success3(data));
     });
@@ -256043,16 +256466,16 @@ var init_getAgentDeploy = __esm({
 });
 
 // src/routes/setting/contentSafety/getContentSafety.ts
-var import_express91, router91, getContentSafety_default;
+var import_express94, router94, getContentSafety_default;
 var init_getContentSafety = __esm({
   "src/routes/setting/contentSafety/getContentSafety.ts"() {
     "use strict";
-    import_express91 = __toESM(require_express2());
+    import_express94 = __toESM(require_express2());
     init_responseFormat();
     init_utils3();
     init_contentSafety();
-    router91 = import_express91.default.Router();
-    getContentSafety_default = router91.get("/", async (_req, res) => {
+    router94 = import_express94.default.Router();
+    getContentSafety_default = router94.get("/", async (_req, res) => {
       const setting = await utils_default.db("o_setting").where("key", CONTENT_SAFETY_SETTING_KEY).first();
       res.status(200).send(success3({
         key: CONTENT_SAFETY_SETTING_KEY,
@@ -256064,18 +256487,18 @@ var init_getContentSafety = __esm({
 });
 
 // src/routes/setting/contentSafety/updateContentSafety.ts
-var import_express92, router92, updateContentSafety_default;
+var import_express95, router95, updateContentSafety_default;
 var init_updateContentSafety = __esm({
   "src/routes/setting/contentSafety/updateContentSafety.ts"() {
     "use strict";
-    import_express92 = __toESM(require_express2());
+    import_express95 = __toESM(require_express2());
     init_zod();
     init_responseFormat();
     init_middleware();
     init_utils3();
     init_contentSafety();
-    router92 = import_express92.default.Router();
-    updateContentSafety_default = router92.post(
+    router95 = import_express95.default.Router();
+    updateContentSafety_default = router95.post(
       "/",
       validateFields({ constraint: external_exports.string().max(2e4) }),
       async (req, res) => {
@@ -256091,16 +256514,16 @@ var init_updateContentSafety = __esm({
 });
 
 // src/routes/setting/dbConfig/clearData.ts
-var import_express93, router93, clearData_default;
+var import_express96, router96, clearData_default;
 var init_clearData = __esm({
   "src/routes/setting/dbConfig/clearData.ts"() {
     "use strict";
-    import_express93 = __toESM(require_express2());
+    import_express96 = __toESM(require_express2());
     init_responseFormat();
     init_db();
     init_initDB();
-    router93 = import_express93.default.Router();
-    clearData_default = router93.get("/", async (req, res) => {
+    router96 = import_express96.default.Router();
+    clearData_default = router96.get("/", async (req, res) => {
       try {
         const tables = await db.raw(
           `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'knex_%'`
@@ -256120,15 +256543,15 @@ var init_clearData = __esm({
 });
 
 // src/routes/setting/dev/getSwitchAiDevTool.ts
-var import_express94, router94, getSwitchAiDevTool_default;
+var import_express97, router97, getSwitchAiDevTool_default;
 var init_getSwitchAiDevTool = __esm({
   "src/routes/setting/dev/getSwitchAiDevTool.ts"() {
     "use strict";
-    import_express94 = __toESM(require_express2());
+    import_express97 = __toESM(require_express2());
     init_responseFormat();
     init_utils3();
-    router94 = import_express94.default.Router();
-    getSwitchAiDevTool_default = router94.get("/", async (req, res) => {
+    router97 = import_express97.default.Router();
+    getSwitchAiDevTool_default = router97.get("/", async (req, res) => {
       const switchAiDevTool = await utils_default.db("o_setting").where("key", "switchAiDevTool").first();
       res.status(200).send(success3(switchAiDevTool?.value || "0"));
     });
@@ -256136,17 +256559,17 @@ var init_getSwitchAiDevTool = __esm({
 });
 
 // src/routes/setting/dev/updateSwitchAiDevTool.ts
-var import_express95, router95, updateSwitchAiDevTool_default;
+var import_express98, router98, updateSwitchAiDevTool_default;
 var init_updateSwitchAiDevTool = __esm({
   "src/routes/setting/dev/updateSwitchAiDevTool.ts"() {
     "use strict";
-    import_express95 = __toESM(require_express2());
+    import_express98 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router95 = import_express95.default.Router();
-    updateSwitchAiDevTool_default = router95.post(
+    router98 = import_express98.default.Router();
+    updateSwitchAiDevTool_default = router98.post(
       "/",
       validateFields({
         switchAiDevTool: external_exports.string()
@@ -256163,14 +256586,14 @@ var init_updateSwitchAiDevTool = __esm({
 });
 
 // src/routes/setting/getTextModel.ts
-var import_express96, router96, getTextModel_default;
+var import_express99, router99, getTextModel_default;
 var init_getTextModel = __esm({
   "src/routes/setting/getTextModel.ts"() {
     "use strict";
-    import_express96 = __toESM(require_express2());
+    import_express99 = __toESM(require_express2());
     init_responseFormat();
-    router96 = import_express96.default.Router();
-    getTextModel_default = router96.post(
+    router99 = import_express99.default.Router();
+    getTextModel_default = router99.post(
       "/",
       async (req, res) => {
         res.status(200).send(success3("123"));
@@ -256180,15 +256603,15 @@ var init_getTextModel = __esm({
 });
 
 // src/routes/setting/loginConfig/getUser.ts
-var import_express97, router97, getUser_default;
+var import_express100, router100, getUser_default;
 var init_getUser = __esm({
   "src/routes/setting/loginConfig/getUser.ts"() {
     "use strict";
-    import_express97 = __toESM(require_express2());
+    import_express100 = __toESM(require_express2());
     init_utils3();
     init_responseFormat();
-    router97 = import_express97.default.Router();
-    getUser_default = router97.get("/", async (req, res) => {
+    router100 = import_express100.default.Router();
+    getUser_default = router100.get("/", async (req, res) => {
       const data = await utils_default.db("o_user").where({ id: req.authUser.id }).select("id", "name", "role", "status", "createTime").first();
       res.status(200).send(success3(data));
     });
@@ -256196,18 +256619,18 @@ var init_getUser = __esm({
 });
 
 // src/routes/setting/loginConfig/updateUserPwd.ts
-var import_express98, router98, updateUserPwd_default;
+var import_express101, router101, updateUserPwd_default;
 var init_updateUserPwd = __esm({
   "src/routes/setting/loginConfig/updateUserPwd.ts"() {
     "use strict";
-    import_express98 = __toESM(require_express2());
+    import_express101 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
     init_password();
-    router98 = import_express98.default.Router();
-    updateUserPwd_default = router98.post(
+    router101 = import_express101.default.Router();
+    updateUserPwd_default = router101.post(
       "/",
       validateFields({
         name: external_exports.string(),
@@ -256228,15 +256651,15 @@ var init_updateUserPwd = __esm({
 });
 
 // src/routes/setting/memoryConfig/delAllMemory.ts
-var import_express99, router99, delAllMemory_default;
+var import_express102, router102, delAllMemory_default;
 var init_delAllMemory = __esm({
   "src/routes/setting/memoryConfig/delAllMemory.ts"() {
     "use strict";
-    import_express99 = __toESM(require_express2());
+    import_express102 = __toESM(require_express2());
     init_responseFormat();
     init_utils3();
-    router99 = import_express99.default.Router();
-    delAllMemory_default = router99.post("/", async (req, res) => {
+    router102 = import_express102.default.Router();
+    delAllMemory_default = router102.post("/", async (req, res) => {
       await utils_default.db("memories").del();
       res.status(200).send(success3(true));
     });
@@ -256244,15 +256667,15 @@ var init_delAllMemory = __esm({
 });
 
 // src/routes/setting/memoryConfig/getMemory.ts
-var import_express100, router100, getMemory_default2;
+var import_express103, router103, getMemory_default2;
 var init_getMemory2 = __esm({
   "src/routes/setting/memoryConfig/getMemory.ts"() {
     "use strict";
-    import_express100 = __toESM(require_express2());
+    import_express103 = __toESM(require_express2());
     init_responseFormat();
     init_utils3();
-    router100 = import_express100.default.Router();
-    getMemory_default2 = router100.get("/", async (req, res) => {
+    router103 = import_express103.default.Router();
+    getMemory_default2 = router103.get("/", async (req, res) => {
       const settingData = await utils_default.db("o_setting").whereIn("key", [
         "messagesPerSummary",
         "shortTermLimit",
@@ -256282,17 +256705,17 @@ var init_getMemory2 = __esm({
 });
 
 // src/routes/setting/memoryConfig/sureMemory.ts
-var import_express101, router101, sureMemory_default;
+var import_express104, router104, sureMemory_default;
 var init_sureMemory = __esm({
   "src/routes/setting/memoryConfig/sureMemory.ts"() {
     "use strict";
-    import_express101 = __toESM(require_express2());
+    import_express104 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
-    router101 = import_express101.default.Router();
-    sureMemory_default = router101.post(
+    router104 = import_express104.default.Router();
+    sureMemory_default = router104.post(
       "/",
       validateFields({
         messagesPerSummary: external_exports.number(),
@@ -256329,23 +256752,23 @@ var init_sureMemory = __esm({
 });
 
 // src/routes/setting/promptManage/addPrompt.ts
-var import_express102, router102, PromptTypeSchema, addPrompt_default;
+var import_express105, router105, PromptTypeSchema, addPrompt_default;
 var init_addPrompt = __esm({
   "src/routes/setting/promptManage/addPrompt.ts"() {
     "use strict";
-    import_express102 = __toESM(require_express2());
+    import_express105 = __toESM(require_express2());
     init_zod();
     init_utils3();
     init_middleware();
     init_responseFormat();
     init_promptTemplate();
-    router102 = import_express102.default.Router();
+    router105 = import_express105.default.Router();
     PromptTypeSchema = external_exports.enum([
       "imagePromptGeneration",
       "videoPromptGeneration",
       "assetInferenceTemplate"
     ]);
-    addPrompt_default = router102.post(
+    addPrompt_default = router105.post(
       "/",
       validateFields({
         name: external_exports.string().trim().min(1).max(80),
@@ -256364,18 +256787,18 @@ var init_addPrompt = __esm({
 });
 
 // src/routes/setting/promptManage/deletePrompt.ts
-var import_express103, router103, deletePrompt_default;
+var import_express106, router106, deletePrompt_default;
 var init_deletePrompt = __esm({
   "src/routes/setting/promptManage/deletePrompt.ts"() {
     "use strict";
-    import_express103 = __toESM(require_express2());
+    import_express106 = __toESM(require_express2());
     init_zod();
     init_utils3();
     init_middleware();
     init_responseFormat();
     init_promptTemplate();
-    router103 = import_express103.default.Router();
-    deletePrompt_default = router103.post(
+    router106 = import_express106.default.Router();
+    deletePrompt_default = router106.post(
       "/",
       validateFields({ id: external_exports.number() }),
       async (req, res) => {
@@ -256390,16 +256813,16 @@ var init_deletePrompt = __esm({
 });
 
 // src/routes/setting/promptManage/getPrompt.ts
-var import_express104, router104, getPrompt_default;
+var import_express107, router107, getPrompt_default;
 var init_getPrompt = __esm({
   "src/routes/setting/promptManage/getPrompt.ts"() {
     "use strict";
-    import_express104 = __toESM(require_express2());
+    import_express107 = __toESM(require_express2());
     init_utils3();
     init_responseFormat();
     init_promptTemplate();
-    router104 = import_express104.default.Router();
-    getPrompt_default = router104.post("/", async (req, res) => {
+    router107 = import_express107.default.Router();
+    getPrompt_default = router107.post("/", async (req, res) => {
       const list2 = await utils_default.db("o_prompt").select("*");
       const data = await Promise.all(
         list2.map(async (item) => {
@@ -256416,23 +256839,23 @@ var init_getPrompt = __esm({
 });
 
 // src/routes/setting/promptManage/updatePrompt.ts
-var import_express105, router105, userPromptTypes, updatePrompt_default;
+var import_express108, router108, userPromptTypes, updatePrompt_default;
 var init_updatePrompt = __esm({
   "src/routes/setting/promptManage/updatePrompt.ts"() {
     "use strict";
-    import_express105 = __toESM(require_express2());
+    import_express108 = __toESM(require_express2());
     init_utils3();
     init_zod();
     init_responseFormat();
     init_middleware();
     init_promptTemplate();
-    router105 = import_express105.default.Router();
+    router108 = import_express108.default.Router();
     userPromptTypes = [
       "imagePromptGeneration",
       "videoPromptGeneration",
       "assetInferenceTemplate"
     ];
-    updatePrompt_default = router105.post(
+    updatePrompt_default = router108.post(
       "/",
       validateFields({
         id: external_exports.number(),
@@ -256459,11 +256882,11 @@ var init_updatePrompt = __esm({
 });
 
 // src/routes/setting/skillManagement/getSkillContent.ts
-var import_express106, import_path17, fs22, router106, getSkillContent_default;
+var import_express109, import_path17, fs22, router109, getSkillContent_default;
 var init_getSkillContent = __esm({
   "src/routes/setting/skillManagement/getSkillContent.ts"() {
     "use strict";
-    import_express106 = __toESM(require_express2());
+    import_express109 = __toESM(require_express2());
     init_responseFormat();
     init_middleware();
     init_zod();
@@ -256471,8 +256894,8 @@ var init_getSkillContent = __esm({
     init_utils3();
     import_path17 = __toESM(require("path"));
     fs22 = __toESM(require("fs"));
-    router106 = import_express106.default.Router();
-    getSkillContent_default = router106.post(
+    router109 = import_express109.default.Router();
+    getSkillContent_default = router109.post(
       "/",
       validateFields({
         path: external_exports.string()
@@ -256492,16 +256915,16 @@ var init_getSkillContent = __esm({
 });
 
 // src/routes/setting/skillManagement/getSkillList.ts
-var import_express107, import_fast_glob2, router107, getSkillList_default;
+var import_express110, import_fast_glob2, router110, getSkillList_default;
 var init_getSkillList = __esm({
   "src/routes/setting/skillManagement/getSkillList.ts"() {
     "use strict";
-    import_express107 = __toESM(require_express2());
+    import_express110 = __toESM(require_express2());
     init_responseFormat();
     import_fast_glob2 = __toESM(require_out4());
     init_utils3();
-    router107 = import_express107.default.Router();
-    getSkillList_default = router107.post("/", async (req, res) => {
+    router110 = import_express110.default.Router();
+    getSkillList_default = router110.post("/", async (req, res) => {
       const skillsRoot = utils_default.getPath(["skills"]);
       const entries = await (0, import_fast_glob2.default)("**/*.md", {
         cwd: skillsRoot.replace(/\\/g, "/"),
@@ -256513,11 +256936,11 @@ var init_getSkillList = __esm({
 });
 
 // src/routes/setting/skillManagement/saveSkillContent.ts
-var import_express108, import_path18, fs23, router108, saveSkillContent_default;
+var import_express111, import_path18, fs23, router111, saveSkillContent_default;
 var init_saveSkillContent = __esm({
   "src/routes/setting/skillManagement/saveSkillContent.ts"() {
     "use strict";
-    import_express108 = __toESM(require_express2());
+    import_express111 = __toESM(require_express2());
     init_responseFormat();
     init_middleware();
     init_zod();
@@ -256525,8 +256948,8 @@ var init_saveSkillContent = __esm({
     init_utils3();
     import_path18 = __toESM(require("path"));
     fs23 = __toESM(require("fs"));
-    router108 = import_express108.default.Router();
-    saveSkillContent_default = router108.post(
+    router111 = import_express111.default.Router();
+    saveSkillContent_default = router111.post(
       "/",
       validateFields({
         path: external_exports.string(),
@@ -256550,19 +256973,19 @@ var init_saveSkillContent = __esm({
 });
 
 // src/routes/setting/userManagement/addUser.ts
-var import_express109, router109, addUser_default;
+var import_express112, router112, addUser_default;
 var init_addUser = __esm({
   "src/routes/setting/userManagement/addUser.ts"() {
     "use strict";
-    import_express109 = __toESM(require_express2());
+    import_express112 = __toESM(require_express2());
     init_utils3();
     init_responseFormat();
     init_auth();
     init_middleware();
     init_password();
     init_zod();
-    router109 = import_express109.default.Router();
-    addUser_default = router109.post("/", requireAdmin, validateFields({
+    router112 = import_express112.default.Router();
+    addUser_default = router112.post("/", requireAdmin, validateFields({
       name: external_exports.string().trim().min(2).max(50),
       password: external_exports.string().min(8).max(200),
       role: external_exports.enum(["admin", "user"]).default("admin")
@@ -256579,18 +257002,18 @@ var init_addUser = __esm({
 });
 
 // src/routes/setting/userManagement/deleteUser.ts
-var import_express110, router110, deleteUser_default;
+var import_express113, router113, deleteUser_default;
 var init_deleteUser = __esm({
   "src/routes/setting/userManagement/deleteUser.ts"() {
     "use strict";
-    import_express110 = __toESM(require_express2());
+    import_express113 = __toESM(require_express2());
     init_utils3();
     init_responseFormat();
     init_auth();
     init_middleware();
     init_zod();
-    router110 = import_express110.default.Router();
-    deleteUser_default = router110.post("/", requireAdmin, validateFields({ id: external_exports.number().int().positive() }), async (req, res) => {
+    router113 = import_express113.default.Router();
+    deleteUser_default = router113.post("/", requireAdmin, validateFields({ id: external_exports.number().int().positive() }), async (req, res) => {
       const id = Number(req.body.id);
       if (id === req.authUser.id) return res.status(400).send(error50("\u4E0D\u80FD\u5220\u9664\u5F53\u524D\u767B\u5F55\u7528\u6237"));
       if (await utils_default.db("o_project").where({ userId: id }).first()) return res.status(409).send(error50("\u8BE5\u7528\u6237\u4ECD\u6709\u9879\u76EE\uFF0C\u8BF7\u5148\u8F6C\u79FB\u6216\u5220\u9664\u9879\u76EE"));
@@ -256602,16 +257025,16 @@ var init_deleteUser = __esm({
 });
 
 // src/routes/setting/userManagement/getUsers.ts
-var import_express111, router111, getUsers_default;
+var import_express114, router114, getUsers_default;
 var init_getUsers = __esm({
   "src/routes/setting/userManagement/getUsers.ts"() {
     "use strict";
-    import_express111 = __toESM(require_express2());
+    import_express114 = __toESM(require_express2());
     init_utils3();
     init_responseFormat();
     init_auth();
-    router111 = import_express111.default.Router();
-    getUsers_default = router111.get("/", requireAdmin, async (_req, res) => {
+    router114 = import_express114.default.Router();
+    getUsers_default = router114.get("/", requireAdmin, async (_req, res) => {
       const users = await utils_default.db("o_user").leftJoin("o_project", "o_user.id", "o_project.userId").select("o_user.id", "o_user.name", "o_user.role", "o_user.status", "o_user.createTime").count("o_project.id as projectCount").groupBy("o_user.id").orderBy("o_user.id");
       res.send(success3(users));
     });
@@ -256619,19 +257042,19 @@ var init_getUsers = __esm({
 });
 
 // src/routes/setting/userManagement/updateUser.ts
-var import_express112, router112, updateUser_default;
+var import_express115, router115, updateUser_default;
 var init_updateUser = __esm({
   "src/routes/setting/userManagement/updateUser.ts"() {
     "use strict";
-    import_express112 = __toESM(require_express2());
+    import_express115 = __toESM(require_express2());
     init_utils3();
     init_responseFormat();
     init_auth();
     init_middleware();
     init_password();
     init_zod();
-    router112 = import_express112.default.Router();
-    updateUser_default = router112.post("/", requireAdmin, validateFields({
+    router115 = import_express115.default.Router();
+    updateUser_default = router115.post("/", requireAdmin, validateFields({
       id: external_exports.number().int().positive(),
       name: external_exports.string().trim().min(2).max(50),
       role: external_exports.enum(["admin", "user"]).optional(),
@@ -256743,19 +257166,19 @@ var init_vendorConfig = __esm({
 });
 
 // src/routes/setting/vendorConfig/addVendor.ts
-var import_express113, router113, addVendor_default;
+var import_express116, router116, addVendor_default;
 var init_addVendor = __esm({
   "src/routes/setting/vendorConfig/addVendor.ts"() {
     "use strict";
-    import_express113 = __toESM(require_express2());
+    import_express116 = __toESM(require_express2());
     init_responseFormat();
     init_middleware();
     init_utils3();
     init_zod();
     init_compileVendorCode();
     init_vendorConfig();
-    router113 = import_express113.default.Router();
-    addVendor_default = router113.post(
+    router116 = import_express116.default.Router();
+    addVendor_default = router116.post(
       "/",
       validateFields({
         tsCode: external_exports.string()
@@ -256798,17 +257221,17 @@ var init_addVendor = __esm({
 });
 
 // src/routes/setting/vendorConfig/deleteVendor.ts
-var import_express114, router114, deleteVendor_default;
+var import_express117, router117, deleteVendor_default;
 var init_deleteVendor = __esm({
   "src/routes/setting/vendorConfig/deleteVendor.ts"() {
     "use strict";
-    import_express114 = __toESM(require_express2());
+    import_express117 = __toESM(require_express2());
     init_responseFormat();
     init_middleware();
     init_utils3();
     init_zod();
-    router114 = import_express114.default.Router();
-    deleteVendor_default = router114.post(
+    router117 = import_express117.default.Router();
+    deleteVendor_default = router117.post(
       "/",
       validateFields({
         id: external_exports.string()
@@ -256827,17 +257250,17 @@ var init_deleteVendor = __esm({
 });
 
 // src/routes/setting/vendorConfig/enableVendor.ts
-var import_express115, router115, enableVendor_default;
+var import_express118, router118, enableVendor_default;
 var init_enableVendor = __esm({
   "src/routes/setting/vendorConfig/enableVendor.ts"() {
     "use strict";
-    import_express115 = __toESM(require_express2());
+    import_express118 = __toESM(require_express2());
     init_responseFormat();
     init_middleware();
     init_utils3();
     init_zod();
-    router115 = import_express115.default.Router();
-    enableVendor_default = router115.post(
+    router118 = import_express118.default.Router();
+    enableVendor_default = router118.post(
       "/",
       validateFields({
         id: external_exports.string(),
@@ -256855,16 +257278,16 @@ var init_enableVendor = __esm({
 });
 
 // src/routes/setting/vendorConfig/getCodeByLink.ts
-var import_express116, router116, getCodeByLink_default;
+var import_express119, router119, getCodeByLink_default;
 var init_getCodeByLink = __esm({
   "src/routes/setting/vendorConfig/getCodeByLink.ts"() {
     "use strict";
-    import_express116 = __toESM(require_express2());
+    import_express119 = __toESM(require_express2());
     init_responseFormat();
     init_middleware();
     init_zod();
-    router116 = import_express116.default.Router();
-    getCodeByLink_default = router116.post(
+    router119 = import_express119.default.Router();
+    getCodeByLink_default = router119.post(
       "/",
       validateFields({
         link: external_exports.string()
@@ -256906,15 +257329,15 @@ function parseJson(value, fallback) {
     return fallback;
   }
 }
-var import_express117, router117, getVendorList_default;
+var import_express120, router120, getVendorList_default;
 var init_getVendorList = __esm({
   "src/routes/setting/vendorConfig/getVendorList.ts"() {
     "use strict";
-    import_express117 = __toESM(require_express2());
+    import_express120 = __toESM(require_express2());
     init_responseFormat();
     init_utils3();
-    router117 = import_express117.default.Router();
-    getVendorList_default = router117.post("/", async (req, res) => {
+    router120 = import_express120.default.Router();
+    getVendorList_default = router120.post("/", async (req, res) => {
       const data = await utils_default.db("o_vendorConfig").select("*");
       const list2 = data.map((item) => {
         const codeMeta = extractVendorMeta2(item.code);
@@ -256934,18 +257357,18 @@ var init_getVendorList = __esm({
 });
 
 // src/routes/setting/vendorConfig/modelTest.ts
-var import_express118, router118, modelTest_default;
+var import_express121, router121, modelTest_default;
 var init_modelTest = __esm({
   "src/routes/setting/vendorConfig/modelTest.ts"() {
     "use strict";
-    import_express118 = __toESM(require_express2());
+    import_express121 = __toESM(require_express2());
     init_responseFormat();
     init_middleware();
     init_utils3();
     init_zod();
     init_dist22();
-    router118 = import_express118.default.Router();
-    modelTest_default = router118.post(
+    router121 = import_express121.default.Router();
+    modelTest_default = router121.post(
       "/",
       validateFields({
         modelName: external_exports.string(),
@@ -257036,11 +257459,11 @@ var init_modelTest = __esm({
 });
 
 // src/routes/setting/vendorConfig/updateCode.ts
-var import_express119, router119, updateCode_default;
+var import_express122, router122, updateCode_default;
 var init_updateCode = __esm({
   "src/routes/setting/vendorConfig/updateCode.ts"() {
     "use strict";
-    import_express119 = __toESM(require_express2());
+    import_express122 = __toESM(require_express2());
     init_serialize_error();
     init_responseFormat();
     init_middleware();
@@ -257048,8 +257471,8 @@ var init_updateCode = __esm({
     init_zod();
     init_compileVendorCode();
     init_vendorConfig();
-    router119 = import_express119.default.Router();
-    updateCode_default = router119.post(
+    router122 = import_express122.default.Router();
+    updateCode_default = router122.post(
       "/",
       validateFields({
         id: external_exports.string(),
@@ -257093,18 +257516,18 @@ var init_updateCode = __esm({
 });
 
 // src/routes/setting/vendorConfig/updateVendor.ts
-var import_express120, router120, updateVendor_default;
+var import_express123, router123, updateVendor_default;
 var init_updateVendor = __esm({
   "src/routes/setting/vendorConfig/updateVendor.ts"() {
     "use strict";
-    import_express120 = __toESM(require_express2());
+    import_express123 = __toESM(require_express2());
     init_responseFormat();
     init_middleware();
     init_utils3();
     init_zod();
     init_vendorConfig();
-    router120 = import_express120.default.Router();
-    updateVendor_default = router120.post(
+    router123 = import_express123.default.Router();
+    updateVendor_default = router123.post(
       "/",
       validateFields({
         id: external_exports.string(),
@@ -257126,15 +257549,15 @@ var init_updateVendor = __esm({
 });
 
 // src/routes/task/getProject.ts
-var import_express121, router121, getProject_default2;
+var import_express124, router124, getProject_default2;
 var init_getProject2 = __esm({
   "src/routes/task/getProject.ts"() {
     "use strict";
-    import_express121 = __toESM(require_express2());
+    import_express124 = __toESM(require_express2());
     init_utils3();
     init_responseFormat();
-    router121 = import_express121.default.Router();
-    getProject_default2 = router121.post("/", async (req, res) => {
+    router124 = import_express124.default.Router();
+    getProject_default2 = router124.post("/", async (req, res) => {
       const list2 = await utils_default.db("o_project").where({ userId: req.authUser.id }).select("id", "name").groupBy("name");
       const data = list2.filter((item) => item.name);
       res.status(200).send(success3(data));
@@ -257143,17 +257566,17 @@ var init_getProject2 = __esm({
 });
 
 // src/routes/task/getTaskApi.ts
-var import_express122, router122, getTaskApi_default;
+var import_express125, router125, getTaskApi_default;
 var init_getTaskApi = __esm({
   "src/routes/task/getTaskApi.ts"() {
     "use strict";
-    import_express122 = __toESM(require_express2());
+    import_express125 = __toESM(require_express2());
     init_utils3();
     init_responseFormat();
     init_middleware();
     init_zod();
-    router122 = import_express122.default.Router();
-    getTaskApi_default = router122.post(
+    router125 = import_express125.default.Router();
+    getTaskApi_default = router125.post(
       "/",
       validateFields({
         state: external_exports.string().optional().nullable(),
@@ -257194,15 +257617,15 @@ var init_getTaskApi = __esm({
 });
 
 // src/routes/task/getTaskCategories.ts
-var import_express123, router123, getTaskCategories_default;
+var import_express126, router126, getTaskCategories_default;
 var init_getTaskCategories = __esm({
   "src/routes/task/getTaskCategories.ts"() {
     "use strict";
-    import_express123 = __toESM(require_express2());
+    import_express126 = __toESM(require_express2());
     init_utils3();
     init_responseFormat();
-    router123 = import_express123.default.Router();
-    getTaskCategories_default = router123.post("/", async (req, res) => {
+    router126 = import_express126.default.Router();
+    getTaskCategories_default = router126.post("/", async (req, res) => {
       const list2 = await utils_default.db("o_tasks").select("taskClass").groupBy("taskClass");
       const data = list2.filter((item) => item.taskClass);
       res.status(200).send(success3(data));
@@ -257211,17 +257634,17 @@ var init_getTaskCategories = __esm({
 });
 
 // src/routes/task/taskDetails.ts
-var import_express124, router124, taskDetails_default;
+var import_express127, router127, taskDetails_default;
 var init_taskDetails = __esm({
   "src/routes/task/taskDetails.ts"() {
     "use strict";
-    import_express124 = __toESM(require_express2());
+    import_express127 = __toESM(require_express2());
     init_utils3();
     init_responseFormat();
     init_middleware();
     init_zod();
-    router124 = import_express124.default.Router();
-    taskDetails_default = router124.post(
+    router127 = import_express127.default.Router();
+    taskDetails_default = router127.post(
       "/",
       validateFields({
         taskId: external_exports.number()
@@ -257236,15 +257659,15 @@ var init_taskDetails = __esm({
 });
 
 // src/routes/test/test.ts
-var import_express125, import_fs14, router125, test_default;
+var import_express128, import_fs14, router128, test_default;
 var init_test = __esm({
   "src/routes/test/test.ts"() {
     "use strict";
-    import_express125 = __toESM(require_express2());
+    import_express128 = __toESM(require_express2());
     init_utils3();
     import_fs14 = __toESM(require("fs"));
-    router125 = import_express125.default.Router();
-    test_default = router125.get("/", async (req, res) => {
+    router128 = import_express128.default.Router();
+    test_default = router128.get("/", async (req, res) => {
       return res.send("ok");
       const test2 = await utils_default.db("o_vendorConfig").select("*");
       import_fs14.default.writeFileSync("test.json", JSON.stringify(test2, null, 2));
@@ -257263,7 +257686,10 @@ var init_router = __esm({
   "src/router.ts"() {
     "use strict";
     init_clearMemory();
+    init_clearRuntime();
     init_getMemory();
+    init_getRuntime();
+    init_setRuntime();
     init_addArtStyle();
     init_editArtStyle();
     init_extractStylePrompt();
@@ -257389,7 +257815,10 @@ var init_router = __esm({
     init_test();
     router_default = async (app2) => {
       app2.use("/api/agents/clearMemory", clearMemory_default);
+      app2.use("/api/agents/clearRuntime", clearRuntime_default);
       app2.use("/api/agents/getMemory", getMemory_default);
+      app2.use("/api/agents/getRuntime", getRuntime_default);
+      app2.use("/api/agents/setRuntime", setRuntime_default);
       app2.use("/api/artStyle/addArtStyle", addArtStyle_default);
       app2.use("/api/artStyle/editArtStyle", editArtStyle_default);
       app2.use("/api/artStyle/extractStylePrompt", extractStylePrompt_default);
@@ -257560,7 +257989,7 @@ if (!process.env.NODE_ENV) {
 }
 
 // src/app.ts
-var import_express126 = __toESM(require_express2());
+var import_express129 = __toESM(require_express2());
 
 // node_modules/socket.io/wrapper.mjs
 var import_dist = __toESM(require_dist3(), 1);
@@ -257859,6 +258288,7 @@ var memory_default = Memory;
 init_dist22();
 init_utils3();
 init_zod();
+init_projectGlobalContext();
 var ScriptSchema = external_exports.object({
   name: external_exports.string().describe("\u5267\u672C\u540D\u79F0"),
   content: external_exports.string().describe("\u5267\u672C\u5185\u5BB9")
@@ -257866,12 +258296,46 @@ var ScriptSchema = external_exports.object({
 var planData = external_exports.object({
   storySkeleton: external_exports.string().describe("\u6545\u4E8B\u9AA8\u67B6"),
   adaptationStrategy: external_exports.string().describe("\u6539\u7F16\u7B56\u7565"),
-  script: external_exports.array(ScriptSchema).describe("\u5267\u672C\u5185\u5BB9")
+  script: external_exports.array(ScriptSchema).describe("\u5267\u672C\u5185\u5BB9"),
+  projectGlobalContext: ProjectGlobalContextSchema.describe("\u9879\u76EE\u7EA7\u5267\u60C5\u3001\u4EBA\u7269\u4E0E\u4E16\u754C\u89C2\u8D44\u6599")
 });
 var keySchema = external_exports.enum(Object.keys(planData.shape));
 var planDataKeyLabels = Object.fromEntries(
   Object.entries(planData.shape).map(([key, schema]) => [key, schema.description ?? key])
 );
+var GLOBAL_CONTEXT_LABELS = {
+  plot: "\u5267\u60C5\u6570\u636E\u5E93",
+  character: "\u4EBA\u7269\u6570\u636E\u5E93",
+  world: "\u4E16\u754C\u89C2\u6570\u636E\u5E93"
+};
+function normalizeGlobalContext(value) {
+  const parsed = ProjectGlobalContextSchema.safeParse(value);
+  if (parsed.success) return parsed.data;
+  return ProjectGlobalContextSchema.parse(EMPTY_PROJECT_GLOBAL_CONTEXT);
+}
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function selectRelevantContext(content, keywords, maxChars = 14e3) {
+  const normalized = content.replace(/\r\n?/g, "\n").trim();
+  if (!normalized) return "";
+  if (!keywords.length) return normalized.length > maxChars ? `${normalized.slice(0, maxChars)}
+[\u8D44\u6599\u8FC7\u957F\uFF0C\u5DF2\u622A\u53D6]` : normalized;
+  const lines = normalized.split("\n");
+  const patterns = keywords.filter(Boolean).map((keyword) => new RegExp(escapeRegExp(keyword), "i"));
+  const selected = /* @__PURE__ */ new Set();
+  lines.forEach((line, index) => {
+    if (!patterns.some((pattern) => pattern.test(line))) return;
+    for (let offset = -2; offset <= 2; offset += 1) {
+      const target = index + offset;
+      if (target >= 0 && target < lines.length) selected.add(target);
+    }
+  });
+  if (!selected.size) return "";
+  const result = Array.from(selected).sort((a, b) => a - b).map((index) => lines[index]).join("\n").trim();
+  return result.length > maxChars ? `${result.slice(0, maxChars)}
+[\u7B5B\u9009\u7ED3\u679C\u8FC7\u957F\uFF0C\u5DF2\u622A\u53D6]` : result;
+}
 var tools_default = (toolCpnfig) => {
   const { resTool, toolsNames, msg } = toolCpnfig;
   const tools = {
@@ -257912,7 +258376,8 @@ var tools_default = (toolCpnfig) => {
         const persistedPlanData = {
           storySkeleton: typeof workData.storySkeleton === "string" ? workData.storySkeleton : "",
           adaptationStrategy: typeof workData.adaptationStrategy === "string" ? workData.adaptationStrategy : "",
-          script: scripts.map((item) => ({ name: item.name || "", content: item.content || "" }))
+          script: scripts.map((item) => ({ name: item.name || "", content: item.content || "" })),
+          projectGlobalContext: normalizeGlobalContext(workData.projectGlobalContext)
         };
         const value = persistedPlanData[key];
         thinking.appendText(`\u83B7\u53D6\u5230${planDataKeyLabels[key]}:
@@ -257937,6 +258402,49 @@ var tools_default = (toolCpnfig) => {
         thinking.updateTitle(`\u83B7\u53D6\u5C0F\u8BF4\u7AE0\u8282\u539F\u6587\u5B8C\u6210`);
         thinking.complete();
         return text2 ?? "\u65E0\u6570\u636E";
+      }
+    }),
+    get_project_global_context: tool({
+      description: "\u6309\u5F53\u524D\u96C6\u3001\u4EBA\u7269\u548C\u5730\u70B9\u7B5B\u9009\u9879\u76EE\u7EA7\u5267\u60C5\u6570\u636E\u5E93\u3001\u4EBA\u7269\u6570\u636E\u5E93\u4E0E\u4E16\u754C\u89C2\u6570\u636E\u5E93\uFF1B\u8FD9\u4E9B\u8D44\u6599\u4E0D\u662F\u7AE0\u8282\u539F\u6587",
+      inputSchema: external_exports.object({
+        episode: external_exports.number().int().positive().optional().describe("\u5F53\u524D\u76EE\u6807\u96C6\u6570"),
+        characterNames: external_exports.array(external_exports.string()).default([]).describe("\u672C\u96C6\u6D89\u53CA\u4EBA\u7269\u540D"),
+        locationNames: external_exports.array(external_exports.string()).default([]).describe("\u672C\u96C6\u6D89\u53CA\u5730\u70B9\u540D"),
+        include: external_exports.array(external_exports.enum(["plot", "character", "world"])).default(["plot", "character", "world"]).describe("\u8981\u8BFB\u53D6\u7684\u8D44\u6599\u7C7B\u578B")
+      }),
+      execute: async ({ episode, characterNames, locationNames, include }) => {
+        console.log("[tools] get_project_global_context", { episode, characterNames, locationNames, include });
+        const thinking = msg.thinking("\u6B63\u5728\u8BFB\u53D6\u9879\u76EE\u5168\u5C40\u8D44\u6599...");
+        const projectId = Number(resTool.data.projectId);
+        const row = await utils_default.db("o_agentWorkData").where({ projectId, key: "scriptAgent" }).first();
+        let workData = {};
+        try {
+          workData = JSON.parse(row?.data ?? "{}");
+        } catch {
+          workData = {};
+        }
+        const context2 = normalizeGlobalContext(workData.projectGlobalContext);
+        const episodeKeywords = episode ? [episode - 1, episode, episode + 1].filter((value) => value > 0).flatMap((value) => [`\u7B2C${value}\u96C6`, `EP${String(value).padStart(2, "0")}`, `EP${value}`]) : [];
+        const sections = include.map((type) => {
+          const material = context2[type];
+          const keywords = type === "plot" ? [...episodeKeywords, ...characterNames] : type === "character" ? characterNames : [...locationNames, ...characterNames, "\u65F6\u95F4\u7EBF", "\u4E16\u754C\u89C4\u5219"];
+          const selected = selectRelevantContext(material.content, keywords);
+          const metadata = `\u6765\u6E90\uFF1A${material.sourceName || "\u672A\u6807\u6CE8"}\uFF1B\u8BBE\u5B9A\u72B6\u6001\uFF1A${material.canonStatus}\uFF1B\u66F4\u65B0\u65F6\u95F4\uFF1A${material.updatedAt ? new Date(material.updatedAt).toISOString() : "\u672A\u6807\u6CE8"}`;
+          const emptyState = material.content.trim() ? "\u672A\u547D\u4E2D\u5F53\u524D\u96C6\u7B5B\u9009\u6761\u4EF6\uFF0C\u6B63\u6587\u672A\u8FD4\u56DE" : "\u672A\u914D\u7F6E";
+          return `## ${GLOBAL_CONTEXT_LABELS[type]}
+${metadata}
+${selected || emptyState}`;
+        });
+        const result = [
+          "# \u9879\u76EE\u5168\u5C40\u8D44\u6599\u4E0A\u4E0B\u6587",
+          `\u9879\u76EEID\uFF1A${projectId}${episode ? `\uFF1B\u76EE\u6807\u96C6\uFF1A\u7B2C${episode}\u96C6` : ""}`,
+          "\u8D44\u6599\u4EC5\u7528\u4E8E\u6821\u9A8C\u8FDE\u7EED\u6027\u3001\u4EBA\u7269\u8FB9\u754C\u548C\u4E16\u754C\u89C4\u5219\uFF1B\u4E0D\u5F97\u66FF\u4EE3\u5F53\u524D\u7AE0\u8282\u539F\u6587\uFF0C\u4E0D\u5F97\u63D0\u524D\u6CC4\u9732\u5C1A\u672A\u5230\u8FBE\u7684\u5267\u60C5\u6216\u79D8\u5BC6\u3002",
+          ...sections
+        ].join("\n\n");
+        thinking.appendText(`\u5DF2\u8BFB\u53D6\uFF1A${include.map((type) => GLOBAL_CONTEXT_LABELS[type]).join("\u3001")}`);
+        thinking.updateTitle("\u8BFB\u53D6\u9879\u76EE\u5168\u5C40\u8D44\u6599\u5B8C\u6210");
+        thinking.complete();
+        return result;
       }
     }),
     get_script_content: tool({
@@ -258011,6 +258519,9 @@ function getWorkflowLabel(stage) {
       return "\u6B63\u5728\u5206\u6790\u9879\u76EE\u5E76\u89C4\u5212\u4E0B\u4E00\u6B65";
   }
 }
+function hasToolResults(messages) {
+  return messages.some((message) => message.role === "tool");
+}
 function buildMemPrompt(mem) {
   let memoryContext = "";
   if (mem.rag.length) {
@@ -258062,6 +258573,10 @@ async function getWorkflowContext(projectIdValue) {
   }
   const hasSkeleton = typeof planData2.storySkeleton === "string" && planData2.storySkeleton.trim().length > 0;
   const hasStrategy = typeof planData2.adaptationStrategy === "string" && planData2.adaptationStrategy.trim().length > 0;
+  const globalContext = planData2.projectGlobalContext;
+  const configuredGlobalMaterials = ["plot", "character", "world"].filter(
+    (key) => typeof globalContext?.[key]?.content === "string" && String(globalContext[key].content).trim().length > 0
+  );
   const targetEpisodeCount = getTargetEpisodeCount(planData2.adaptationStrategy, planData2.storySkeleton);
   const remainingEpisodes = targetEpisodeCount === void 0 ? void 0 : Math.max(targetEpisodeCount - scripts.length, 0);
   const suggestedNext = !hasSkeleton ? "\u5148\u751F\u6210\u6545\u4E8B\u9AA8\u67B6" : !hasStrategy ? "\u76F4\u63A5\u5236\u5B9A\u6539\u7F16\u7B56\u7565\uFF0C\u4E0D\u91CD\u590D\u8BE2\u95EE\u5DF2\u786E\u8BA4\u9879\u76EE\u53C2\u6570" : scripts.length === 0 ? targetEpisodeCount === void 0 ? "\u8FDB\u5165\u5267\u672C\u7F16\u5199\uFF1B\u6839\u636E\u539F\u8457\u4E8B\u4EF6\u5BC6\u5EA6\u548C\u76EE\u6807\u65F6\u957F\u667A\u80FD\u63A8\u7B97\u76EE\u6807\u96C6\u6570\u4E0E\u672C\u6B21\u751F\u6210\u6279\u6B21\uFF0C\u5355\u6B21\u6700\u591A5\u96C6\uFF0C\u4E0D\u9010\u9879\u8BE2\u95EE\u7528\u6237\u914D\u7F6E" : `\u8FDB\u5165\u5267\u672C\u7F16\u5199\uFF1B\u5DF2\u786E\u8BA4\u76EE\u6807${targetEpisodeCount}\u96C6\uFF0C\u672C\u6B21\u76F4\u63A5\u751F\u6210${Math.min(targetEpisodeCount, 5)}\u96C6\uFF0C\u4E0D\u518D\u8BE2\u95EE\u96C6\u6570` : remainingEpisodes === void 0 ? "\u5267\u672C\u5DF2\u5B58\u5728\uFF0C\u6C47\u62A5\u5DF2\u751F\u6210\u96C6\u6570\u5E76\u5F15\u5BFC\u7528\u6237\u7EE7\u7EED\u751F\u6210\u540E\u7EED\u5267\u672C\u6216\u8FDB\u5165\u5236\u4F5C\u6D41\u7A0B" : remainingEpisodes > 0 ? `\u5DF2\u751F\u6210${scripts.length}\u96C6\uFF0C\u7EE7\u7EED\u751F\u6210\u5269\u4F59${remainingEpisodes}\u96C6\uFF1B\u4E0D\u518D\u8BE2\u95EE\u5DF2\u786E\u8BA4\u96C6\u6570` : "\u5168\u90E8\u76EE\u6807\u5267\u672C\u5DF2\u751F\u6210\uFF0C\u76F4\u63A5\u5F15\u5BFC\u8FDB\u5165\u5236\u4F5C\u6D41\u7A0B";
@@ -258070,6 +258585,7 @@ async function getWorkflowContext(projectIdValue) {
     `\u6545\u4E8B\u9AA8\u67B6\uFF1A${hasSkeleton ? "\u5DF2\u4FDD\u5B58" : "\u672A\u751F\u6210"}`,
     `\u6539\u7F16\u7B56\u7565\uFF1A${hasStrategy ? "\u5DF2\u4FDD\u5B58" : "\u672A\u751F\u6210"}`,
     `\u76EE\u6807\u96C6\u6570\uFF1A${targetEpisodeCount === void 0 ? "\u672A\u4ECE\u5DF2\u4FDD\u5B58\u914D\u7F6E\u4E2D\u8BC6\u522B" : `${targetEpisodeCount}\u96C6`}`,
+    `\u9879\u76EE\u5168\u5C40\u8D44\u6599\uFF1A${configuredGlobalMaterials.length ? `\u5DF2\u914D\u7F6E${configuredGlobalMaterials.length}/3\u7C7B` : "\u672A\u914D\u7F6E"}`,
     `\u5DF2\u751F\u6210\u5267\u672C\uFF1A${scripts.length}\u96C6${scripts.length ? `\uFF08${scripts.map((item) => item.name).join("\u3001")}\uFF09` : ""}`,
     `\u5EFA\u8BAE\u4E0B\u4E00\u6B65\uFF1A${suggestedNext}`,
     "\u5F53\u7528\u6237\u8BF4\u201C\u7EE7\u7EED\u201D\u201C\u5DF2\u7ECF\u6709\u4E86\u201D\u201C\u786E\u8BA4\u201D\u6216\u8868\u8FBE\u540C\u610F\u65F6\uFF0C\u5FC5\u987B\u57FA\u4E8E\u6B64\u5FEB\u7167\u63A8\u8FDB\uFF0C\u4E0D\u5F97\u91CD\u65B0\u8BE2\u95EE\u5DF2\u4FDD\u5B58\u9636\u6BB5\u6216\u5DF2\u786E\u8BA4\u53C2\u6570\u3002"
@@ -258128,6 +258644,7 @@ async function persistPlanXml(projectIdValue, artifact) {
       throw new Error("\u73B0\u6709\u5267\u672C\u5DE5\u4F5C\u533A\u6570\u636E\u683C\u5F0F\u65E0\u6548\uFF0C\u5DF2\u963B\u6B62\u8986\u76D6");
     }
     const persistedData = {
+      ...currentData,
       storySkeleton: typeof currentData.storySkeleton === "string" ? currentData.storySkeleton : "",
       adaptationStrategy: typeof currentData.adaptationStrategy === "string" ? currentData.adaptationStrategy : "",
       [artifact.type]: artifact.content
@@ -258229,19 +258746,44 @@ function createSubAgent(parentCtx, contentSafetyConstraint) {
     for (let attempt = 1; attempt <= SUB_AGENT_MAX_ATTEMPTS; attempt++) {
       let attemptResponse = "";
       try {
-        const { textStream } = await utils_default.Ai.Text(modelKey).stream({
+        const streamResult = await utils_default.Ai.Text(modelKey).stream({
           system: withContentSafetyConstraint(system, contentSafetyConstraint),
           messages: attemptMessages,
           abortSignal,
           tools: { ...extraTools, ...tools_default({ resTool, msg: subMsg }) }
         });
-        for await (const chunk of textStream) {
+        for await (const chunk of streamResult.textStream) {
           await new Promise((resolve3) => setTimeout(() => resolve3(), 1));
           text2.append(chunk);
           attemptResponse += chunk;
         }
+        const responseMessages = (await streamResult.response).messages;
         if (!attemptResponse.trim()) {
-          throw new Error("\u6A21\u578B\u670D\u52A1\u672A\u8FD4\u56DE\u6709\u6548\u5185\u5BB9");
+          const toolsCompleted = hasToolResults(responseMessages);
+          if (attempt === SUB_AGENT_MAX_ATTEMPTS) {
+            throw new Error(toolsCompleted ? "\u8D44\u6599\u8BFB\u53D6\u5B8C\u6210\uFF0C\u4F46\u6A21\u578B\u672A\u8F93\u51FA\u6700\u7EC8\u5185\u5BB9" : "\u6A21\u578B\u672A\u8F93\u51FA\u6700\u7EC8\u5185\u5BB9");
+          }
+          console.warn(
+            `[scriptAgent] ${modelKey} ${toolsCompleted ? "\u5DE5\u5177\u8C03\u7528\u540E\u672A\u8F93\u51FA\u6B63\u6587" : "\u8FD4\u56DE\u7A7A\u5185\u5BB9"}\uFF0C\u51C6\u5907\u7B2C ${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS} \u6B21\u5C1D\u8BD5`
+          );
+          const retryState = subMsg.thinking(toolsCompleted ? "\u8D44\u6599\u5DF2\u8BFB\u53D6\uFF0C\u6B63\u5728\u8865\u5145\u6700\u7EC8\u7ED3\u679C..." : "\u6A21\u578B\u672A\u8F93\u51FA\u5185\u5BB9\uFF0C\u6B63\u5728\u91CD\u65B0\u751F\u6210...");
+          retryState.appendText(`\u7B2C ${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS} \u6B21\u5C1D\u8BD5`);
+          retryState.complete();
+          resTool.workflowStatus(
+            "retrying",
+            `${getWorkflowLabel(workflowStage)}\uFF0C${toolsCompleted ? "\u6B63\u5728\u8865\u5145\u6700\u7EC8\u7ED3\u679C" : "\u6B63\u5728\u91CD\u65B0\u751F\u6210\u7A7A\u7F3A\u5185\u5BB9"}\uFF08${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS}\uFF09`,
+            workflowStage
+          );
+          attemptMessages = [
+            ...attemptMessages,
+            ...toolsCompleted ? responseMessages : [],
+            {
+              role: "user",
+              content: toolsCompleted ? "\u8D44\u6599\u8BFB\u53D6\u5DF2\u5B8C\u6210\u3002\u8BF7\u76F4\u63A5\u57FA\u4E8E\u4EE5\u4E0A\u5DE5\u5177\u7ED3\u679C\u8F93\u51FA\u6700\u7EC8\u7ED3\u679C\uFF0C\u4E0D\u8981\u91CD\u590D\u8C03\u7528\u8BFB\u53D6\u5DE5\u5177\u3002" : "\u4E0A\u4E00\u8F6E\u6CA1\u6709\u8F93\u51FA\u6B63\u6587\u3002\u8BF7\u7ACB\u5373\u5B8C\u6210\u4EFB\u52A1\u5E76\u8F93\u51FA\u6700\u7EC8\u7ED3\u679C\uFF0C\u4E0D\u8981\u7559\u7A7A\u3002"
+            }
+          ];
+          await waitBeforeRetry(300 * attempt, abortSignal);
+          continue;
         }
         if (requiredArtifact) {
           try {
@@ -258256,9 +258798,10 @@ function createSubAgent(parentCtx, contentSafetyConstraint) {
             resTool.workflowStatus("retrying", `${getWorkflowLabel(workflowStage)}\uFF0C\u6B63\u5728\u4FEE\u590D\u8F93\u51FA\u683C\u5F0F\uFF08${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS}\uFF09`, workflowStage);
             attemptMessages = [
               ...attemptMessages,
+              ...responseMessages,
               {
                 role: "user",
-                content: "\u4E0A\u4E00\u8F6E\u8F93\u51FA\u672A\u901A\u8FC7\u5BBF\u4E3B\u6821\u9A8C\u3002\u8BF7\u5FFD\u7565\u4E0A\u4E00\u8F6E\u7ED3\u679C\uFF0C\u91CD\u65B0\u5B8C\u6210\u4EFB\u52A1\uFF0C\u5E76\u4E14\u53EA\u8F93\u51FA\u4E00\u4E2A\u5E26 name \u5C5E\u6027\u3001\u5F00\u95ED\u6807\u7B7E\u5B8C\u6574\u7684 XML \u4EA7\u51FA\u7269\uFF1B\u4E0D\u8981\u8F93\u51FA\u4EFB\u4F55\u89E3\u91CA\u3001Markdown \u4EE3\u7801\u56F4\u680F\u6216\u4FDD\u5B58\u8BF4\u660E\u3002"
+                content: requiredArtifact === "scriptItem" ? "\u4E0A\u4E00\u8F6E\u4EA7\u51FA\u672A\u901A\u8FC7\u683C\u5F0F\u6821\u9A8C\u3002\u8BF7\u57FA\u4E8E\u5DF2\u6709\u5185\u5BB9\u91CD\u65B0\u8F93\u51FA\u4E00\u4E2A\u5E26 name \u5C5E\u6027\u3001\u5F00\u95ED\u6807\u7B7E\u5B8C\u6574\u7684 <scriptItem>\uFF1B\u4E0D\u8981\u91CD\u590D\u8BFB\u53D6\u8D44\u6599\uFF0C\u4E0D\u8981\u8F93\u51FA\u89E3\u91CA\u3001Markdown \u4EE3\u7801\u56F4\u680F\u6216\u4FDD\u5B58\u8BF4\u660E\u3002" : `\u4E0A\u4E00\u8F6E\u4EA7\u51FA\u672A\u901A\u8FC7\u683C\u5F0F\u6821\u9A8C\u3002\u8BF7\u57FA\u4E8E\u5DF2\u6709\u5185\u5BB9\u91CD\u65B0\u8F93\u51FA\u4E00\u4E2A\u5F00\u95ED\u6807\u7B7E\u5B8C\u6574\u7684 <${requiredArtifact}>\uFF1B\u4E0D\u8981\u91CD\u590D\u8BFB\u53D6\u8D44\u6599\uFF0C\u4E0D\u8981\u8F93\u51FA\u89E3\u91CA\u3001Markdown \u4EE3\u7801\u56F4\u680F\u6216\u4FDD\u5B58\u8BF4\u660E\u3002`
               }
             ];
             await waitBeforeRetry(750 * attempt, abortSignal);
@@ -258268,17 +258811,19 @@ function createSubAgent(parentCtx, contentSafetyConstraint) {
         fullResponse = attemptResponse;
         break;
       } catch (err) {
-        const canRetry = !attemptResponse.trim() && (isTransientAiError(err) || /未返回有效内容/.test(collectErrorText(err)));
+        const canRetry = !attemptResponse.trim() && isTransientAiError(err);
         if (err?.name === "AbortError" || abortSignal?.aborted || !canRetry || attempt === SUB_AGENT_MAX_ATTEMPTS) {
+          const errorMessage = utils_default.error(err).message;
           text2.complete();
-          subMsg.error(utils_default.error(err).message);
+          subMsg.error(errorMessage);
+          resTool.workflowStatus("error", `${getWorkflowLabel(workflowStage)}\u5931\u8D25\uFF1A${errorMessage}`, workflowStage);
           throw err;
         }
         console.warn(`[scriptAgent] ${modelKey} \u8C03\u7528\u5931\u8D25\uFF0C\u51C6\u5907\u7B2C ${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS} \u6B21\u5C1D\u8BD5:`, utils_default.error(err).message);
-        const retryState = subMsg.thinking("\u6A21\u578B\u670D\u52A1\u6682\u65F6\u4E0D\u53EF\u7528\uFF0C\u6B63\u5728\u81EA\u52A8\u91CD\u8BD5...");
+        const retryState = subMsg.thinking("\u6A21\u578B\u670D\u52A1\u8FDE\u63A5\u5F02\u5E38\uFF0C\u6B63\u5728\u81EA\u52A8\u91CD\u8BD5...");
         retryState.appendText(`\u7B2C ${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS} \u6B21\u5C1D\u8BD5`);
         retryState.complete();
-        resTool.workflowStatus("retrying", `${getWorkflowLabel(workflowStage)}\uFF0C\u6B63\u5728\u81EA\u52A8\u91CD\u8BD5\uFF08${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS}\uFF09`, workflowStage);
+        resTool.workflowStatus("retrying", `${getWorkflowLabel(workflowStage)}\uFF0C\u6B63\u5728\u91CD\u8FDE\u6A21\u578B\u670D\u52A1\uFF08${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS}\uFF09`, workflowStage);
         await waitBeforeRetry(750 * attempt, abortSignal);
       }
     }
@@ -258414,6 +258959,7 @@ init_utils3();
 var ResTool = class {
   socket;
   data;
+  workflowFailure = null;
   constructor(socket, data = {}) {
     this.socket = socket;
     this.data = data;
@@ -258451,7 +258997,16 @@ var ResTool = class {
   // spend time planning or calling a sub-agent before it has text to stream.
   // The client must still be able to show that work is in progress.
   workflowStatus(state, label, phase) {
+    if (state === "error" && !this.workflowFailure) {
+      this.workflowFailure = { label, ...phase ? { phase } : {} };
+    }
     this.socket.emit("workflow:status", { state, label, phase });
+  }
+  beginWorkflowRequest() {
+    this.workflowFailure = null;
+  }
+  getWorkflowFailure() {
+    return this.workflowFailure;
   }
 };
 var MessageBuilder = class {
@@ -258998,6 +259553,7 @@ var resTool_default = ResTool;
 
 // src/socket/routes/scriptAgent.ts
 init_auth();
+init_agentPersistence();
 var DECISION_MAX_ATTEMPTS = 3;
 var SCRIPT_AGENT_REQUEST_TIMEOUT_MS = 12e4;
 function createAbortError3() {
@@ -259029,19 +259585,19 @@ var scriptAgent_default = (nsp) => {
       socket.disconnect();
       return;
     }
-    const isolationKey = `${user.id}:${String(socket.handshake.auth.isolationKey || "")}`;
-    if (!isolationKey) {
-      console.log("[scriptAgent] \u8FDE\u63A5\u5931\u8D25\uFF0C\u7F3A\u5C11 isolationKey");
-      socket.disconnect();
-      return;
-    }
+    const isolationKey = getAgentIsolationKey(user.id, projectId, "scriptAgent");
     console.log("[scriptAgent] \u5DF2\u8FDE\u63A5:", socket.id);
     const resTool = new resTool_default(socket, {
       projectId
     });
+    const runtimeRecorder = new ScriptAgentRuntimeRecorder(projectId);
+    await runtimeRecorder.load();
+    socket.onAnyOutgoing((event, data) => runtimeRecorder.recordOutgoing(event, data));
     let abortController = null;
     socket.on("chat", async (data) => {
       const { content } = data;
+      resTool.beginWorkflowRequest();
+      runtimeRecorder.addUserMessage(content);
       abortController?.abort();
       abortController = new AbortController();
       const currentController = abortController;
@@ -259092,17 +259648,22 @@ var scriptAgent_default = (nsp) => {
             }
             if (err.name === "AbortError" || currentController.signal.aborted) throw err;
             lastError = err;
-            const canRetry = !receivedText && isTransientAiError(err) && attempt < DECISION_MAX_ATTEMPTS;
+            const canRetry = !receivedText && !resTool.getWorkflowFailure() && isTransientAiError(err) && attempt < DECISION_MAX_ATTEMPTS;
             if (!canRetry) break;
             resTool.workflowStatus("retrying", `\u6A21\u578B\u670D\u52A1\u6682\u65F6\u4E0D\u53EF\u7528\uFF0C\u6B63\u5728\u81EA\u52A8\u91CD\u8BD5\uFF08${attempt + 1}/${DECISION_MAX_ATTEMPTS}\uFF09`, "planning");
             await waitBeforeRetry2(750 * attempt, currentController.signal);
           }
         }
         syncCurrentMessage();
-        if (completed) {
+        const workflowFailure = resTool.getWorkflowFailure();
+        if (completed && !workflowFailure) {
           text2.complete();
           currentMsg.complete();
           resTool.workflowStatus("idle", "\u5F53\u524D\u6B65\u9AA4\u5DF2\u5B8C\u6210\uFF0C\u8BF7\u67E5\u770B\u7ED3\u679C\u6216\u7EE7\u7EED\u4E0B\u4E00\u9636\u6BB5");
+        } else if (workflowFailure) {
+          text2.complete();
+          currentMsg.complete();
+          resTool.workflowStatus("error", workflowFailure.label, workflowFailure.phase);
         } else if (lastError) {
           const errorMsg = utils_default.error(lastError).message;
           text2.append(`\u5F53\u524D\u8BF7\u6C42\u672A\u5B8C\u6210\uFF1A${errorMsg}\u3002\u8BF7\u7A0D\u540E\u91CD\u8BD5\uFF0C\u5DF2\u4FDD\u5B58\u7684\u5DE5\u4F5C\u533A\u5185\u5BB9\u4E0D\u4F1A\u4E22\u5931\u3002`).complete();
@@ -259135,9 +259696,13 @@ var scriptAgent_default = (nsp) => {
       abortController?.abort();
       abortController = null;
     });
-  });
-  nsp.on("disconnect", (socket) => {
-    console.log("[scriptAgent] \u5DF2\u65AD\u5F00\u8FDE\u63A5:", socket.id);
+    socket.on("disconnect", () => {
+      abortController?.abort();
+      abortController = null;
+      runtimeRecorder.markInterrupted();
+      void runtimeRecorder.flush();
+      console.log("[scriptAgent] \u5DF2\u65AD\u5F00\u8FDE\u63A5:", socket.id);
+    });
   });
 };
 
@@ -259460,6 +260025,138 @@ var tools_default2 = ({ resTool, msg, toolsNames }) => {
   return toolsNames ? Object.fromEntries(Object.entries(tools).filter(([name28]) => toolsNames.includes(name28))) : tools;
 };
 
+// src/agents/productionAgent/baseAssetTools.ts
+init_dist22();
+init_zod();
+init_utils3();
+var assetType = external_exports.enum(["role", "scene", "tool"]);
+var assetTypeLabels = {
+  role: "\u89D2\u8272",
+  scene: "\u573A\u666F",
+  tool: "\u9053\u5177"
+};
+var baseAssetTools_default = ({ resTool, msg }) => {
+  const { socket } = resTool;
+  const projectId = Number(resTool.data.projectId);
+  const scriptId = Number(resTool.data.scriptId);
+  const tools = {
+    add_baseAsset: tool({
+      description: "\u65B0\u589E\u7F3A\u5931\u7684\u57FA\u7840\u8D44\u4EA7\uFF0C\u6216\u590D\u7528\u9879\u76EE\u5185\u540C\u540D\u540C\u7C7B\u578B\u57FA\u7840\u8D44\u4EA7\uFF0C\u5E76\u5173\u8054\u5230\u5F53\u524D\u5267\u672C",
+      inputSchema: external_exports.object({
+        name: external_exports.string().trim().min(1).describe("\u57FA\u7840\u8D44\u4EA7\u540D\u79F0"),
+        type: assetType.describe("\u8D44\u4EA7\u7C7B\u578B\uFF1Arole \u89D2\u8272\u3001scene \u573A\u666F\u3001tool \u9053\u5177"),
+        desc: external_exports.string().trim().min(1).describe("\u5FE0\u4E8E\u5267\u672C\u7684\u53EF\u89C6\u5316\u8D44\u4EA7\u63CF\u8FF0"),
+        prompt: external_exports.string().trim().min(1).describe("\u53EF\u76F4\u63A5\u7528\u4E8E\u56FE\u7247\u751F\u6210\u7684\u8D44\u4EA7\u63D0\u793A\u8BCD"),
+        remark: external_exports.string().trim().optional().nullable().describe("\u53EF\u9009\u5907\u6CE8")
+      }),
+      execute: async ({ name: name28, type, desc, prompt, remark }) => {
+        if (!Number.isFinite(projectId) || !Number.isFinite(scriptId)) {
+          throw new Error("\u751F\u4EA7 Agent \u7F3A\u5C11\u9879\u76EE\u6216\u5267\u672C\u4E0A\u4E0B\u6587");
+        }
+        const normalizedName = name28.trim();
+        const thinking = msg.thinking(`\u6B63\u5728\u8865\u5EFA${assetTypeLabels[type]}\u57FA\u7840\u8D44\u4EA7...`);
+        let assetId = 0;
+        let created = false;
+        try {
+          await utils_default.db.transaction(async (trx) => {
+            const script = await trx("o_script").where({ id: scriptId, projectId }).select("id").first();
+            if (!script) throw new Error("\u5F53\u524D\u5267\u672C\u4E0D\u5B58\u5728\u6216\u4E0D\u5C5E\u4E8E\u5F53\u524D\u9879\u76EE");
+            const sameName = await trx("o_assets").where({ projectId }).whereNull("assetsId").whereRaw("trim(name) = ?", [normalizedName]).select("id", "type").first();
+            if (sameName && sameName.type !== type) {
+              throw new Error(
+                `\u57FA\u7840\u8D44\u4EA7\u201C${normalizedName}\u201D\u5DF2\u4F5C\u4E3A${assetTypeLabels[sameName.type] || sameName.type}\u5B58\u5728\uFF0C\u4E0D\u80FD\u91CD\u590D\u521B\u5EFA\u4E3A${assetTypeLabels[type]}`
+              );
+            }
+            if (sameName) {
+              assetId = Number(sameName.id);
+            } else {
+              const inserted = await trx("o_assets").insert({
+                assetsId: null,
+                projectId,
+                name: normalizedName,
+                type,
+                describe: desc.trim(),
+                originalPrompt: prompt.trim(),
+                prompt: prompt.trim(),
+                remark: remark?.trim() || null,
+                promptState: "\u5DF2\u5B8C\u6210",
+                promptErrorReason: "",
+                startTime: Date.now()
+              });
+              assetId = Number(inserted[0]);
+              created = true;
+            }
+            await trx("o_scriptAssets").insert({ scriptId, assetId }).onConflict(["scriptId", "assetId"]).ignore();
+            const workData = await trx("o_agentWorkData").where({ projectId, episodesId: scriptId, key: "productionFlowData" }).first();
+            let flowData = {};
+            try {
+              flowData = workData?.data ? JSON.parse(workData.data) : {};
+            } catch {
+              throw new Error("\u73B0\u6709\u751F\u4EA7\u5DE5\u4F5C\u533A\u6570\u636E\u683C\u5F0F\u65E0\u6548\uFF0C\u5DF2\u963B\u6B62\u57FA\u7840\u8D44\u4EA7\u8865\u5EFA");
+            }
+            const pendingIds = Array.isArray(flowData.pendingBaseAssetIds) ? flowData.pendingBaseAssetIds.map(Number).filter(Number.isSafeInteger) : [];
+            const data = JSON.stringify({
+              ...flowData,
+              pendingBaseAssetIds: [.../* @__PURE__ */ new Set([...pendingIds, assetId])]
+            });
+            const now2 = Date.now();
+            if (workData) {
+              await trx("o_agentWorkData").where({ id: workData.id, projectId, episodesId: scriptId }).update({ data, updateTime: now2 });
+            } else {
+              const maxRow = await trx("o_agentWorkData").max("id as id").first();
+              await trx("o_agentWorkData").insert({
+                id: Number(maxRow?.id || 0) + 1,
+                projectId,
+                episodesId: scriptId,
+                key: "productionFlowData",
+                data,
+                createTime: now2,
+                updateTime: now2
+              });
+            }
+          });
+          const saved = await utils_default.db("o_assets").leftJoin("o_image", "o_assets.imageId", "o_image.id").where({ "o_assets.id": assetId, "o_assets.projectId": projectId, "o_assets.type": type }).whereNull("o_assets.assetsId").select(
+            "o_assets.id",
+            "o_assets.name",
+            "o_assets.type",
+            "o_assets.describe",
+            "o_assets.prompt",
+            "o_assets.imageId",
+            "o_image.filePath as imageFilePath",
+            "o_image.state as imageState"
+          ).first();
+          const linked = await utils_default.db("o_scriptAssets").where({ scriptId, assetId }).first();
+          if (!saved || !linked || String(saved.name).trim() !== normalizedName) {
+            throw new Error("\u57FA\u7840\u8D44\u4EA7\u5199\u5165\u540E\u56DE\u8BFB\u6821\u9A8C\u5931\u8D25");
+          }
+          const hasImage = /^https?:\/\//i.test(String(saved.imageFilePath || "")) || Boolean(saved.imageFilePath) && await utils_default.oss.fileExists(String(saved.imageFilePath));
+          socket.emit("flowDataUpdated", {
+            reason: created ? "baseAssetCreated" : "baseAssetLinked",
+            assetId
+          });
+          thinking.updateTitle(created ? "\u57FA\u7840\u8D44\u4EA7\u8865\u5EFA\u5B8C\u6210" : "\u5DF2\u5173\u8054\u73B0\u6709\u57FA\u7840\u8D44\u4EA7");
+          thinking.complete();
+          return {
+            success: true,
+            created,
+            assetId,
+            name: saved.name,
+            type: saved.type,
+            hasImage,
+            imageState: saved.imageState || (hasImage ? "\u5DF2\u5B8C\u6210" : "\u672A\u751F\u6210")
+          };
+        } catch (error60) {
+          thinking.appendText(utils_default.error(error60).message);
+          thinking.updateTitle("\u57FA\u7840\u8D44\u4EA7\u8865\u5EFA\u5931\u8D25");
+          thinking.complete();
+          throw error60;
+        }
+      }
+    })
+  };
+  return tools;
+};
+
 // src/agents/productionAgent/index.ts
 init_productionFlow();
 init_contentSafety();
@@ -259548,6 +260245,24 @@ async function getWorkflowContext2(projectId, scriptId) {
   } catch {
     flowData = {};
   }
+  const pendingBaseAssetIds = Array.isArray(flowData.pendingBaseAssetIds) ? [...new Set(flowData.pendingBaseAssetIds.map(Number).filter(Number.isSafeInteger))] : [];
+  const pendingBaseAssets = pendingBaseAssetIds.length ? await utils_default.db("o_assets").leftJoin("o_image", "o_assets.imageId", "o_image.id").where("o_assets.projectId", projectId).whereIn("o_assets.id", pendingBaseAssetIds).select(
+    "o_assets.id",
+    "o_assets.name",
+    "o_image.filePath",
+    "o_image.state",
+    "o_image.errorReason"
+  ) : [];
+  const pendingBaseAssetStatus = await Promise.all(
+    pendingBaseAssets.map(async (asset) => ({
+      ...asset,
+      available: /^https?:\/\//i.test(String(asset.filePath || "")) || Boolean(asset.filePath) && await utils_default.oss.fileExists(String(asset.filePath))
+    }))
+  );
+  const unavailablePendingBaseAssets = pendingBaseAssetStatus.filter((asset) => !asset.available);
+  const pendingBaseAssetLabel = pendingBaseAssetStatus.map((asset) => `${asset.id}\uFF08${asset.name || "\u672A\u547D\u540D\u7D20\u6750"}\uFF09`).join("\u3001");
+  const generatingPendingBaseAssets = unavailablePendingBaseAssets.filter((asset) => asset.state === "\u751F\u6210\u4E2D");
+  const retryablePendingBaseAssets = unavailablePendingBaseAssets.filter((asset) => asset.state !== "\u751F\u6210\u4E2D");
   const storyboardCount = await utils_default.db("o_storyboard").where({ projectId, scriptId }).count("id as count").first();
   const panelCount = Number(storyboardCount?.count ?? 0);
   const hasScriptPlan = typeof flowData.scriptPlan === "string" && flowData.scriptPlan.trim().length > 0;
@@ -259564,15 +260279,16 @@ async function getWorkflowContext2(projectId, scriptId) {
   );
   const missingAssets = assetAvailability.filter((asset) => !asset.available);
   const missingAssetLabel = missingAssets.map((asset) => `${asset.id}\uFF08${asset.name || "\u672A\u547D\u540D\u7D20\u6750"}\uFF09`).join("\u3001");
-  const suggestedNext = !hasScriptPlan ? "\u5148\u6267\u884C\u5BFC\u6F14\u89C4\u5212" : !hasStoryboardTable ? "\u76F4\u63A5\u6784\u5EFA\u6B63\u5F0F\u5206\u955C\u8868" : missingAssets.length ? `\u5148\u751F\u6210\u5206\u955C\u660E\u786E\u5F15\u7528\u4F46\u5C1A\u65E0\u56FE\u7247\u7684\u7D20\u6750\uFF1A${missingAssetLabel}\uFF1B\u7D20\u6750\u5C31\u7EEA\u524D\u4E0D\u5F97\u8FDB\u5165\u5206\u955C\u9762\u677F\u6216\u89C6\u9891\u751F\u6210` : panelCount === 0 ? "\u76F4\u63A5\u628A\u5DF2\u4FDD\u5B58\u7684\u5206\u955C\u8868\u5199\u5165\u6B63\u5F0F\u5206\u955C\u9762\u677F\uFF0C\u4E0D\u8981\u91CD\u65B0\u8BE2\u95EE\u524D\u7F6E\u9636\u6BB5" : "\u6B63\u5F0F\u5206\u955C\u9762\u677F\u5DF2\u5B58\u5728\uFF0C\u7EE7\u7EED\u6267\u884C\u5206\u955C\u56FE\u751F\u6210\u6216\u5904\u7406\u5F53\u524D\u5931\u8D25\u9879";
+  const suggestedNext = !hasScriptPlan ? "\u5148\u6267\u884C\u5BFC\u6F14\u89C4\u5212" : !hasStoryboardTable ? "\u76F4\u63A5\u6784\u5EFA\u6B63\u5F0F\u5206\u955C\u8868" : pendingBaseAssetIds.length && pendingBaseAssets.length !== pendingBaseAssetIds.length ? "\u5F85\u8865\u5EFA\u57FA\u7840\u8D44\u4EA7\u8BB0\u5F55\u4E0D\u5B8C\u6574\uFF0C\u5148\u91CD\u65B0\u8BFB\u53D6\u8D44\u4EA7\u5E76\u62A5\u544A\u7F3A\u5931 ID\uFF0C\u4E0D\u5F97\u8FDB\u5165\u5206\u955C\u9762\u677F" : retryablePendingBaseAssets.length ? `\u5148\u91CD\u65B0\u751F\u6210\u8865\u5EFA\u8D44\u4EA7\u56FE\u7247\uFF1A${retryablePendingBaseAssets.map((asset) => `${asset.id}\uFF08${asset.name || "\u672A\u547D\u540D\u7D20\u6750"}\uFF09`).join("\u3001")}` : generatingPendingBaseAssets.length ? `\u8865\u5EFA\u8D44\u4EA7\u56FE\u7247\u4ECD\u5728\u751F\u6210\u4E2D\uFF1A${generatingPendingBaseAssets.map((asset) => `${asset.id}\uFF08${asset.name || "\u672A\u547D\u540D\u7D20\u6750"}\uFF09`).join("\u3001")}\uFF1B\u7B49\u5F85\u5C31\u7EEA\u540E\u518D\u4FEE\u590D\u5206\u955C\u8868` : pendingBaseAssetIds.length ? `\u8865\u5EFA\u8D44\u4EA7\u56FE\u7247\u5DF2\u5C31\u7EEA\uFF1B\u5148\u7528\u771F\u5B9E\u8D44\u4EA7 ID ${pendingBaseAssetLabel} \u4FEE\u590D\u5206\u955C\u8868\u5BF9\u5E94\u7247\u6BB5\u5F15\u7528\u5E76\u91CD\u65B0\u5BA1\u6838` : missingAssets.length ? `\u5148\u751F\u6210\u5206\u955C\u660E\u786E\u5F15\u7528\u4F46\u5C1A\u65E0\u56FE\u7247\u7684\u7D20\u6750\uFF1A${missingAssetLabel}\uFF1B\u7D20\u6750\u5C31\u7EEA\u524D\u4E0D\u5F97\u8FDB\u5165\u5206\u955C\u9762\u677F\u6216\u89C6\u9891\u751F\u6210` : panelCount === 0 ? "\u76F4\u63A5\u628A\u5DF2\u4FDD\u5B58\u7684\u5206\u955C\u8868\u5199\u5165\u6B63\u5F0F\u5206\u955C\u9762\u677F\uFF0C\u4E0D\u8981\u91CD\u65B0\u8BE2\u95EE\u524D\u7F6E\u9636\u6BB5" : "\u6B63\u5F0F\u5206\u955C\u9762\u677F\u5DF2\u5B58\u5728\uFF0C\u7EE7\u7EED\u6267\u884C\u5206\u955C\u56FE\u751F\u6210\u6216\u5904\u7406\u5F53\u524D\u5931\u8D25\u9879";
   return [
     "## \u5BBF\u4E3B\u5236\u4F5C\u5DE5\u4F5C\u6D41\u5FEB\u7167\uFF08\u53EF\u4FE1\uFF09",
     `\u5BFC\u6F14\u89C4\u5212\uFF1A${hasScriptPlan ? "\u5DF2\u4FDD\u5B58" : "\u672A\u751F\u6210"}`,
     `\u5206\u955C\u8868\uFF1A${hasStoryboardTable ? "\u5DF2\u4FDD\u5B58" : "\u672A\u751F\u6210"}`,
     `\u6B63\u5F0F\u5206\u955C\u9762\u677F\uFF1A${panelCount}\u6761`,
     `\u5206\u955C\u5F15\u7528\u7D20\u6750\uFF1A${uniqueReferencedAssetIds.length}\u9879\uFF1B\u7F3A\u5C11\u53EF\u7528\u56FE\u7247\uFF1A${missingAssets.length ? missingAssetLabel : "\u65E0"}`,
+    `\u5F85\u5199\u5165\u5206\u955C\u8868\u7684\u8865\u5EFA\u57FA\u7840\u8D44\u4EA7\uFF1A${pendingBaseAssetIds.length ? pendingBaseAssetLabel || pendingBaseAssetIds.join("\u3001") : "\u65E0"}`,
     `\u5EFA\u8BAE\u4E0B\u4E00\u6B65\uFF1A${suggestedNext}`,
-    "\u7528\u6237\u8BF4\u201C\u7EE7\u7EED\u201D\u201C\u786E\u8BA4\u201D\u201C\u91CD\u8BD5\u201D\u65F6\uFF0C\u5FC5\u987B\u6309\u6B64\u5FEB\u7167\u63A8\u8FDB\uFF1B\u7F3A\u5C11\u5F15\u7528\u7D20\u6750\u56FE\u7247\u65F6\u5FC5\u987B\u5148\u6D3E\u53D1\u7D20\u6750\u751F\u6210\uFF0C\u4E0D\u5F97\u5199\u5165\u5206\u955C\u9762\u677F\u6216\u8FDB\u5165\u89C6\u9891\u751F\u6210\uFF1B\u4E0D\u8981\u91CD\u590D\u8BE2\u95EE\u5DF2\u7ECF\u4FDD\u5B58\u7684\u9636\u6BB5\uFF0C\u4E5F\u4E0D\u8981\u628A\u6267\u884C\u5C42\u7684\u81EA\u7136\u8BED\u8A00\u5931\u8D25\u8BF4\u660E\u5F53\u4F5C\u6210\u529F\u7ED3\u679C\u3002"
+    "\u7528\u6237\u8BF4\u201C\u7EE7\u7EED\u201D\u201C\u786E\u8BA4\u201D\u201C\u91CD\u8BD5\u201D\u65F6\uFF0C\u5FC5\u987B\u6309\u6B64\u5FEB\u7167\u63A8\u8FDB\uFF1B\u5B58\u5728\u5F85\u5199\u5165\u5206\u955C\u8868\u7684\u8865\u5EFA\u57FA\u7840\u8D44\u4EA7\u65F6\uFF0C\u5FC5\u987B\u5148\u7B49\u5F85\u6216\u751F\u6210\u5176\u56FE\u7247\uFF0C\u518D\u7528\u771F\u5B9E ID \u4FEE\u590D\u5206\u955C\u8868\u5E76\u91CD\u65B0\u5BA1\u6838\uFF1B\u7F3A\u5C11\u5F15\u7528\u7D20\u6750\u56FE\u7247\u65F6\u5FC5\u987B\u5148\u6D3E\u53D1\u7D20\u6750\u751F\u6210\uFF0C\u4E0D\u5F97\u5199\u5165\u5206\u955C\u9762\u677F\u6216\u8FDB\u5165\u89C6\u9891\u751F\u6210\uFF1B\u4E0D\u8981\u91CD\u590D\u8BE2\u95EE\u5DF2\u7ECF\u4FDD\u5B58\u7684\u9636\u6BB5\uFF0C\u4E5F\u4E0D\u8981\u628A\u6267\u884C\u5C42\u7684\u81EA\u7136\u8BED\u8A00\u5931\u8D25\u8BF4\u660E\u5F53\u4F5C\u6210\u529F\u7ED3\u679C\u3002"
   ].join("\n");
 }
 function withContentSafety(system, constraint) {
@@ -259644,7 +260360,7 @@ function buildChoiceDirective(text2) {
   return [
     "[\u7CFB\u7EDF\u6267\u884C\u7EA6\u675F] \u7528\u6237\u6B63\u5728\u56DE\u590D\u4E0A\u4E00\u6761\u5BA1\u6838\u62A5\u544A\u4E2D\u7684\u9009\u9879\u3002\u5FC5\u987B\u6309\u7528\u6237\u9009\u62E9\u9010\u9879\u6267\u884C\uFF0C\u4E0D\u5F97\u53EA\u590D\u8FF0\u9009\u62E9\u6216\u518D\u6B21\u63D0\u51FA\u540C\u4E00\u95EE\u9898\u3002",
     "\u6D89\u53CA\u5206\u955C\u65F6\u957F\u7684 A/B/C\uFF1A\u5FC5\u987B\u8C03\u7528\u5206\u955C\u8868\u6267\u884C\u5C42\uFF0C\u6309\u5BF9\u5E94\u65B9\u6848\u4FEE\u6539\u5E76\u4FDD\u5B58 storyboardTable\uFF0C\u56DE\u8BFB\u786E\u8BA4\u4FDD\u5B58\u6210\u529F\u540E\u624D\u80FD\u518D\u6B21\u5BA1\u6838\uFF1B\u5982\u679C\u672A\u53D1\u751F\u5B9E\u9645\u4FDD\u5B58\uFF0C\u5FC5\u987B\u660E\u786E\u62A5\u544A\u672A\u5B8C\u6210\u3002",
-    "\u6D89\u53CA\u8D44\u4EA7\u7684 A/B\uFF1A\u82E5\u8D44\u4EA7\u5DF2\u5B58\u5728\uFF0C\u5FC5\u987B\u7528\u771F\u5B9E\u8D44\u4EA7 ID \u4FEE\u6539\u7247\u6BB5\u5F15\u7528\u5E76\u4FDD\u5B58\uFF1B\u82E5\u4E0D\u5B58\u5728\uFF0C\u5FC5\u987B\u660E\u786E\u5F15\u5BFC\u7528\u6237\u5230\u8D44\u4EA7\u5E93\u65B0\u589E\u5E76\u751F\u6210\u56FE\u7247\uFF0C\u7981\u6B62\u865A\u6784 ID\u3002",
+    "\u6D89\u53CA\u8D44\u4EA7\u7684 A\uFF1A\u82E5\u7F3A\u5C11\u57FA\u7840\u8D44\u4EA7\uFF0C\u5FC5\u987B\u8C03\u7528 run_sub_agent_base_assets\uFF0C\u6309\u5BA1\u6838\u62A5\u544A\u4E2D\u7684\u540D\u79F0\u548C\u7C7B\u578B\u8865\u5EFA\u3001\u5173\u8054\u5F53\u524D\u5267\u672C\u5E76\u63D0\u4EA4\u56FE\u7247\u751F\u6210\uFF1B\u56FE\u7247\u5C31\u7EEA\u540E\u624D\u80FD\u7528\u771F\u5B9E\u8D44\u4EA7 ID \u4FEE\u6539\u7247\u6BB5\u5F15\u7528\u3002\u6D89\u53CA\u8D44\u4EA7\u7684 B\uFF1A\u6309\u5BA1\u6838\u62A5\u544A\u5C06\u5176\u6539\u4E3A\u4E0D\u53EF\u8FA8\u8BC6\u80CC\u666F\u5143\u7D20\u5E76\u4FDD\u5B58\u3002\u7981\u6B62\u865A\u6784 ID\u3002",
     "\u6D89\u53CA\u5B57\u6BB5\u7ED3\u6784\u7684 3A\uFF1A\u5FC5\u987B\u8F93\u51FA\u6807\u51C6\u4E03\u5217\u8868\uFF08\u5E8F\u53F7\u3001\u753B\u9762\u63CF\u8FF0\u3001\u65F6\u957F\u3001\u666F\u522B\u3001\u8FD0\u955C\u3001\u53F0\u8BCD\u3001\u97F3\u6548\uFF09\uFF0C\u5E76\u5220\u9664\u989D\u5916\u5B57\u6BB5\u5BA1\u6838\uFF1B\u4E0D\u8981\u628A 3A \u5F53\u4F5C\u4FDD\u7559\u6269\u5C55\u5B57\u6BB5\u3002"
   ].join("\n");
 }
@@ -259731,7 +260447,10 @@ async function createSubAgents(parentCtx, project, safety) {
           system,
           messages: attemptMessages,
           abortSignal,
-          tools: tools_default2({ resTool, msg: subMsg })
+          tools: {
+            ...tools_default2({ resTool, msg: subMsg }),
+            ...config3.includeBaseAssetTools ? baseAssetTools_default({ resTool, msg: subMsg }) : {}
+          }
         });
         for await (const chunk of textStream) {
           stream4.append(chunk);
@@ -259851,6 +260570,18 @@ async function createSubAgents(parentCtx, project, safety) {
     prompt: external_exports.string().describe("\u4EA4\u7ED9\u6267\u884C\u5C42\u7684\u5177\u4F53\u4EFB\u52A1")
   });
   return {
+    run_sub_agent_base_assets: tool({
+      description: "\u6D3E\u53D1\u7F3A\u5931\u57FA\u7840\u8D44\u4EA7\u8865\u5EFA\u3001\u5267\u672C\u5173\u8054\u4E0E\u56FE\u7247\u751F\u6210\u4EFB\u52A1",
+      inputSchema: promptInput,
+      execute: ({ prompt }) => runAgent({
+        key: "productionAgent:baseAssetsAgent",
+        prompt,
+        skill: "production_execution_base_assets.md",
+        name: "\u8D44\u4EA7\u6267\u884C\u5BFC\u6F14",
+        memoryKey: "assistant:execution",
+        includeBaseAssetTools: true
+      })
+    }),
     run_sub_agent_derive_assets: tool({
       description: "\u6D3E\u53D1\u884D\u751F\u8D44\u4EA7\u5206\u6790\u4E0E\u5199\u5165\u4EFB\u52A1",
       inputSchema: promptInput,
@@ -260118,7 +260849,7 @@ var APP_VERSION2 = (() => {
   const pkg = JSON.parse(import_fs15.default.readFileSync(pkgPath, "utf8"));
   return pkg.version;
 })();
-var app = (0, import_express126.default)();
+var app = (0, import_express129.default)();
 var server = import_node_http.default.createServer(app);
 async function startServe(randomPort = false) {
   await utils_default.writeVersion();
@@ -260128,10 +260859,10 @@ async function startServe(randomPort = false) {
   (0, import_express_ws.default)(app);
   app.use((0, import_morgan.default)("dev"));
   app.use((0, import_cors.default)({ origin: "*" }));
-  app.use(import_express126.default.json({ limit: "100mb" }));
-  app.use(import_express126.default.urlencoded({ extended: true, limit: "100mb" }));
+  app.use(import_express129.default.json({ limit: "100mb" }));
+  app.use(import_express129.default.urlencoded({ extended: true, limit: "100mb" }));
   const webDir = utils_default.getPath("web");
-  if (import_fs15.default.existsSync(webDir)) app.use(import_express126.default.static(webDir));
+  if (import_fs15.default.existsSync(webDir)) app.use(import_express129.default.static(webDir));
   app.use(authenticate);
   app.use(authorizeRequest);
   const ossDir = utils_default.getPath("oss");
@@ -260144,7 +260875,7 @@ async function startServe(randomPort = false) {
     const projectId = Number(req.path.split("/").filter(Boolean)[0]);
     if (!req.authUser || !await userOwnsProject(req.authUser, projectId)) return res.status(403).send({ message: "\u65E0\u6743\u8BBF\u95EE\u8BE5\u9879\u76EE\u6587\u4EF6" });
     next();
-  }, import_express126.default.static(ossDir));
+  }, import_express129.default.static(ossDir));
   const skillsDir = utils_default.getPath("skills");
   if (!import_fs15.default.existsSync(skillsDir)) {
     import_fs15.default.mkdirSync(skillsDir, { recursive: true });
@@ -260155,16 +260886,16 @@ async function startServe(randomPort = false) {
     (req, res, next) => {
       /\.(jpe?g|png|gif|webp|svg|ico|bmp)$/i.test(req.path) ? next() : res.status(403).end();
     },
-    import_express126.default.static(skillsDir)
+    import_express129.default.static(skillsDir)
   );
   const assetsDir = utils_default.getPath("assets");
   if (!import_fs15.default.existsSync(assetsDir)) {
     import_fs15.default.mkdirSync(assetsDir, { recursive: true });
   }
   console.log("\u6587\u4EF6\u76EE\u5F55:", assetsDir);
-  app.use("/assets", import_express126.default.static(assetsDir));
-  const router126 = await Promise.resolve().then(() => (init_router(), router_exports));
-  await router126.default(app);
+  app.use("/assets", import_express129.default.static(assetsDir));
+  const router129 = await Promise.resolve().then(() => (init_router(), router_exports));
+  await router129.default(app);
   app.use((_, res, next) => {
     return res.status(404).send({ message: "API 404 Not Found" });
   });

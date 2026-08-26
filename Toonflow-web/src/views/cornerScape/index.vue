@@ -41,7 +41,7 @@
             <div class="styleControl">
               <t-popup v-model="stylePickerVisible" trigger="click" placement="bottom-left" :overlay-inner-style="{ padding: '0' }">
                 <button type="button" class="styleTrigger" :disabled="artStyleLoading">
-                  <img v-if="selectedArtStyleItem?.images[0]" :src="selectedArtStyleItem.images[0]" alt="" />
+                  <img v-if="selectedArtStyleCover" :src="selectedArtStyleCover" alt="" @error="onArtStyleImageError" />
                   <span v-else class="styleTriggerPlaceholder"><t-icon name="image" /></span>
                   <span class="styleTriggerText">
                     <strong>{{ selectedArtStyleItem?.name || selectedArtStyle || "选择项目风格" }}</strong>
@@ -70,7 +70,7 @@
                         :class="{ active: selectedArtStyle === item.stylePath }"
                         @click="selectArtStyle(item)">
                         <span class="styleCover">
-                          <img v-if="item.images[0]" :src="item.images[0]" :alt="item.name" loading="lazy" />
+                          <img v-if="getArtStyleCover(item)" :src="getArtStyleCover(item)" :alt="item.name" loading="lazy" @error="onArtStyleImageError" />
                           <t-icon v-else name="image" size="24px" />
                           <span
                             class="favoriteButton"
@@ -131,7 +131,16 @@
           <t-popup :content="item.errorReason" v-else-if="item.state === '生成失败'">
             <t-empty type="fail" :title="$t('workbench.cornerScape.genFailed')" />
           </t-popup>
-          <t-image v-else class="image" :src="item.filePath ?? undefined" fit="contain" :preview="true" :lazy="true">
+          <t-image
+            v-else
+            :key="item.filePath || item.id"
+            class="image"
+            :src="item.filePath ?? undefined"
+            fit="contain"
+            :preview="true"
+            :lazy="true"
+            @load="markAssetImageLoaded(item.id)"
+            @error="refreshAssetImageUrl(item)">
             <template #error>
               <t-empty type="fail" :title="$t('workbench.cornerScape.imageError')" />
             </template>
@@ -203,7 +212,14 @@
             :showOverlay="true">
             <template #trigger="{ open }">
               <div class="drawerPreviewTrigger" @click="open">
-                <t-image class="image" :src="drawerPreviewImage" fit="contain" :preview="false">
+                <t-image
+                  :key="drawerPreviewImage"
+                  class="image"
+                  :src="drawerPreviewImage"
+                  fit="contain"
+                  :preview="false"
+                  @load="markAssetImageLoaded(currentItem.id)"
+                  @error="refreshAssetImageUrl(currentItem)">
                   <template #error>
                     <t-empty type="fail" :title="$t('workbench.cornerScape.imageError')" />
                   </template>
@@ -234,7 +250,14 @@
                   class="historyImageItem"
                   :class="{ selected: selectedHistoryId === item.id }"
                   @click.stop="toggleHistorySelect(item.id)">
-                  <t-image :src="item.filePath" :style="{ width: '100px', minWidth: '100px', height: '100px' }" :lazy="true" fit="contain" />
+                  <t-image
+                    :key="item.filePath || item.id"
+                    :src="item.filePath"
+                    :style="{ width: '100px', minWidth: '100px', height: '100px' }"
+                    :lazy="true"
+                    fit="contain"
+                    @load="markAssetImageLoaded(currentItem.id)"
+                    @error="refreshAssetImageUrl(currentItem)" />
                 </div>
               </div>
               <div class="historyActions">
@@ -415,7 +438,9 @@ import axios from "@/utils/axios";
 import projectStore from "@/stores/project";
 import modelSelect from "@/components/modelSelect.vue";
 import settingStore from "@/stores/setting";
-const { otherSetting } = storeToRefs(settingStore());
+import { resolveBackendAssetUrl } from "@/utils/backendUrl";
+const settings = settingStore();
+const { otherSetting } = storeToRefs(settings);
 interface Image {
   filePath: string;
   id: number;
@@ -492,8 +517,11 @@ const styleSearch = ref("");
 const styleFilter = ref<"all" | "favorite" | "recent">("all");
 const favoriteArtStyles = ref<string[]>(readStringList("cornerScape.favoriteArtStyles"));
 const recentArtStyles = ref<string[]>(readStringList("cornerScape.recentArtStyles"));
+const failedArtStyleImages = ref(new Set<string>());
+const retriedAssetImageIds = new Set<number>();
 const artStyleDirty = computed(() => selectedArtStyle.value !== (project.value?.artStyle || ""));
 const selectedArtStyleItem = computed(() => artStyles.value.find((item) => item.stylePath === selectedArtStyle.value) ?? null);
+const selectedArtStyleCover = computed(() => (selectedArtStyleItem.value ? getArtStyleCover(selectedArtStyleItem.value) : undefined));
 const filteredArtStyles = computed(() => {
   const keyword = styleSearch.value.trim().toLocaleLowerCase();
   const source = artStyles.value.filter((item) => {
@@ -556,7 +584,8 @@ async function getFilteredData() {
       projectId: project.value?.id,
       type: checkboxValue.value,
     });
-    dataList.value = data;
+    retriedAssetImageIds.clear();
+    dataList.value = (Array.isArray(data) ? data : []).map(normalizeAssetMedia);
   } catch (error) {
     console.error("加载资产数据失败:", error);
     dataList.value = [];
@@ -625,11 +654,71 @@ function summarizeStyleData(data: any[]) {
 function toArtStyleItem(item: any): ArtStyleItem {
   const name = String(item.name || item.stylePath);
   const stylePath = String(item.stylePath);
-  const images = Array.isArray(item.images) ? item.images : Array.isArray(item.image) ? item.image : item.image ? [item.image] : [];
+  const imageValues = Array.isArray(item.images) ? item.images : Array.isArray(item.image) ? item.image : item.image ? [item.image] : [];
+  const images = imageValues.map((value: string) => resolveBackendAssetUrl(value, settings.baseUrl));
   const styleData = Array.isArray(item.data) ? item.data : [];
   const summary = summarizeStyleData(styleData);
   const searchText = [name, stylePath, summary, ...styleData.map((entry: any) => entry?.data || "")].join(" ").toLocaleLowerCase();
   return { name, stylePath, images, summary, searchText };
+}
+
+function resolveAssetMediaUrl(value?: string | null) {
+  return value ? resolveBackendAssetUrl(value, settings.baseUrl) : "";
+}
+
+function normalizeAssetMedia(item: DataItem): DataItem {
+  const voicePath = resolveAssetMediaUrl(item.voicePath);
+  return {
+    ...item,
+    filePath: resolveAssetMediaUrl(item.filePath) || null,
+    historyImages: Array.isArray(item.historyImages)
+      ? item.historyImages.map((image) => ({ ...image, filePath: resolveAssetMediaUrl(image.filePath) }))
+      : [],
+    voicePath,
+    voiceReference: item.voiceReference
+      ? {
+          ...item.voiceReference,
+          src: resolveAssetMediaUrl(String(item.voiceReference.src || voicePath)),
+        }
+      : null,
+  };
+}
+
+async function refreshAssetImageUrl(item: DataItem) {
+  if (retriedAssetImageIds.has(item.id)) return;
+  retriedAssetImageIds.add(item.id);
+  try {
+    const { data } = await axios.post("/assets/getImage", { assetsId: item.id });
+    const images = Array.isArray(data?.tempAssets) ? data.tempAssets : [];
+    const selectedImage = images.find((image: any) => image.selected) || images.find((image: any) => Number(image.id) === Number(item.imageId));
+    const refreshedUrl = resolveAssetMediaUrl(selectedImage?.filePath);
+    const refreshedHistory = images
+      .filter((image: any) => image.state === "已完成" && image.filePath)
+      .map((image: any) => ({ id: Number(image.id), filePath: resolveAssetMediaUrl(image.filePath) }));
+    const targets = [item, dataList.value.find((target) => target.id === item.id), currentItem.value?.id === item.id ? currentItem.value : null].filter(
+      (target): target is DataItem => Boolean(target),
+    );
+    targets.forEach((target) => {
+      if (refreshedUrl) target.filePath = refreshedUrl;
+      if (refreshedHistory.length) target.historyImages = refreshedHistory;
+    });
+  } catch (error) {
+    console.error("刷新资产图片地址失败:", error);
+  }
+}
+
+function markAssetImageLoaded(assetId: number) {
+  retriedAssetImageIds.delete(assetId);
+}
+
+function getArtStyleCover(item: ArtStyleItem) {
+  return item.images.find((image) => !failedArtStyleImages.value.has(image));
+}
+
+function onArtStyleImageError(event: Event) {
+  const image = event.currentTarget as HTMLImageElement | null;
+  if (!image?.src) return;
+  failedArtStyleImages.value = new Set([...failedArtStyleImages.value, image.src]);
 }
 
 function selectArtStyle(item: ArtStyleItem) {
@@ -872,7 +961,7 @@ async function replaceWithSelectedHistory() {
       imageId: selectedHistoryId.value,
     });
     currentItem.value.imageId = Number(data?.imageId || selectedHistoryId.value);
-    currentItem.value.filePath = data?.filePath || referenceImagePreview.value || currentItem.value.filePath;
+    currentItem.value.filePath = resolveAssetMediaUrl(data?.filePath) || referenceImagePreview.value || currentItem.value.filePath;
     currentItem.value.state = "已完成";
     selectedHistoryId.value = null;
     await refreshCurrentItem();
@@ -1057,7 +1146,7 @@ async function refreshCurrentItem() {
       projectId: project.value?.id,
       type: checkboxValue.value,
     });
-    const freshList = data as DataItem[];
+    const freshList = (Array.isArray(data) ? data : []).map(normalizeAssetMedia);
     dataList.value = freshList;
     const freshItem = freshList.find((d) => d.id === currentId);
     if (freshItem) {
@@ -1335,13 +1424,14 @@ async function pollingPromptAssets() {
           projectId: project.value?.id,
           type: checkboxValue.value,
         });
-        (freshData as DataItem[]).forEach((fresh) => {
+        const normalizedFreshData = (freshData as DataItem[]).map(normalizeAssetMedia);
+        normalizedFreshData.forEach((fresh) => {
           const target = dataList.value.find((row) => row.id === fresh.id);
           if (target) Object.assign(target, fresh);
         });
         // 同步更新抽屉中的当前项
         if (currentItem.value) {
-          const freshCurrent = (freshData as DataItem[]).find((d) => d.id === currentItem.value!.id);
+          const freshCurrent = normalizedFreshData.find((d) => d.id === currentItem.value!.id);
           if (freshCurrent) {
             currentItem.value = freshCurrent;
             editForm.originalPrompt = freshCurrent.originalPrompt || freshCurrent.prompt || "";
@@ -1369,7 +1459,7 @@ async function pollingImageAssets() {
         if (target) {
           if (target.state === "生成中" && item.state !== "生成中") hasCompleted = true;
           target.state = item.state;
-          if (item.filePath !== undefined) target.filePath = item.filePath;
+          if (item.filePath !== undefined) target.filePath = resolveAssetMediaUrl(item.filePath) || null;
         }
       });
     }
@@ -1380,13 +1470,14 @@ async function pollingImageAssets() {
           projectId: project.value?.id,
           type: checkboxValue.value,
         });
-        (freshData as DataItem[]).forEach((fresh) => {
+        const normalizedFreshData = (freshData as DataItem[]).map(normalizeAssetMedia);
+        normalizedFreshData.forEach((fresh) => {
           const target = dataList.value.find((row) => row.id === fresh.id);
           if (target) target.historyImages = fresh.historyImages;
         });
         // 同步更新抽屉中的当前项
         if (currentItem.value) {
-          const freshCurrent = (freshData as DataItem[]).find((d) => d.id === currentItem.value!.id);
+          const freshCurrent = normalizedFreshData.find((d) => d.id === currentItem.value!.id);
           if (freshCurrent) currentItem.value.historyImages = freshCurrent.historyImages;
         }
       } catch (e) {

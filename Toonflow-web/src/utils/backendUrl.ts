@@ -6,10 +6,11 @@ function isLoopback(hostname: string) {
 
 /** Resolve the API host from the page host so LAN clients do not call their own localhost. */
 export function getDefaultApiBaseUrl() {
-  if (typeof window === "undefined" || !window.location.hostname) return "http://127.0.0.1:10588/api";
+  if (typeof window === "undefined") {
+    return "http://127.0.0.1:10588/api";
+  }
 
-  const protocol = window.location.protocol === "https:" ? "https:" : "http:";
-  return `${protocol}//${window.location.hostname}:10588/api`;
+  return `${window.location.origin}/api`;
 }
 
 export function resolveApiBaseUrl(value?: string) {
@@ -25,5 +26,17 @@ export function resolveApiBaseUrl(value?: string) {
     return url.toString().replace(/\/$/, "");
   } catch {
     return fallback;
+  }
+}
+
+/** Resolve files served by the backend, such as /skills and /assets. */
+export function resolveBackendAssetUrl(value: string, apiBaseUrl?: string) {
+  if (!value || /^(?:data:|blob:|https?:\/\/)/i.test(value)) return value;
+
+  try {
+    const apiUrl = new URL(resolveApiBaseUrl(apiBaseUrl));
+    return new URL(`/${value.replace(/^\/+/, "")}`, apiUrl.origin).toString();
+  } catch {
+    return value;
   }
 }

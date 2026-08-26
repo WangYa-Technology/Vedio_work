@@ -3,6 +3,7 @@ import { success } from "@/lib/responseFormat";
 import u from "@/utils";
 import { z } from "zod";
 import { validateFields } from "@/middleware/middleware";
+import { EMPTY_PROJECT_GLOBAL_CONTEXT } from "@/schemas/projectGlobalContext";
 const router = express.Router();
 
 export default router.post(
@@ -23,6 +24,7 @@ export default router.post(
         data: JSON.stringify({
           storySkeleton: "",
           adaptationStrategy: "",
+          projectGlobalContext: EMPTY_PROJECT_GLOBAL_CONTEXT,
         }),
         createTime: now,
         updateTime: now,
@@ -33,6 +35,7 @@ export default router.post(
             storySkeleton: "",
             adaptationStrategy: "",
             script: [],
+            projectGlobalContext: EMPTY_PROJECT_GLOBAL_CONTEXT,
           },
           id,
         }),
@@ -43,6 +46,9 @@ export default router.post(
       data = JSON.parse(row.data ?? "{}");
     } catch {
       data = {};
+    }
+    if (!data.projectGlobalContext || typeof data.projectGlobalContext !== "object") {
+      data.projectGlobalContext = EMPTY_PROJECT_GLOBAL_CONTEXT;
     }
     data.script = await u.db("o_script").where({ projectId }).select("id", "name", "content");
 

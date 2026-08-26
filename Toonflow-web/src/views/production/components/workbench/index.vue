@@ -68,8 +68,11 @@ import type { Ref } from "vue";
 import type { MediaItem, AudioItem } from "./editVideo/utils/mediaData";
 import projectStore from "@/stores/project";
 import productionAgentStore from "@/stores/productionAgent";
+import settingStore from "@/stores/setting";
+import { resolveBackendAssetUrl } from "@/utils/backendUrl";
 const { project } = storeToRefs(projectStore());
 const { currentScriptId } = storeToRefs(productionAgentStore());
+const { baseUrl } = storeToRefs(settingStore());
 
 // 预览和分镜台组件通过 inject 获取当前集数，由工作台统一提供剧集上下文。
 provide("episodesId", currentScriptId as unknown as Ref<number>);
@@ -151,6 +154,10 @@ function resolveMaterialPayload(response: any): { assets: any[]; videos: any[] }
   };
 }
 
+function resolveMaterialUrl(value?: string | null) {
+  return value ? resolveBackendAssetUrl(value, baseUrl.value) : "";
+}
+
 //查询剪辑素材
 async function editFootage() {
   const projectId = project.value?.id;
@@ -179,7 +186,7 @@ async function editFootage() {
         duration: Number(item.duration || item.time || 0),
         icon: "🎬",
         color: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-        url: item.filePath,
+        url: resolveMaterialUrl(item.filePath),
         selected: item.selected || false,
       }));
       mediaItems.value = videoList.map((item: any) => ({
@@ -189,7 +196,7 @@ async function editFootage() {
         duration: item.duration || 0,
         icon: "🎥",
         color: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-        url: item.filePath,
+        url: resolveMaterialUrl(item.filePath),
         loading: true,
       }));
       audioItems.value = audioList.map((item: any) => ({
@@ -197,7 +204,7 @@ async function editFootage() {
         type: "audio",
         name: item.name,
         duration: item.duration || 0,
-        url: item.filePath,
+        url: resolveMaterialUrl(item.filePath),
         loading: true,
       }));
       imageItems.value = imageList.map((item: any) => ({
@@ -207,7 +214,7 @@ async function editFootage() {
         duration: item.duration || 5,
         icon: "🖼️",
         color: "linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)",
-        url: item.filePath,
+        url: resolveMaterialUrl(item.filePath),
         loading: true,
       }));
   } catch (error) {

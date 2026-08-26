@@ -266,7 +266,19 @@ export async function saveProductionFlowArtifact(
     } catch {
       throw new Error("现有生产工作区数据格式无效，已阻止覆盖");
     }
-    const payload = JSON.stringify({ ...current, [key]: content });
+    const pendingBaseAssetIds = Array.isArray(current.pendingBaseAssetIds)
+      ? current.pendingBaseAssetIds.map(Number).filter(Number.isSafeInteger)
+      : [];
+    const referencedIds = key === "storyboardTable"
+      ? new Set(parseStoryboardTableAssetBindings(content).flat())
+      : new Set<number>();
+    const remainingPendingIds = key === "storyboardTable"
+      ? pendingBaseAssetIds.filter((id: number) => !referencedIds.has(id))
+      : pendingBaseAssetIds;
+    const next = { ...current, [key]: content };
+    if (remainingPendingIds.length) next.pendingBaseAssetIds = remainingPendingIds;
+    else delete next.pendingBaseAssetIds;
+    const payload = JSON.stringify(next);
     const now = Date.now();
 
     if (existing) {

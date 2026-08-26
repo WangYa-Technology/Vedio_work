@@ -19,6 +19,7 @@ type ContentType = AIMessageContent["type"];
 class ResTool {
   public socket: Socket;
   public data: Record<string, any>;
+  private workflowFailure: { label: string; phase?: string } | null = null;
 
   constructor(socket: Socket, data: Record<string, any> = {}) {
     this.socket = socket;
@@ -67,7 +68,18 @@ class ResTool {
     label: string,
     phase?: string,
   ) {
+    if (state === "error" && !this.workflowFailure) {
+      this.workflowFailure = { label, ...(phase ? { phase } : {}) };
+    }
     this.socket.emit("workflow:status", { state, label, phase });
+  }
+
+  beginWorkflowRequest() {
+    this.workflowFailure = null;
+  }
+
+  getWorkflowFailure() {
+    return this.workflowFailure;
   }
 }
 

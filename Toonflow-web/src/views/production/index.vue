@@ -4,14 +4,24 @@
       <!-- Keep the production agent shell identical to the script agent shell. -->
       <Pane :size="30" :min-size="15" class="operate">
         <div class="box pr">
-          <t-chat-list :clear-history="false">
+          <div class="sidebarHeader">
+            <div class="sidebarHeading">
+              <span class="sidebarTitle">制作记录</span>
+              <span class="sidebarSubtitle">视频策划</span>
+            </div>
+            <div class="connectionState" :class="{ 'is-offline': !connected }">
+              <i-dot theme="outline" :fill="connected ? 'green' : 'red'" />
+              <span>{{ connected ? "已连接" : "未连接" }}</span>
+            </div>
+          </div>
+          <t-chat-list :clear-history="false" :show-scroll-button="false">
             <t-chat-message
               v-for="message in renderableMessages"
               :key="message.id"
               :message="message"
               :name="(message as any).name"
               :placement="message.role === 'user' ? 'right' : 'left'"
-              :variant="message.role === 'user' ? 'base' : 'outline'"
+              :variant="message.role === 'user' ? 'base' : 'text'"
               :handleActions="message.role === 'user' ? {} : handleActions"
               :status="message.status"
               allowContentSegmentCustom />
@@ -85,90 +95,89 @@
               </t-popup>
             </template>
           </t-chat-sender>
-          <i-dot class="dot" theme="outline" :fill="connected ? 'green' : 'red'" />
         </div>
       </Pane>
 
       <Pane :size="70" :min-size="30" class="data shotPanel">
         <div class="tabsWrapper">
-          <t-tabs v-model="activeWorkspaceTab">
-        <template #action>
-          <div class="workspaceActions">
-            <t-select
-              :value="currentEpisodesId ?? undefined"
-              :placeholder="$t('workbench.production.selectPlaceholder')"
-              autoWidth
-              size="small"
-              :options="episodesOptions"
-              filterable
-              @change="handleEpisodesChange">
-              <template #label>
-                <i-document-folder size="18" />
-              </template>
-            </t-select>
-            <t-tooltip placement="bottom" theme="primary" :content="$t('workbench.production.getFlowData')">
-              <t-button variant="outline" shape="square" size="small" @click="refreshData">
-                <template #icon>
-                  <i-refresh size="14" />
+          <div class="workspaceToolbar">
+            <div class="workspaceActions">
+              <t-select
+                class="episodeSelect"
+                :value="currentEpisodesId ?? undefined"
+                :placeholder="$t('workbench.production.selectPlaceholder')"
+                size="small"
+                :options="episodesOptions"
+                filterable
+                @change="handleEpisodesChange">
+                <template #label>
+                  <i-document-folder size="18" />
                 </template>
+              </t-select>
+              <t-tooltip placement="bottom" theme="primary" :content="$t('workbench.production.getFlowData')">
+                <t-button class="refreshButton" variant="outline" shape="square" size="small" @click="refreshData">
+                  <template #icon>
+                    <i-refresh size="16" />
+                  </template>
+                </t-button>
+              </t-tooltip>
+              <t-button class="workbenchButton" theme="primary" size="small" @click="workbenchVisible = true">
+                <template #icon>
+                  <i-playback-progress size="16" />
+                </template>
+                {{ $t("workbench.production.wb.videoGeneration") }}
               </t-button>
-            </t-tooltip>
-            <t-button variant="outline" size="small" @click="workbenchVisible = true">
-              <template #icon>
-                <i-playback-progress size="14" />
-              </template>
-              {{ $t("workbench.production.wb.videoGeneration") }}
-            </t-button>
-            <i-loading-four class="spin" size="16" v-show="loadingData" />
-          </div>
-        </template>
-
-        <t-tab-panel value="directorPlan" :label="$t('workbench.production.directorPlan')">
-          <div class="directorPlan" v-loading="loadingData">
-            <MdPreview v-if="directorPlanPreview" :modelValue="directorPlanPreview" />
-            <div v-else class="workspaceEmpty">
-              <t-empty :description="$t('workbench.production.noDirectorPlan')" />
+              <i-loading-four class="spin" size="16" v-show="loadingData" />
             </div>
           </div>
-        </t-tab-panel>
+          <t-tabs v-model="activeWorkspaceTab">
 
-        <t-tab-panel value="storyboard" :label="$t('workbench.production.storyboardList')">
-          <div class="shotList" v-loading="loadingData">
-            <template v-if="storyboardSegments.length > 0">
-              <div v-for="(segment, index) in storyboardSegments" :key="segment.id" class="shotCard segmentCard">
-                <div class="shotIndex">{{ index + 1 }}</div>
-                <div class="shotContent">
-                  <div class="shotPrompt">{{ segment.sceneTitle }} / {{ segment.segmentTitle }}</div>
-                  <div class="shotMeta f ac" style="gap: 8px; margin-top: 4px; flex-wrap: wrap">
-                    <t-tag size="small" variant="outline">{{ segment.durationLabel }}</t-tag>
-                    <t-tag size="small" variant="light">{{ segment.rows.length }} 镜</t-tag>
-                  </div>
-                  <div class="shotFields">
-                    <div v-if="segment.assetNames" class="shotField">
-                      <span class="shotFieldLabel">参考</span>
-                      <span class="shotFieldValue">{{ segment.assetNames }}</span>
-                    </div>
-                    <div v-for="row in segment.rows" :key="`${segment.id}-${row.serial}`" class="segmentShot">
-                      <div class="segmentShotHeader">
-                        <t-tag size="small" variant="outline">镜头 {{ row.serial }}</t-tag>
-                        <t-tag v-if="row.duration" size="small" variant="light">{{ row.duration }}s</t-tag>
-                        <t-tag v-if="row.scale" size="small" variant="light">{{ row.scale }}</t-tag>
-                        <t-tag v-if="row.cameraMovement" size="small" variant="light">{{ row.cameraMovement }}</t-tag>
-                      </div>
-                      <div class="segmentShotDesc">{{ row.description }}</div>
-                      <div v-if="row.dialogue" class="segmentShotLine">台词：{{ row.dialogue }}</div>
-                      <div v-if="row.sound" class="segmentShotLine">音效：{{ row.sound }}</div>
-                    </div>
-                  </div>
+            <t-tab-panel value="directorPlan" :label="$t('workbench.production.directorPlan')">
+              <div class="directorPlan" v-loading="loadingData">
+                <MdPreview v-if="directorPlanPreview" :modelValue="directorPlanPreview" />
+                <div v-else class="workspaceEmpty">
+                  <t-empty :description="$t('workbench.production.noDirectorPlan')" />
                 </div>
               </div>
-            </template>
-            <div v-else class="workspaceEmpty">
-              <t-empty :description="$t('workbench.production.noShots')" />
-            </div>
-          </div>
-        </t-tab-panel>
-      </t-tabs>
+            </t-tab-panel>
+
+            <t-tab-panel value="storyboard" :label="$t('workbench.production.storyboardList')">
+              <div class="shotList" v-loading="loadingData">
+                <template v-if="storyboardSegments.length > 0">
+                  <div v-for="(segment, index) in storyboardSegments" :key="segment.id" class="shotCard segmentCard">
+                    <div class="shotIndex">{{ index + 1 }}</div>
+                    <div class="shotContent">
+                      <div class="shotPrompt">{{ segment.sceneTitle }} / {{ segment.segmentTitle }}</div>
+                      <div class="shotMeta f ac" style="gap: 8px; margin-top: 4px; flex-wrap: wrap">
+                        <t-tag size="small" variant="outline">{{ segment.durationLabel }}</t-tag>
+                        <t-tag size="small" variant="light">{{ segment.rows.length }} 镜</t-tag>
+                      </div>
+                      <div class="shotFields">
+                        <div v-if="segment.assetNames" class="shotField">
+                          <span class="shotFieldLabel">参考</span>
+                          <span class="shotFieldValue">{{ segment.assetNames }}</span>
+                        </div>
+                        <div v-for="row in segment.rows" :key="`${segment.id}-${row.serial}`" class="segmentShot">
+                          <div class="segmentShotHeader">
+                            <t-tag size="small" variant="outline">镜头 {{ row.serial }}</t-tag>
+                            <t-tag v-if="row.duration" size="small" variant="light">{{ row.duration }}s</t-tag>
+                            <t-tag v-if="row.scale" size="small" variant="light">{{ row.scale }}</t-tag>
+                            <t-tag v-if="row.cameraMovement" size="small" variant="light">{{ row.cameraMovement }}</t-tag>
+                          </div>
+                          <div class="segmentShotDesc">{{ row.description }}</div>
+                          <div v-if="row.dialogue" class="segmentShotLine">台词：{{ row.dialogue }}</div>
+                          <div v-if="row.sound" class="segmentShotLine">音效：{{ row.sound }}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+                <div v-else class="workspaceEmpty">
+                  <t-empty :description="$t('workbench.production.noShots')" />
+                </div>
+              </div>
+            </t-tab-panel>
+          </t-tabs>
         </div>
       </Pane>
     </Splitpanes>
@@ -394,23 +403,35 @@ function formatHybridDirectorPlan(content: string) {
 }
 
 function formatEnglishDirectorPlan(content: string) {
-  if (!/<(?:sceneSummary|sceneNotes|transitions)\b/i.test(content)) return "";
+  if (!/<(?:sceneSummary(?:Table)?|sceneNotes|transitions)\b/i.test(content)) return "";
 
   const readTag = (block: string, names: string[]) => {
     const pattern = names.join("|");
     const match = block.match(new RegExp(`<(?:(?:${pattern}))\\b[^>]*>([\\s\\S]*?)<\\/(?:(?:${pattern}))>`, "i"));
     return match?.[1]?.trim() || "";
   };
+  const readAttribute = (attributes: string, names: string[]) => {
+    const pattern = names.join("|");
+    const match = attributes.match(new RegExp(`\\b(?:${pattern})\\s*=\\s*(?:["']([^"']*)["']|([^\\s>]+))`, "i"));
+    return (match?.[1] || match?.[2] || "").trim();
+  };
   const readScenes = (section: string) =>
-    [...section.matchAll(/<scene\b[^>]*>([\s\S]*?)<\/scene>/gi)].map((match) => match[1]);
+    [...section.matchAll(/<scene\b([^>]*)>([\s\S]*?)<\/scene>/gi)].map((match) => ({ attributes: match[1], content: match[2] }));
   const readText = (block: string, names: string[]) => readTag(block, names).replace(/\s+/g, " ").trim();
   const cell = (value: string) => value.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
-  const summary = readTag(content, ["sceneSummary", "scenesummary"]);
+  const sceneId = (scene: { attributes: string; content: string }) =>
+    readText(scene.content, ["sceneId", "sceneid"]) || readAttribute(scene.attributes, ["id", "sceneId"]);
+  const summary = readTag(content, ["sceneSummaryTable", "scenesummarytable", "sceneSummary", "scenesummary"]);
   const notes = readTag(content, ["sceneNotes", "scenenotes"]);
   const transitions = readTag(content, ["transitions"]);
   const summaryScenes = readScenes(summary);
   const noteScenes = readScenes(notes);
   if (!summaryScenes.length && !noteScenes.length) return "";
+  const sceneNameById = new Map<string, string>();
+  summaryScenes.forEach((scene) => {
+    const id = sceneId(scene);
+    if (id) sceneNameById.set(id, readText(scene.content, ["sceneName", "scenename"]));
+  });
 
   const sections: string[] = [];
   if (summaryScenes.length) {
@@ -421,12 +442,12 @@ function formatEnglishDirectorPlan(content: string) {
         "| 场次 | 场景名 | 台词条数 | 台词字数 | 情绪浓度 | 情绪基调 |",
         "|---|---|---:|---:|---:|---|",
         ...summaryScenes.map((scene) => {
-          const id = readText(scene, ["sceneId", "sceneid"]);
-          const name = readText(scene, ["sceneName", "scenename"]);
-          const dialogueCount = readText(scene, ["dialogueCount", "dialoguecount"]) || "0";
-          const dialogueWordCount = readText(scene, ["dialogueWordCount", "dialoguewordcount"]) || "0";
-          const emotionIntensity = readText(scene, ["emotionIntensity", "emotionintensity"]) || "0";
-          const emotionTone = readText(scene, ["emotionTone", "emotiontone"]);
+          const id = sceneId(scene);
+          const name = readText(scene.content, ["sceneName", "scenename"]);
+          const dialogueCount = readText(scene.content, ["dialogueCount", "dialoguecount", "dialogueLines", "dialoguelines"]) || "0";
+          const dialogueWordCount = readText(scene.content, ["dialogueWordCount", "dialoguewordcount", "dialogueChars", "dialoguechars"]) || "0";
+          const emotionIntensity = readText(scene.content, ["emotionIntensity", "emotionintensity"]) || "0";
+          const emotionTone = readText(scene.content, ["emotionTone", "emotiontone", "emotionBase", "emotionbase"]);
           return `| ${cell(id)} | ${cell(name)} | ${cell(dialogueCount)} | ${cell(dialogueWordCount)} | ${cell(emotionIntensity)} | ${cell(emotionTone)} |`;
         }),
       ].join("\n"),
@@ -443,26 +464,48 @@ function formatEnglishDirectorPlan(content: string) {
       errorWarning: "易错提示",
     };
     for (const scene of noteScenes) {
-      const id = readText(scene, ["sceneId", "sceneid"]);
-      noteLines.push(`### ${cell(id) || "未命名场次"}`, "");
-      const notesBlock = readTag(scene, ["notes"]);
-      const items = [...notesBlock.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)]
-        .map((match) => match[1].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim())
-        .filter(Boolean);
+      const id = sceneId(scene);
+      const name = sceneNameById.get(id) || "";
+      noteLines.push(`### ${cell([id, name].filter(Boolean).join(" · ")) || "未命名场次"}`, "");
+      const notesBlock = readTag(scene.content, ["notes"]) || scene.content;
+      const items = [...notesBlock.matchAll(/<item\b([^>]*)>([\s\S]*?)<\/item>/gi)]
+        .map((match) => ({
+          label: readAttribute(match[1], ["type", "label"]),
+          value: match[2].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim(),
+        }))
+        .filter((item) => Boolean(item.value));
       const fields = Object.entries(noteFieldLabels)
         .map(([tag, label]) => {
           const value = readText(notesBlock, [tag]);
           return value ? `- **${label}**：${value}` : "";
         })
         .filter(Boolean);
-      if (items.length) noteLines.push(...items.map((item) => `- ${item}`), "");
+      if (items.length) noteLines.push(...items.map((item) => `- ${item.label ? `**${item.label}**：` : ""}${item.value}`), "");
       else if (fields.length) noteLines.push(...fields, "");
       else noteLines.push("无", "");
     }
     sections.push(noteLines.join("\n").trim());
   }
 
-  if (transitions) sections.push(["## 场间过渡", "", transitions].join("\n"));
+  if (transitions) {
+    const transitionRows = [...transitions.matchAll(/<transition\b([^>]*)>([\s\S]*?)<\/transition>/gi)].map((match) => {
+      const from = readAttribute(match[1], ["from"]) || readText(match[2], ["from"]);
+      const to = readAttribute(match[1], ["to"]) || readText(match[2], ["to"]);
+      return {
+        between: [from, to].filter(Boolean).join(" → "),
+        mode: readText(match[2], ["mode", "transitionMode", "transitionType"]),
+        description: readText(match[2], ["description", "desc"]),
+      };
+    });
+    const transitionContent = transitionRows.length
+      ? [
+          "| 场间 | 过渡方式 | 说明 |",
+          "|---|---|---|",
+          ...transitionRows.map((row) => `| ${cell(row.between)} | ${cell(row.mode)} | ${cell(row.description)} |`),
+        ].join("\n")
+      : transitions;
+    sections.push(["## 场间过渡", "", transitionContent].join("\n"));
+  }
   return sections.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
@@ -731,22 +774,101 @@ onUnmounted(() => {
       height: 100%;
 
       .box {
-        padding-top: 8px;
         flex: 1;
         display: flex;
         flex-direction: column;
-        border-radius: 10px;
-        border: 1px solid #e6e3e3;
+        container: production-chat / inline-size;
+        border-radius: 8px;
+        border: 1px solid var(--td-border-level-2-color);
         background-color: #fff;
         overflow: hidden;
         position: relative;
         width: 100%;
         height: 100%;
-        padding-left: 8px;
+        --td-chat-item-gap: 18px;
+        --td-chat-font-size: 14px;
+        --td-chat-item-content-base-padding: 9px 11px;
+        --td-chat-item-content-radius: 6px;
+        --td-chat-item-content-gap: 6px;
+        --td-chat-item-text-padding: 8px 10px;
+        --td-chat-item-text-radius: 6px;
+        --td-chat-item-think-padding-tb: 7px;
+        --td-chat-item-think-padding-lr: 9px;
+        --td-chat-item-think-inner-padding: 0 9px 7px;
+        --td-chat-item-think-title-gap: 6px;
+        --td-chat-md-content-gap-main: 0 0 6px;
+        --td-chat-md-content-gap-t1: 14px 0 8px;
+        --td-chat-md-content-gap-t2: 12px 0 7px;
+        --td-chat-md-content-gap-t3: 10px 0 6px;
+        --td-chat-md-h1-font: 600 16px / 1.5 var(--td-font-family);
+        --td-chat-md-h2-font: 600 15px / 1.5 var(--td-font-family);
+        --td-chat-md-h3-font: 600 14px / 1.5 var(--td-font-family);
+        --td-chat-md-table-font-size: 12px;
+        --td-chat-md-table-th-font: 600 12px / 1.5 var(--td-font-family);
+        --td-chat-md-table-td-font: 400 12px / 1.5 var(--td-font-family);
+        --td-chat-md-table-th-padding: 6px 8px;
+
+        .sidebarHeader {
+          min-height: 52px;
+          padding: 10px 12px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          flex-shrink: 0;
+          border-bottom: 1px solid var(--td-border-level-1-color);
+          background: var(--td-bg-color-container);
+        }
+
+        .sidebarHeading {
+          min-width: 0;
+          display: flex;
+          align-items: baseline;
+          gap: 8px;
+        }
+
+        .sidebarTitle {
+          color: var(--td-text-color-primary);
+          font-size: 14px;
+          font-weight: 600;
+        }
+
+        .sidebarSubtitle {
+          color: var(--td-text-color-placeholder);
+          font-size: 12px;
+        }
+
+        .connectionState {
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          flex-shrink: 0;
+          color: var(--td-success-color);
+          font-size: 12px;
+
+          &.is-offline {
+            color: var(--td-error-color);
+          }
+        }
 
         .inputBox {
-          padding-right: 8px;
-          padding-bottom: 8px;
+          padding: 8px 12px 10px;
+          flex-shrink: 0;
+          border-top: 1px solid var(--td-border-level-1-color);
+          background: var(--td-bg-color-container);
+
+          .t-chat-sender__textarea {
+            padding: 9px 10px;
+          }
+
+          .t-chat-sender__textarea__wrapper {
+            height: 40px;
+          }
+
+          .t-textarea__inner {
+            min-height: 40px !important;
+            height: 40px !important;
+          }
         }
 
         .workflowStatus {
@@ -754,13 +876,13 @@ onUnmounted(() => {
           align-items: center;
           gap: 8px;
           min-height: 36px;
-          margin: 0 8px 8px 0;
-          padding: 8px 10px;
+          margin: 0 12px 10px;
+          padding: 8px 11px;
           color: var(--td-text-color-secondary);
           font-size: 13px;
           border: 1px solid var(--td-border-level-2-color);
           border-radius: 6px;
-          background: var(--td-bg-color-container);
+          background: var(--td-bg-color-secondarycontainer);
 
           &.is-error {
             color: var(--td-error-color);
@@ -778,11 +900,11 @@ onUnmounted(() => {
           align-items: center;
           justify-content: space-between;
           gap: 12px;
-          margin: 0 8px 8px 0;
-          padding: 10px;
+          margin: 0 12px 10px;
+          padding: 11px 12px;
           border: 1px solid var(--td-brand-color-3);
           border-radius: 6px;
-          background: var(--td-brand-color-1);
+          background: var(--td-bg-color-secondarycontainer);
 
           .nextActionCopy {
             display: flex;
@@ -800,16 +922,73 @@ onUnmounted(() => {
             font-weight: 600;
           }
         }
-
-        .dot {
-          position: absolute;
-          top: 10px;
-          left: 10px;
-        }
       }
 
       .t-chat__list {
-        padding-right: 8px;
+        min-height: 0;
+        padding: 14px 12px 4px;
+        scroll-padding-bottom: 12px;
+        background: #fbfbfb;
+      }
+
+      t-chat-item {
+        min-width: 0;
+      }
+
+      t-chat-item::part(t-chat__item__header) {
+        min-height: 20px;
+        padding: 0 0 5px;
+      }
+
+      t-chat-item::part(t-chat__item__name) {
+        padding: 0;
+        color: var(--td-text-color-secondary);
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      t-chat-item[placement="left"]::part(t-chat__item__content) {
+        padding: 0 0 0 10px;
+        border: 0;
+        border-left: 2px solid var(--td-border-level-2-color);
+        border-radius: 0;
+        background: transparent;
+      }
+
+      t-chat-item[placement="left"][status="error"]::part(t-chat__item__content) {
+        border-left-color: var(--td-error-color-4);
+      }
+
+      t-chat-item::part(t-chat__item__think__header__content) {
+        font-size: 12px;
+      }
+
+      t-chat-item::part(t-chat__item__think__inner) {
+        max-height: 132px;
+        overflow: auto;
+        font-size: 12px;
+        line-height: 1.55;
+      }
+
+      t-chat-item::part(md_h1),
+      t-chat-item::part(md_h2),
+      t-chat-item::part(md_h3),
+      t-chat-item::part(md_p),
+      t-chat-item::part(md_li) {
+        letter-spacing: 0;
+        overflow-wrap: anywhere;
+      }
+
+      t-chat-item::part(md_table) {
+        display: block;
+        max-width: 100%;
+        overflow-x: auto;
+      }
+
+      t-chat-item::part(md_th),
+      t-chat-item::part(md_td) {
+        min-width: 92px;
+        padding: 6px 8px;
       }
     }
 
@@ -850,23 +1029,76 @@ onUnmounted(() => {
 
 .productionLayout {
   .shotPanel {
+    container: production-workspace / inline-size;
+
+    .workspaceToolbar {
+      min-height: 48px;
+      padding: 6px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      flex-shrink: 0;
+      box-sizing: border-box;
+      border-bottom: 1px solid var(--td-border-level-1-color);
+      background: var(--td-bg-color-container);
+    }
+
     .workspaceActions {
       display: flex;
       align-items: center;
       gap: 8px;
-      min-height: 28px;
+      min-width: 0;
+      min-height: 36px;
+      padding: 0 2px;
 
       :deep(.t-select) {
-        width: min(250px, 28vw);
-        min-width: 190px;
+        width: 100%;
       }
 
       :deep(.t-select__wrap) {
+        width: clamp(190px, 22vw, 260px);
+        min-width: 0;
+        flex: 0 1 260px;
+      }
+
+      :deep(.episodeSelect .t-input__wrap),
+      :deep(.episodeSelect .t-input) {
         width: 100%;
+        min-width: 0;
+      }
+
+      :deep(.episodeSelect .t-input) {
+        height: 32px;
+      }
+
+      :deep(.episodeSelect .t-input__inner) {
+        min-width: 0;
+        text-overflow: ellipsis;
       }
 
       :deep(.t-button) {
         flex-shrink: 0;
+        height: 32px;
+      }
+
+      .refreshButton {
+        width: 32px;
+        color: var(--td-text-color-primary);
+        border-color: var(--td-border-level-2-color);
+        background: var(--td-bg-color-secondarycontainer);
+      }
+
+      .workbenchButton {
+        min-width: 88px;
+        padding: 0 14px;
+        gap: 6px;
+        justify-content: center;
+        font-weight: 600;
+        box-shadow: 0 2px 7px rgba(0, 0, 0, 0.18);
+
+        :deep(.t-button__text) {
+          flex: 0 0 auto;
+        }
       }
 
       .spin {
@@ -1078,25 +1310,26 @@ onUnmounted(() => {
   }
 }
 
-/* Keep the tabs action area aligned with the tab header instead of letting
- * TDesign position it flush against the split-pane edge. */
 .productionAgent .tabsWrapper {
   :deep(.t-tabs__header) {
     flex-shrink: 0;
     padding-left: 8px;
   }
+}
 
-  :deep(.t-tabs__operations--right) {
-    top: 0;
-    bottom: 0;
-    right: 0;
-    padding-right: 12px;
-    display: flex;
-    align-items: center;
-  }
+@container production-workspace (max-width: 680px) {
+  .productionAgent .workspaceToolbar {
+    padding-inline: 8px;
 
-  :deep(.t-tabs__btn--right) {
-    display: none;
+    .workspaceActions {
+      width: 100%;
+
+      :deep(.t-select__wrap) {
+        width: auto;
+        min-width: 0;
+        flex: 1;
+      }
+    }
   }
 }
 

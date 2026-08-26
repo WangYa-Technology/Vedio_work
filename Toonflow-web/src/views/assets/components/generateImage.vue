@@ -142,6 +142,9 @@
 import modelSelect from "@/components/modelSelect.vue";
 import projectStore from "@/stores/project";
 const { project } = storeToRefs(projectStore());
+import settingStore from "@/stores/setting";
+import { resolveBackendAssetUrl } from "@/utils/backendUrl";
+const { baseUrl } = storeToRefs(settingStore());
 import axios from "@/utils/axios";
 const props = defineProps<{
   formData: {
@@ -311,7 +314,7 @@ async function fetchGeneratedImages() {
   const { data } = await axios.post("/assets/getImage", { assetsId: props.formData.id });
   const images = data.tempAssets.map((item: { id: string; filePath: string; state: string; selected?: boolean }) => ({
     id: item.id,
-    src: item.filePath,
+    src: item.filePath ? resolveBackendAssetUrl(item.filePath, baseUrl.value) : "",
     state: item.state,
     selected: item.selected ?? false,
   }));

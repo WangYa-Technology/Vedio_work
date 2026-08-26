@@ -391,6 +391,8 @@
         "save": "Сохранить",
         "ok": "ОК",
         "cancel": "Отмена",
+        "projectMaterials": "Материалы проекта",
+        "projectMaterialsDescription": "При создании можно добавить сюжет, персонажей и мир; материалы можно редактировать позже",
         "projectType": "Тип проекта",
         "selectType": "Выберите тип",
         "basedOnNovel": "На основе текста романа",
@@ -615,6 +617,12 @@
       "storySkeleton": "Скелет истории",
       "adaptationStrategy": "Стратегия адаптации",
       "script": "Сценарий",
+      "globalContext": {
+        "title": "Материалы проекта", "plot": "База сюжета", "character": "База персонажей", "world": "База мира",
+        "plotPlaceholder": "Импортируйте или введите сюжет, события и предзнаменования", "characterPlaceholder": "Импортируйте или введите персонажей, связи и арки", "worldPlaceholder": "Импортируйте или введите локации, силы, организации и хронологию",
+        "import": "Импорт", "save": "Сохранить", "clear": "Очистить", "noSource": "Ручной ввод", "characters": "симв.", "approved": "Утверждено", "proposed": "Предложено", "unresolved": "Не решено",
+        "imported": "Материал импортирован", "saved": "Материалы сохранены", "saveFailed": "Ошибка сохранения", "readFailed": "Ошибка чтения файла", "unsupportedType": "Поддерживаются только DOCX и TXT", "fileTooLarge": "Файл должен быть меньше 10 МБ", "clearConfirm": "Очистить материалы", "clearBody": "Очистить этот материал проекта?"
+      },
       "noContent": "Нет содержимого",
       "relatedAssets": "Связанные ассеты",
       "editScript": "Редактировать сценарий",
@@ -739,7 +747,18 @@
         "batchDeleteBody": "Вы уверены, что хотите удалить выбранные {count} сценариев? Это действие необратимо.",
         "batchDeleteSuccess": "Массовое удаление выполнено успешно",
         "extractingInProgress": "Извлечение",
-        "projectNotFound": "Товар не найден"
+        "projectNotFound": "Проект не найден",
+        "statusNotExtracted": "Ресурсы не извлечены",
+        "statusQueued": "Ожидание извлечения ресурсов",
+        "statusRunning": "Извлечение ресурсов",
+        "statusSucceeded": "Извлечено ресурсов: {count}",
+        "statusFailed": "Ошибка извлечения ресурсов",
+        "statusStale": "Сценарий обновлён; требуется повторное извлечение",
+        "statusEmpty": "Ресурсы не найдены; повторите извлечение",
+        "statusElapsed": "Прошло {duration}",
+        "statusPreserved": "Сохранено прежних связей: {count}",
+        "statusManual": "Связано вручную: {count}",
+        "retryExtract": "Извлечь снова"
       },
       "add": {
         "title": "Добавить сценарий",

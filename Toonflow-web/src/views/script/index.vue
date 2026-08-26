@@ -20,11 +20,11 @@
           <template #icon><i-export /></template>
           {{ $t("workbench.script.exportScript") }}{{ selectedIds.length ? `(${selectedIds.length})` : "" }}
         </t-button>
-        <t-button theme="primary" @click="handleExtractAssets" :loading="scriptLoad" :disabled="selectedIds.length === 0">
+        <t-button theme="primary" @click="handleExtractAssets" :loading="scriptLoad" :disabled="selectedIds.length === 0 || selectedHasActiveTask">
           <template #icon><i-export /></template>
           {{ $t("workbench.script.extractAssets") }}{{ selectedIds.length ? `(${selectedIds.length})` : "" }}
         </t-button>
-        <t-button theme="primary" @click="handleBatchDelete" :disabled="selectedIds.length === 0">
+        <t-button theme="primary" @click="handleBatchDelete" :disabled="selectedIds.length === 0 || selectedHasActiveTask">
           <template #icon><i-delete /></template>
           {{ $t("workbench.script.deleteScript") }}{{ selectedIds.length ? `(${selectedIds.length})` : "" }}
         </t-button>
@@ -45,15 +45,47 @@
             </template>
             <span class="content">{{ item.content }}</span>
 
-            <t-loading v-if="item?.extractState == 0" :text="$t('workbench.script.msg.extracting')" size="small"></t-loading>
-            <t-loading v-if="item?.extractState == 2" :text="$t('workbench.script.msg.waitExtract')" size="small"></t-loading>
-            <t-tooltip :content="item.errorReason" v-if="item?.extractState == -1" theme="light">
-              <t-tag theme="danger" size="small">{{ $t("workbench.script.msg.extractFailed") }}</t-tag>
-            </t-tooltip>
-            <div class="assetTags" v-else-if="item.relatedAssets?.length" @click.stop>
-              <t-tag v-for="asset in item.relatedAssets" :key="asset.id" variant="light-outline" size="small">
-                {{ asset.name }}
-              </t-tag>
+            <div class="assetStatus" :class="`is-${getAssetStatus(item)}`" @click.stop>
+              <div class="assetStatusHeader">
+                <div class="assetStatusTitle">
+                  <i-time v-if="getAssetStatus(item) === 'queued'" size="16" />
+                  <i-loading-four v-else-if="getAssetStatus(item) === 'running'" class="statusSpinner" size="16" />
+                  <i-check v-else-if="getAssetStatus(item) === 'succeeded'" size="16" />
+                  <i-error-circle-filled v-else-if="getAssetStatus(item) === 'failed' || getAssetStatus(item) === 'invalid'" size="16" />
+                  <i-info v-else size="16" />
+                  <span>{{ getAssetStatusText(item) }}</span>
+                </div>
+                <t-button
+                  v-if="canRetryExtraction(item)"
+                  size="small"
+                  variant="text"
+                  theme="primary"
+                  :loading="extractingScriptIds.has(item.id)"
+                  @click.stop="extractSingleScript(item.id)"
+                >
+                  <template #icon><i-refresh size="14" /></template>
+                  {{ getAssetStatus(item) === "idle" ? $t("workbench.script.extractAssets") : $t("workbench.script.msg.retryExtract") }}
+                </t-button>
+              </div>
+              <div v-if="isActiveExtraction(item) && item.extractStartedAt" class="assetStatusMeta">
+                {{ $t("workbench.script.msg.statusElapsed", { duration: formatElapsed(item) }) }}
+              </div>
+              <div v-else-if="item.extractState === -1 && item.errorReason" class="assetStatusReason">
+                {{ item.errorReason }}
+              </div>
+              <div v-if="getAssetStatus(item) !== 'succeeded' && item.relatedAssets?.length" class="assetStatusMeta">
+                {{
+                  $t(item.extractState == null ? "workbench.script.msg.statusManual" : "workbench.script.msg.statusPreserved", {
+                    count: item.relatedAssets.length,
+                  })
+                }}
+              </div>
+              <div v-if="getAssetStatus(item) === 'succeeded'" class="assetTags">
+                <t-tag v-for="asset in item.relatedAssets?.slice(0, 4)" :key="asset.id" variant="light-outline" size="small">
+                  {{ asset.name }}
+                </t-tag>
+                <span v-if="(item.relatedAssets?.length || 0) > 4" class="moreAssets">+{{ (item.relatedAssets?.length || 0) - 4 }}</span>
+              </div>
             </div>
 
             <div class="del">
@@ -88,8 +120,10 @@ interface Script {
   name: string;
   content: string;
   createTime?: number;
-  extractState?: -1 | 0 | 1 | 2; // -1 失败 0 正在提取 1 成功 等待提取
+  extractState?: -2 | -1 | 0 | 1 | 2 | null; // -2 内容已更新 -1 失败 0 提取中 1 成功 2 等待
   errorReason?: string;
+  extractStartedAt?: number | null;
+  extractFinishedAt?: number | null;
   relatedAssets?: ScriptAsset[];
 }
 const scripts = ref<Script[]>([]);
@@ -97,7 +131,53 @@ const searchQuery = ref("");
 const addScriptShow = ref(false);
 const selectedIds = ref<number[]>([]);
 const scriptLoad = ref(false);
+const extractingScriptIds = ref(new Set<number>());
+const statusClock = ref(Date.now());
+let statusClockTimer: ReturnType<typeof setInterval> | null = null;
 const isAllSelected = computed(() => scripts.value.length > 0 && selectedIds.value.length === scripts.value.length);
+const selectedHasActiveTask = computed(() => selectedIds.value.some((id) => scripts.value.some((script) => script.id === id && isActiveExtraction(script))));
+
+type AssetStatus = "idle" | "queued" | "running" | "succeeded" | "failed" | "stale" | "invalid";
+
+function getAssetStatus(item: Script): AssetStatus {
+  if (item.extractState === 2) return "queued";
+  if (item.extractState === 0) return "running";
+  if (item.extractState === -1) return "failed";
+  if (item.extractState === -2) return "stale";
+  if (item.extractState === 1) return item.relatedAssets?.length ? "succeeded" : "invalid";
+  return "idle";
+}
+
+function getAssetStatusText(item: Script) {
+  const keys: Record<AssetStatus, string> = {
+    idle: "workbench.script.msg.statusNotExtracted",
+    queued: "workbench.script.msg.statusQueued",
+    running: "workbench.script.msg.statusRunning",
+    succeeded: "workbench.script.msg.statusSucceeded",
+    failed: "workbench.script.msg.statusFailed",
+    stale: "workbench.script.msg.statusStale",
+    invalid: "workbench.script.msg.statusEmpty",
+  };
+  return $t(keys[getAssetStatus(item)], { count: item.relatedAssets?.length || 0 });
+}
+
+function isActiveExtraction(item: Script) {
+  return item.extractState === 0 || item.extractState === 2;
+}
+
+function canRetryExtraction(item: Script) {
+  return ["idle", "failed", "stale", "invalid"].includes(getAssetStatus(item));
+}
+
+function formatElapsed(item: Script) {
+  if (!item.extractStartedAt) return "";
+  const end = item.extractFinishedAt || statusClock.value;
+  const totalSeconds = Math.max(1, Math.floor((end - item.extractStartedAt) / 1000));
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return seconds ? `${minutes}m ${seconds}s` : `${minutes}m`;
+}
 function toggleSelect(id: number) {
   const idx = selectedIds.value.indexOf(id);
   if (idx === -1) {
@@ -127,7 +207,12 @@ async function searchScripts() {
     window.$message.error($t("workbench.script.msg.searchFailed"));
   }
 }
-onMounted(searchScripts);
+onMounted(() => {
+  searchScripts();
+  statusClockTimer = setInterval(() => {
+    statusClock.value = Date.now();
+  }, 1000);
+});
 // 搜索输入变化
 function onChange() {
   searchScripts();
@@ -167,13 +252,17 @@ const selectedScript = ref<Script>({
 const detailsShow = ref(false);
 // 点击剧本卡片
 function handleScriptClick(item: Script) {
+  if (isActiveExtraction(item)) {
+    window.$message.warning($t("workbench.script.msg.extractingInProgress"));
+    return;
+  }
   selectedScript.value = { ...item };
   detailsShow.value = true;
 }
 // 删除剧本
 async function handleDeleteScript(scriptId: number) {
   //判断是否有资产正在提取中
-  const extractingIds = new Set(notCompletedData.value.map((s) => s.id));
+  const extractingIds = new Set(activeExtractionData.value.map((s) => s.id));
   if (extractingIds.has(scriptId)) {
     return window.$message.error($t("workbench.script.msg.extractingInProgress"));
   }
@@ -201,26 +290,37 @@ async function handleDeleteScript(scriptId: number) {
   });
 }
 //提取资产
-async function handleExtractAssets() {
+async function submitAssetExtraction(ids: number[]) {
   if (!project.value) return window.$message.error($t("workbench.script.msg.projectNotFound"));
-  //判断是否有资产正在提取中
-  const extractingIds = new Set(notCompletedData.value.map((s) => s.id));
-  if (selectedIds.value.some((id) => extractingIds.has(id))) {
+  const extractingIds = new Set(activeExtractionData.value.map((s) => s.id));
+  if (ids.some((id) => extractingIds.has(id))) {
     return window.$message.error($t("workbench.script.msg.extractingInProgress"));
   }
   scriptLoad.value = true;
+  extractingScriptIds.value = new Set([...extractingScriptIds.value, ...ids]);
   try {
     await axios.post("/script/extractAssets", {
-      scriptIds: selectedIds.value,
+      scriptIds: ids,
       projectId: project.value!.id,
       groupSize: otherSetting.value.assetsBatchGenereateSize,
     });
-    searchScripts();
+    await searchScripts();
   } catch (e) {
     window.$message.error((e as any)?.message || $t("workbench.script.msg.extractFailed"));
   } finally {
     scriptLoad.value = false;
+    const nextIds = new Set(extractingScriptIds.value);
+    ids.forEach((id) => nextIds.delete(id));
+    extractingScriptIds.value = nextIds;
   }
+}
+
+function handleExtractAssets() {
+  return submitAssetExtraction(selectedIds.value);
+}
+
+function extractSingleScript(scriptId: number) {
+  return submitAssetExtraction([scriptId]);
 }
 //批量删除剧本
 async function handleBatchDelete() {
@@ -229,7 +329,7 @@ async function handleBatchDelete() {
     return;
   }
   //判断是否有资产正在提取中
-  const extractingIds = new Set(notCompletedData.value.map((s) => s.id));
+  const extractingIds = new Set(activeExtractionData.value.map((s) => s.id));
   if (selectedIds.value.some((id) => extractingIds.has(id))) {
     return window.$message.error($t("workbench.script.msg.extractingInProgress"));
   }
@@ -260,11 +360,12 @@ async function handleBatchDelete() {
 }
 
 let pollingTimer: ReturnType<typeof setInterval> | null = null;
+let pollingInFlight = false;
 
 function startPolling() {
   if (pollingTimer) return;
   pollingTimer = setInterval(async () => {
-    if (notCompletedData.value.length === 0) {
+    if (activeExtractionData.value.length === 0) {
       stopPolling();
       return;
     }
@@ -278,33 +379,45 @@ function stopPolling() {
     pollingTimer = null;
   }
 }
-const notCompletedData = computed(() => {
-  return scripts.value.filter((s) => s.extractState == 0);
+const activeExtractionData = computed(() => {
+  return scripts.value.filter(isActiveExtraction);
 });
 // 轮询相关
 
 async function pollScriptAssets() {
-  if (notCompletedData.value.length === 0) return;
-  const ids = notCompletedData.value.map((item) => item.id);
+  if (activeExtractionData.value.length === 0 || pollingInFlight) return;
+  pollingInFlight = true;
+  const ids = activeExtractionData.value.map((item) => item.id);
   try {
     const { data } = await axios.post("/script/pollScriptAssets", { ids });
-    if (data.length) {
-      searchScripts();
+    let hasCompletedTask = false;
+    for (const state of data as Pick<Script, "id" | "extractState" | "errorReason" | "extractStartedAt" | "extractFinishedAt">[]) {
+      const script = scripts.value.find((item) => item.id === state.id);
+      if (script) Object.assign(script, state);
+      if (state.extractState !== 0 && state.extractState !== 2) hasCompletedTask = true;
     }
+    if (hasCompletedTask) await searchScripts();
   } catch (e) {
     console.error("轮询事件状态失败:", e);
+  } finally {
+    pollingInFlight = false;
   }
 }
 watch(
-  () => notCompletedData.value,
-  (newVal) => {
-    if (newVal.length > 0) {
+  () => activeExtractionData.value.length,
+  (activeCount) => {
+    if (activeCount > 0) {
       startPolling();
     } else {
       stopPolling();
     }
   },
 );
+
+onUnmounted(() => {
+  stopPolling();
+  if (statusClockTimer) clearInterval(statusClockTimer);
+});
 </script>
 
 <style lang="scss" scoped>
@@ -361,6 +474,83 @@ watch(
         gap: 6px;
         margin-top: 8px;
       }
+      .assetStatus {
+        margin-top: 14px;
+        padding: 10px 12px;
+        border-left: 3px solid var(--td-border-level-2-color);
+        background: var(--td-bg-color-container-hover);
+
+        .assetStatusHeader {
+          min-height: 24px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+        }
+
+        .assetStatusTitle {
+          min-width: 0;
+          display: flex;
+          align-items: center;
+          gap: 7px;
+          font-size: 13px;
+          font-weight: 600;
+          color: var(--td-text-color-primary);
+        }
+
+        .assetStatusMeta,
+        .assetStatusReason {
+          margin-top: 6px;
+          font-size: 12px;
+          line-height: 18px;
+          color: var(--td-text-color-secondary);
+        }
+
+        .assetStatusReason {
+          color: var(--td-error-color);
+          overflow-wrap: anywhere;
+        }
+
+        .moreAssets {
+          align-self: center;
+          font-size: 12px;
+          color: var(--td-text-color-secondary);
+        }
+
+        &.is-queued,
+        &.is-running {
+          border-left-color: var(--td-brand-color);
+        }
+
+        &.is-succeeded {
+          border-left-color: var(--td-success-color);
+
+          .assetStatusTitle {
+            color: var(--td-success-color);
+          }
+        }
+
+        &.is-failed,
+        &.is-invalid {
+          border-left-color: var(--td-error-color);
+
+          .assetStatusTitle {
+            color: var(--td-error-color);
+          }
+        }
+
+        &.is-stale {
+          border-left-color: var(--td-warning-color);
+
+          .assetStatusTitle {
+            color: var(--td-warning-color);
+          }
+        }
+
+        .statusSpinner {
+          animation: status-spin 1s linear infinite;
+        }
+      }
       .del {
         text-align: right;
         opacity: 0.6;
@@ -376,6 +566,12 @@ watch(
       align-items: center;
       height: 600px;
     }
+  }
+}
+
+@keyframes status-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 

@@ -193,18 +193,37 @@ async function jumpGithub() {
     padding-left: 32px;
     padding-right: 32px;
     .topMenu {
+      --top-menu-blue: #2563eb;
+      --top-menu-blue-soft: #eff6ff;
+      --top-menu-blue-divider: #bfdbfe;
       height: 6vh;
+
+      .title h2 {
+        color: var(--top-menu-blue);
+      }
+
       .rightBtnList {
         .item {
           margin-bottom: 0px !important;
           margin-top: 0px !important;
           margin-right: 4px;
           margin-left: 4px;
+          color: var(--top-menu-blue);
+
+          &:hover {
+            color: var(--top-menu-blue);
+            background-color: var(--top-menu-blue-soft);
+          }
+
+          &.active {
+            color: #fff;
+            background-color: var(--top-menu-blue) !important;
+          }
         }
         .divider {
           width: 1px;
           height: 24px;
-          background-color: #ecedef;
+          background-color: var(--top-menu-blue-divider);
           margin: 0 4px;
         }
       }

@@ -433,6 +433,8 @@ export default async (knex: Knex, forceInit: boolean = false): Promise<void> => 
         table.text("content");
         table.integer("projectId");
         table.integer("extractState");
+        table.integer("extractStartedAt");
+        table.integer("extractFinishedAt");
         table.integer("createTime");
         table.text("errorReason");
         table.primary(["id"]);
@@ -1162,6 +1164,16 @@ export default async (knex: Knex, forceInit: boolean = false): Promise<void> => 
     await knex("o_project")
       .where((builder) => builder.whereNull("negativePrompt").orWhere("negativePrompt", ""))
       .update({ negativePrompt: DEFAULT_IMAGE_NEGATIVE_PROMPT });
+  }
+
+  if (await knex.schema.hasTable("o_script")) {
+    for (const column of ["extractStartedAt", "extractFinishedAt"] as const) {
+      if (await knex.schema.hasColumn("o_script", column)) continue;
+      await knex.schema.alterTable("o_script", (table) => {
+        table.integer(column);
+      });
+      console.log("[初始化数据库] 已补充剧本资产提取时间字段:", column);
+    }
   }
 
   if ((await knex.schema.hasTable("o_assets")) && !(await knex.schema.hasColumn("o_assets", "originalPrompt"))) {

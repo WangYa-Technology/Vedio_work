@@ -433,10 +433,13 @@ import { DialogPlugin } from "tdesign-vue-next";
 import { FullscreenIcon, PauseIcon, PlayIcon, SettingIcon, SoundIcon, SoundMuteIcon } from "tdesign-icons-vue-next";
 import axios from "@/utils/axios";
 import projectStore from "@/stores/project";
+import settingStore from "@/stores/setting";
+import { resolveBackendAssetUrl } from "@/utils/backendUrl";
 
 const episodesId = inject<Ref<number>>("episodesId")!;
 
 const { project } = storeToRefs(projectStore());
+const { baseUrl } = storeToRefs(settingStore());
 
 // Keep the state refs above computed values that read them. The workbench can
 // mount asynchronously when the dialog opens, so a computed getter must never
@@ -1031,6 +1034,27 @@ interface TrackMedia {
   prompt?: string;
   fileType: "image" | "video" | "audio";
   sources?: "assets" | "storyboard";
+}
+
+function normalizeTrackMedia<T extends TrackMedia>(media: T): T {
+  return {
+    ...media,
+    src: media.src ? resolveBackendAssetUrl(media.src, baseUrl.value) : "",
+  };
+}
+
+function normalizeTrackItem(track: TrackItem): TrackItem {
+  return {
+    ...track,
+    medias: (track.medias || []).map(normalizeTrackMedia),
+    availableMedias: (track.availableMedias || []).map(normalizeTrackMedia),
+    referenceAssets: (track.referenceAssets || []).map(normalizeTrackMedia),
+    storyboard: track.storyboard ? normalizeTrackMedia(track.storyboard) : undefined,
+    videoList: (track.videoList || []).map((video) => ({
+      ...video,
+      src: video.src ? resolveBackendAssetUrl(video.src, baseUrl.value) : "",
+    })),
+  };
 }
 
 interface TrackItem {
@@ -1630,7 +1654,9 @@ async function getGenerateData() {
   if (data.projectConfig?.videoModel && data.projectConfig.videoModel !== selectModel.value) {
     selectModel.value = String(data.projectConfig.videoModel);
   }
-  trackList.value = Array.isArray(data.trackList) ? data.trackList : [];
+  trackList.value = Array.isArray(data.trackList)
+    ? data.trackList.map((track: TrackItem) => normalizeTrackItem(track))
+    : [];
   if (data.projectConfig?.mode) {
     selectMode.value = String(data.projectConfig.mode);
   }
@@ -1641,7 +1667,12 @@ async function getGenerateData() {
       trackSelectedVideoMap.value[track.id] = track.selectVideoId;
     }
   }
-  storyboardList.value = Array.isArray(data.storyboardList) ? data.storyboardList : [];
+  storyboardList.value = Array.isArray(data.storyboardList)
+    ? data.storyboardList.map((storyboard: StoryboardItem) => ({
+        ...storyboard,
+        src: storyboard.src ? resolveBackendAssetUrl(storyboard.src, baseUrl.value) : "",
+      }))
+    : [];
   syncMediasToUploadBox();
   getVideoList();
 }
@@ -1741,10 +1772,14 @@ async function getVideoList() {
     scriptId: episodesId.value ?? 0,
   });
   const oldList = historyVideo.value;
-  historyVideo.value = data;
+  const normalizedData = (Array.isArray(data) ? data : []).map((item: HistoryVideoItem) => ({
+    ...item,
+    src: item.src ? resolveBackendAssetUrl(item.src, baseUrl.value) : "",
+  }));
+  historyVideo.value = normalizedData;
   restoreActiveTrackSelection();
   // 检测生成完成的视频并提醒用户
-  for (const item of data as HistoryVideoItem[]) {
+  for (const item of normalizedData) {
     const old = oldList.find((o) => o.id === item.id);
     if (!old) continue;
     if (old.state === "生成中" && item.state === "已完成") {

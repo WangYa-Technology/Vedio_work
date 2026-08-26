@@ -354,11 +354,12 @@ import { DialogPlugin } from "tdesign-vue-next";
 import axios from "@/utils/axios";
 import VENDOR_CODE_TEMPLATE from "@/lib/vendorTemplate.ts?raw";
 import settingStore from "@/stores/setting";
+import { resolveBackendAssetUrl } from "@/utils/backendUrl";
 import providersLogo from "@/utils/ai/providersLogo";
 import type { UploadFile } from "tdesign-vue-next";
 import { LoadingPlugin } from "tdesign-vue-next";
 
-const { themeSetting } = storeToRefs(settingStore());
+const { themeSetting, baseUrl } = storeToRefs(settingStore());
 
 // ── 类型 ──
 interface TextModel {
@@ -1065,7 +1066,7 @@ async function handleTestModel(item: (typeof vendorModels.value)[number]) {
     } else if (item.type === "image" || item.type === "video") {
       testModelName.value = item.modelName;
       testResultType.value = item.type;
-      testResultUrl.value = data;
+      testResultUrl.value = resolveBackendAssetUrl(data, baseUrl.value);
       testResultVisible.value = true;
       window.$message.success(`${item.type === "image" ? $t("settings.vendor.msg.imageGenSuccess") : $t("settings.vendor.msg.videoGenSuccess")}`);
     }

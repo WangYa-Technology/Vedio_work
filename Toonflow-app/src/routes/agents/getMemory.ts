@@ -3,6 +3,7 @@ import u from "@/utils";
 import { z } from "zod";
 import { success } from "@/lib/responseFormat";
 import { validateFields } from "@/middleware/middleware";
+import { getAgentIsolationKey } from "@/utils/agentPersistence";
 const router = express.Router();
 
 function normalizeRole(role?: string | null): "user" | "assistant" {
@@ -18,7 +19,7 @@ export default router.post(
   }),
   async (req, res) => {
     const { projectId, agentType, episodesId } = req.body;
-    const isolationKey = `${projectId}:${agentType}${episodesId !== undefined ? `:${episodesId}` : ""}`;
+    const isolationKey = getAgentIsolationKey(req.authUser!.id, projectId, agentType, episodesId);
 
     const rows = await u
       .db("memories")

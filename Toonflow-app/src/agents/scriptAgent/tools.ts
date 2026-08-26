@@ -3,6 +3,7 @@ import u from "@/utils";
 import { z } from "zod";
 import _ from "lodash";
 import ResTool from "@/socket/resTool";
+import { EMPTY_PROJECT_GLOBAL_CONTEXT, ProjectGlobalContextSchema } from "@/schemas/projectGlobalContext";
 
 export const ScriptSchema = z.object({
   name: z.string().describe("剧本名称"),
@@ -12,6 +13,7 @@ export const planData = z.object({
   storySkeleton: z.string().describe("故事骨架"),
   adaptationStrategy: z.string().describe("改编策略"),
   script: z.array(ScriptSchema).describe("剧本内容"),
+  projectGlobalContext: ProjectGlobalContextSchema.describe("项目级剧情、人物与世界观资料"),
 });
 
 export type planData = z.infer<typeof planData>;
@@ -25,6 +27,49 @@ interface ToolConfig {
   resTool: ResTool;
   toolsNames?: string[];
   msg: ReturnType<ResTool["newMessage"]>;
+}
+
+type GlobalContextType = keyof z.infer<typeof ProjectGlobalContextSchema>;
+
+const GLOBAL_CONTEXT_LABELS: Record<GlobalContextType, string> = {
+  plot: "剧情数据库",
+  character: "人物数据库",
+  world: "世界观数据库",
+};
+
+function normalizeGlobalContext(value: unknown): z.infer<typeof ProjectGlobalContextSchema> {
+  const parsed = ProjectGlobalContextSchema.safeParse(value);
+  if (parsed.success) return parsed.data;
+  return ProjectGlobalContextSchema.parse(EMPTY_PROJECT_GLOBAL_CONTEXT);
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function selectRelevantContext(content: string, keywords: string[], maxChars = 14000) {
+  const normalized = content.replace(/\r\n?/g, "\n").trim();
+  if (!normalized) return "";
+  if (!keywords.length) return normalized.length > maxChars ? `${normalized.slice(0, maxChars)}\n[资料过长，已截取]` : normalized;
+
+  const lines = normalized.split("\n");
+  const patterns = keywords.filter(Boolean).map((keyword) => new RegExp(escapeRegExp(keyword), "i"));
+  const selected = new Set<number>();
+  lines.forEach((line, index) => {
+    if (!patterns.some((pattern) => pattern.test(line))) return;
+    for (let offset = -2; offset <= 2; offset += 1) {
+      const target = index + offset;
+      if (target >= 0 && target < lines.length) selected.add(target);
+    }
+  });
+
+  if (!selected.size) return "";
+  const result = Array.from(selected)
+    .sort((a, b) => a - b)
+    .map((index) => lines[index])
+    .join("\n")
+    .trim();
+  return result.length > maxChars ? `${result.slice(0, maxChars)}\n[筛选结果过长，已截取]` : result;
 }
 
 export default (toolCpnfig: ToolConfig) => {
@@ -72,6 +117,7 @@ export default (toolCpnfig: ToolConfig) => {
           storySkeleton: typeof workData.storySkeleton === "string" ? workData.storySkeleton : "",
           adaptationStrategy: typeof workData.adaptationStrategy === "string" ? workData.adaptationStrategy : "",
           script: scripts.map((item) => ({ name: item.name || "", content: item.content || "" })),
+          projectGlobalContext: normalizeGlobalContext(workData.projectGlobalContext),
         };
         const value = persistedPlanData[key];
         thinking.appendText(`获取到${planDataKeyLabels[key]}:\n` + (typeof value === "string" ? value : JSON.stringify(value)));
@@ -94,6 +140,56 @@ export default (toolCpnfig: ToolConfig) => {
         thinking.updateTitle(`获取小说章节原文完成`);
         thinking.complete();
         return text ?? "无数据";
+      },
+    }),
+    get_project_global_context: tool({
+      description: "按当前集、人物和地点筛选项目级剧情数据库、人物数据库与世界观数据库；这些资料不是章节原文",
+      inputSchema: z.object({
+        episode: z.number().int().positive().optional().describe("当前目标集数"),
+        characterNames: z.array(z.string()).default([]).describe("本集涉及人物名"),
+        locationNames: z.array(z.string()).default([]).describe("本集涉及地点名"),
+        include: z.array(z.enum(["plot", "character", "world"])).default(["plot", "character", "world"]).describe("要读取的资料类型"),
+      }),
+      execute: async ({ episode, characterNames, locationNames, include }) => {
+        console.log("[tools] get_project_global_context", { episode, characterNames, locationNames, include });
+        const thinking = msg.thinking("正在读取项目全局资料...");
+        const projectId = Number(resTool.data.projectId);
+        const row = await u.db("o_agentWorkData").where({ projectId, key: "scriptAgent" }).first();
+        let workData: Record<string, unknown> = {};
+        try {
+          workData = JSON.parse(row?.data ?? "{}");
+        } catch {
+          workData = {};
+        }
+        const context = normalizeGlobalContext(workData.projectGlobalContext);
+        const episodeKeywords = episode
+          ? [episode - 1, episode, episode + 1]
+              .filter((value) => value > 0)
+              .flatMap((value) => [`第${value}集`, `EP${String(value).padStart(2, "0")}`, `EP${value}`])
+          : [];
+        const sections = include.map((type) => {
+          const material = context[type];
+          const keywords =
+            type === "plot"
+              ? [...episodeKeywords, ...characterNames]
+              : type === "character"
+                ? characterNames
+                : [...locationNames, ...characterNames, "时间线", "世界规则"];
+          const selected = selectRelevantContext(material.content, keywords);
+          const metadata = `来源：${material.sourceName || "未标注"}；设定状态：${material.canonStatus}；更新时间：${material.updatedAt ? new Date(material.updatedAt).toISOString() : "未标注"}`;
+          const emptyState = material.content.trim() ? "未命中当前集筛选条件，正文未返回" : "未配置";
+          return `## ${GLOBAL_CONTEXT_LABELS[type]}\n${metadata}\n${selected || emptyState}`;
+        });
+        const result = [
+          "# 项目全局资料上下文",
+          `项目ID：${projectId}${episode ? `；目标集：第${episode}集` : ""}`,
+          "资料仅用于校验连续性、人物边界和世界规则；不得替代当前章节原文，不得提前泄露尚未到达的剧情或秘密。",
+          ...sections,
+        ].join("\n\n");
+        thinking.appendText(`已读取：${include.map((type) => GLOBAL_CONTEXT_LABELS[type]).join("、")}`);
+        thinking.updateTitle("读取项目全局资料完成");
+        thinking.complete();
+        return result;
       },
     }),
     get_script_content: tool({

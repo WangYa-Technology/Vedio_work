@@ -396,6 +396,8 @@
         "save": "儲存",
         "ok": "確定",
         "cancel": "取消",
+        "projectMaterials": "專案資料",
+        "projectMaterialsDescription": "建立時可選擇輸入劇情、人物和世界觀資料，建立後仍可繼續維護",
         "projectType": "專案類型",
         "selectType": "選擇專案類型",
         "basedOnNovel": "基於小說原文",
@@ -620,6 +622,12 @@
       "storySkeleton": "故事骨架",
       "adaptationStrategy": "改編策略",
       "script": "劇本",
+      "globalContext": {
+        "title": "專案資料", "plot": "劇情資料庫", "character": "人物資料庫", "world": "世界觀資料庫",
+        "plotPlaceholder": "匯入或輸入全劇劇情、事件與伏筆資料", "characterPlaceholder": "匯入或輸入人物設定、關係與成長弧資料", "worldPlaceholder": "匯入或輸入地點、勢力、組織與時間線資料",
+        "import": "匯入", "save": "儲存資料", "clear": "清空", "noSource": "手動輸入", "characters": "字", "approved": "已確認", "proposed": "待確認", "unresolved": "有爭議",
+        "imported": "資料已匯入", "saved": "專案資料已儲存", "saveFailed": "專案資料儲存失敗", "readFailed": "資料讀取失敗", "unsupportedType": "僅支援 DOCX 或 TXT 檔案", "fileTooLarge": "檔案不能超過 10MB", "clearConfirm": "清空專案資料", "clearBody": "確定清空這類專案資料嗎？"
+      },
       "noContent": "暫無內容",
       "relatedAssets": "關聯資產",
       "editScript": "編輯劇本",
@@ -744,7 +752,18 @@
         "batchDeleteBody": "確定要刪除選中的 {count} 個劇本嗎？此操作無法復原。",
         "batchDeleteSuccess": "批量刪除成功",
         "extractingInProgress": "正在提取中",
-        "projectNotFound": "項目未找到"
+        "projectNotFound": "項目未找到",
+        "statusNotExtracted": "尚未提取資產",
+        "statusQueued": "等待提取資產",
+        "statusRunning": "正在提取資產",
+        "statusSucceeded": "已提取 {count} 項資產",
+        "statusFailed": "資產提取失敗",
+        "statusStale": "劇本已更新，需要重新提取",
+        "statusEmpty": "提取結果為空，需要重新提取",
+        "statusElapsed": "已用時 {duration}",
+        "statusPreserved": "保留原有關聯資產 {count} 項",
+        "statusManual": "已手動關聯 {count} 項資產",
+        "retryExtract": "重新提取"
       },
       "add": {
         "title": "新增劇本",

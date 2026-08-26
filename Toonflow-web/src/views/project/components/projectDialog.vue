@@ -1,10 +1,11 @@
 <template>
   <div class="addProject">
     <t-dialog
+      class="projectDialog"
       placement="center"
       v-model:visible="addProjectShow"
       :header="isEdit ? $t('workbench.project.dialog.editTitle') : $t('workbench.project.dialog.addTitle')"
-      width="60%"
+      width="min(1080px, 92vw)"
       @confirm="handleOk"
       @close-btn-click="handleCancel"
       @cancel="handleCancel"
@@ -13,26 +14,26 @@
       <div class="formColumns">
         <div class="formLeft">
           <t-form :data="formState" label-align="top">
-            <t-form-item :label="$t('workbench.project.dialog.projectType')">
+            <t-form-item :label="$t('workbench.project.dialog.projectType')" required-mark>
               <t-select v-model="formState.projectType" :placeholder="$t('workbench.project.dialog.selectType')">
                 <t-option key="基于小说原文" :label="$t('workbench.project.dialog.basedOnNovel')" value="novel" />
                 <t-option key="基于剧本" :label="$t('workbench.project.dialog.basedOnScript')" value="script" />
               </t-select>
             </t-form-item>
-            <t-form-item :label="$t('workbench.project.dialog.projectName')">
+            <t-form-item :label="$t('workbench.project.dialog.projectName')" required-mark>
               <t-input v-model="formState.name" :placeholder="$t('workbench.project.dialog.projectNamePh')" />
             </t-form-item>
-            <t-form-item :label="$t('workbench.project.dialog.novelType')">
+            <t-form-item :label="$t('workbench.project.dialog.novelType')" required-mark>
               <t-input v-model="formState.type" :placeholder="$t('workbench.project.dialog.novelTypePh')" />
             </t-form-item>
-            <t-form-item :label="$t('workbench.project.dialog.modelData')">
+            <t-form-item :label="$t('workbench.project.dialog.modelData')" required-mark>
               <modelSelect v-model="formState.imageModel" type="image" />
             </t-form-item>
             <t-form-item :label="$t('workbench.project.dialog.videoModelData')">
               <modelSelect v-model="formState.videoModel" type="video" changeConfig @change="changeFn" />
             </t-form-item>
 
-            <t-form-item :label="$t('workbench.project.dialog.videoRatio')">
+            <t-form-item :label="$t('workbench.project.dialog.videoRatio')" required-mark>
               <t-select v-model="formState.videoRatio" :options="RATIO_OPTIONS" />
             </t-form-item>
             <t-form-item :label="$t('workbench.project.dialog.novelIntro')">
@@ -54,7 +55,10 @@
             <t-form-item>
               <div class="artStylePicker">
                 <div class="artStyleHeader">
-                  <span>{{ $t("workbench.project.dialog.visualManual") }}</span>
+                  <span class="requiredSectionLabel">
+                    <span class="requiredMark" aria-hidden="true">*</span>
+                    {{ $t("workbench.project.dialog.visualManual") }}
+                  </span>
                   <t-button size="small" variant="outline" @click="openVisualManualDialog()">
                     <template #icon><i-plus size="14" /></template>
                     {{ $t("workbench.project.dialog.newVisualManual") }}
@@ -100,7 +104,10 @@
             <t-form-item>
               <div class="directorManual">
                 <div class="directorManualHeader">
-                  <span>{{ $t("workbench.project.dialog.directorManual") }}</span>
+                  <span class="requiredSectionLabel">
+                    <span class="requiredMark" aria-hidden="true">*</span>
+                    {{ $t("workbench.project.dialog.directorManual") }}
+                  </span>
                   <t-button size="small" variant="outline" @click="openDirectorManualDialog()">
                     <template #icon><i-plus size="14" /></template>
                     {{ $t("workbench.project.dialog.addDirectorManual") }}
@@ -146,6 +153,56 @@
           </t-form>
         </div>
       </div>
+      <section v-if="!isEdit" class="projectMaterials">
+        <div class="projectMaterialsHeader">
+          <div>
+            <div class="projectMaterialsTitle">{{ $t("workbench.project.dialog.projectMaterials") }}</div>
+            <div class="projectMaterialsDescription">{{ $t("workbench.project.dialog.projectMaterialsDescription") }}</div>
+          </div>
+          <t-switch v-model="includeProjectGlobalContext" :aria-label="$t('workbench.project.dialog.projectMaterials')" />
+        </div>
+        <div v-if="includeProjectGlobalContext" class="projectMaterialsEditor">
+          <input
+            ref="projectMaterialInput"
+            class="projectMaterialFileInput"
+            type="file"
+            accept=".docx,.txt,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            @change="handleProjectMaterialFile" />
+          <t-tabs v-model="activeProjectMaterialType">
+            <t-tab-panel
+              v-for="item in projectMaterialDefinitions"
+              :key="item.type"
+              :value="item.type"
+              :label="item.label">
+              <div class="projectMaterialToolbar">
+                <span class="projectMaterialMeta">
+                  {{ projectGlobalContext[item.type].sourceName || $t("workbench.scriptAgent.globalContext.noSource") }}
+                  · {{ projectGlobalContext[item.type].content.length }} {{ $t("workbench.scriptAgent.globalContext.characters") }}
+                </span>
+                <div class="projectMaterialActions">
+                  <t-select v-model="projectGlobalContext[item.type].canonStatus" size="small" class="projectMaterialStatus">
+                    <t-option value="approved" :label="$t('workbench.scriptAgent.globalContext.approved')" />
+                    <t-option value="proposed" :label="$t('workbench.scriptAgent.globalContext.proposed')" />
+                    <t-option value="unresolved" :label="$t('workbench.scriptAgent.globalContext.unresolved')" />
+                  </t-select>
+                  <t-button
+                    size="small"
+                    variant="outline"
+                    :loading="importingProjectMaterial && pendingProjectMaterialType === item.type"
+                    @click="triggerProjectMaterialUpload(item.type)">
+                    <template #icon><i-upload-one size="15" /></template>
+                    {{ $t("workbench.scriptAgent.globalContext.import") }}
+                  </t-button>
+                </div>
+              </div>
+              <t-textarea
+                v-model="projectGlobalContext[item.type].content"
+                :placeholder="item.placeholder"
+                :autosize="{ minRows: 8, maxRows: 16 }" />
+            </t-tab-panel>
+          </t-tabs>
+        </div>
+      </section>
     </t-dialog>
     <!-- 新建/编辑视觉手册弹窗 -->
     <t-dialog
@@ -302,8 +359,14 @@ import modelSelect from "@/components/modelSelect.vue";
 import type { TabValue } from "tdesign-vue-next";
 import { DialogPlugin } from "tdesign-vue-next";
 import { DEFAULT_IMAGE_NEGATIVE_PROMPT } from "@/constants/projectDefaults";
+import { createEmptyProjectGlobalContext } from "@/types/projectGlobalContext";
+import type { ProjectGlobalContext, ProjectGlobalContextType } from "@/types/projectGlobalContext";
+import mammoth from "mammoth";
+import settingStore from "@/stores/setting";
+import { resolveBackendAssetUrl } from "@/utils/backendUrl";
 
 const addProjectShow = defineModel<boolean>();
+const settings = settingStore();
 const props = defineProps<{
   projectData?: ProjectData | null;
 }>();
@@ -360,6 +423,7 @@ interface ProjectFormData {
   videoModel: string;
   imageQuality: "1K" | "2K" | "4K" | "";
   mode: string;
+  projectGlobalContext?: ProjectGlobalContext;
 }
 interface VisualManualItem {
   name: string;
@@ -371,6 +435,11 @@ interface Data {
   label: string;
   value: string;
   data: string;
+}
+
+function normalizeManualImages(images?: string[], image?: string | string[]) {
+  const values = images ?? (Array.isArray(image) ? image : image ? [image] : []);
+  return values.map((value) => resolveBackendAssetUrl(value, settings.baseUrl));
 }
 
 const DEFAULT_TAB_DATA: () => Data[] = () => [
@@ -417,9 +486,80 @@ const DEFAULT_FORM: () => ProjectFormData & { id: number; era: string; createTim
 
 // ===== 表单 =====
 const formState = ref(DEFAULT_FORM());
+const includeProjectGlobalContext = ref(false);
+const projectGlobalContext = ref<ProjectGlobalContext>(createEmptyProjectGlobalContext());
+const activeProjectMaterialType = ref<ProjectGlobalContextType>("plot");
+const projectMaterialInput = ref<HTMLInputElement | null>(null);
+const pendingProjectMaterialType = ref<ProjectGlobalContextType | null>(null);
+const importingProjectMaterial = ref(false);
+const projectMaterialDefinitions = computed(() => [
+  {
+    type: "plot" as const,
+    label: $t("workbench.scriptAgent.globalContext.plot"),
+    placeholder: $t("workbench.scriptAgent.globalContext.plotPlaceholder"),
+  },
+  {
+    type: "character" as const,
+    label: $t("workbench.scriptAgent.globalContext.character"),
+    placeholder: $t("workbench.scriptAgent.globalContext.characterPlaceholder"),
+  },
+  {
+    type: "world" as const,
+    label: $t("workbench.scriptAgent.globalContext.world"),
+    placeholder: $t("workbench.scriptAgent.globalContext.worldPlaceholder"),
+  },
+]);
 
 function resetForm() {
   formState.value = DEFAULT_FORM();
+  includeProjectGlobalContext.value = false;
+  projectGlobalContext.value = createEmptyProjectGlobalContext();
+  activeProjectMaterialType.value = "plot";
+  pendingProjectMaterialType.value = null;
+}
+
+function triggerProjectMaterialUpload(type: ProjectGlobalContextType) {
+  pendingProjectMaterialType.value = type;
+  if (projectMaterialInput.value) {
+    projectMaterialInput.value.value = "";
+    projectMaterialInput.value.click();
+  }
+}
+
+async function handleProjectMaterialFile(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  const type = pendingProjectMaterialType.value;
+  if (!file || !type) return;
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  if (!extension || !["docx", "txt"].includes(extension)) {
+    window.$message.error($t("workbench.scriptAgent.globalContext.unsupportedType"));
+    pendingProjectMaterialType.value = null;
+    return;
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    window.$message.error($t("workbench.scriptAgent.globalContext.fileTooLarge"));
+    pendingProjectMaterialType.value = null;
+    return;
+  }
+  importingProjectMaterial.value = true;
+  try {
+    const buffer = await file.arrayBuffer();
+    const content = extension === "txt" ? new TextDecoder().decode(buffer) : (await mammoth.extractRawText({ arrayBuffer: buffer })).value;
+    projectGlobalContext.value[type] = {
+      ...projectGlobalContext.value[type],
+      content: content.trim(),
+      sourceName: file.name,
+      updatedAt: Date.now(),
+    };
+    window.$message.success($t("workbench.scriptAgent.globalContext.imported"));
+  } catch (error) {
+    console.error("创建项目时读取全局资料失败:", error);
+    window.$message.error($t("workbench.scriptAgent.globalContext.readFailed"));
+  } finally {
+    importingProjectMaterial.value = false;
+    pendingProjectMaterialType.value = null;
+  }
 }
 
 function handleCancel() {
@@ -433,7 +573,6 @@ function handleOk() {
   if (!formState.value.artStyle) return window.$message.warning($t("workbench.project.msg.enterArtStyle"));
   if (!formState.value.directorManual) return window.$message.warning($t("workbench.project.msg.directorManual"));
   if (!formState.value.videoRatio) return window.$message.warning($t("workbench.project.msg.enterVideoRatio"));
-  if (!formState.value.intro) return window.$message.warning($t("workbench.project.msg.enterProjectIntro"));
   if (!formState.value.imageModel) return window.$message.warning($t("workbench.project.msg.enterImageModel"));
   if (isEdit.value) {
     emit("edit", {
@@ -465,6 +604,7 @@ function handleOk() {
       imageQuality: formState.value.imageQuality,
       directorManual: formState.value.directorManual,
       mode: formState.value.mode,
+      ...(includeProjectGlobalContext.value ? { projectGlobalContext: projectGlobalContext.value } : {}),
     });
   }
   resetForm();
@@ -550,7 +690,7 @@ function fetchVisualManuals() {
           id: item.id,
           name: item.name,
           stylePath: item.stylePath,
-          images: item.images ?? (Array.isArray(item.image) ? item.image : item.image ? [item.image] : []),
+          images: normalizeManualImages(item.images, item.image),
           data: item.data,
         }),
       );
@@ -746,7 +886,7 @@ function queryDirectorManual() {
           id: item.id,
           name: item.name,
           directorManual: item.directorManual,
-          images: item.images ?? (Array.isArray(item.image) ? item.image : item.image ? [item.image] : []),
+          images: normalizeManualImages(item.images, item.image),
           data: item.data,
         }),
       );
@@ -879,6 +1019,103 @@ function handleDirectorManualCoverFileChange(e: Event) {
   .formRight {
     flex: 1;
     min-width: 0;
+  }
+}
+
+.projectMaterials {
+  margin-top: 8px;
+  padding-top: 20px;
+  border-top: 1px solid var(--td-component-border);
+}
+
+.projectMaterialsHeader,
+.projectMaterialToolbar,
+.projectMaterialActions {
+  display: flex;
+  align-items: center;
+}
+
+.projectMaterialsHeader,
+.projectMaterialToolbar {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.projectMaterialsTitle {
+  color: var(--td-text-color-primary);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.projectMaterialsDescription,
+.projectMaterialMeta {
+  margin-top: 4px;
+  color: var(--td-text-color-secondary);
+  font-size: 13px;
+}
+
+.projectMaterialsEditor {
+  margin-top: 12px;
+}
+
+.projectMaterialFileInput {
+  display: none;
+}
+
+.projectMaterialToolbar {
+  min-height: 40px;
+  margin-bottom: 10px;
+}
+
+.projectMaterialActions {
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.projectMaterialStatus {
+  width: 112px;
+}
+
+.requiredSectionLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.requiredMark {
+  color: var(--td-error-color);
+  font-size: 14px;
+  line-height: 1;
+}
+
+:deep(.projectDialog) {
+  .t-dialog__body {
+    max-height: 78vh;
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .formColumns {
+    flex-direction: column;
+  }
+
+  .projectMaterialsHeader,
+  .projectMaterialToolbar {
+    align-items: flex-start;
+  }
+
+  .projectMaterialToolbar {
+    flex-direction: column;
+  }
+
+  .projectMaterialActions {
+    width: 100%;
+  }
+
+  .projectMaterialStatus {
+    flex: 1;
+    width: auto;
   }
 }
 .directorManual {

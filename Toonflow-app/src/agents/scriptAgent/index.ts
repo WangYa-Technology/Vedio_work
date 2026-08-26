@@ -1,5 +1,6 @@
 import { Socket } from "socket.io";
 import { tool } from "ai";
+import type { ModelMessage } from "ai";
 import { z } from "zod";
 import u from "@/utils";
 import Memory from "@/utils/agent/memory";
@@ -79,6 +80,10 @@ function getWorkflowLabel(stage?: string) {
   }
 }
 
+function hasToolResults(messages: ModelMessage[]) {
+  return messages.some((message) => message.role === "tool");
+}
+
 function buildMemPrompt(mem: Awaited<ReturnType<Memory["get"]>>): string {
   let memoryContext = "";
   if (mem.rag.length) {
@@ -128,6 +133,10 @@ async function getWorkflowContext(projectIdValue: unknown) {
 
   const hasSkeleton = typeof planData.storySkeleton === "string" && planData.storySkeleton.trim().length > 0;
   const hasStrategy = typeof planData.adaptationStrategy === "string" && planData.adaptationStrategy.trim().length > 0;
+  const globalContext = planData.projectGlobalContext as Record<string, { content?: unknown }> | undefined;
+  const configuredGlobalMaterials = ["plot", "character", "world"].filter(
+    (key) => typeof globalContext?.[key]?.content === "string" && String(globalContext[key].content).trim().length > 0,
+  );
   const targetEpisodeCount = getTargetEpisodeCount(planData.adaptationStrategy, planData.storySkeleton);
   const remainingEpisodes = targetEpisodeCount === undefined ? undefined : Math.max(targetEpisodeCount - scripts.length, 0);
   const suggestedNext = !hasSkeleton
@@ -149,6 +158,7 @@ async function getWorkflowContext(projectIdValue: unknown) {
     `故事骨架：${hasSkeleton ? "已保存" : "未生成"}`,
     `改编策略：${hasStrategy ? "已保存" : "未生成"}`,
     `目标集数：${targetEpisodeCount === undefined ? "未从已保存配置中识别" : `${targetEpisodeCount}集`}`,
+    `项目全局资料：${configuredGlobalMaterials.length ? `已配置${configuredGlobalMaterials.length}/3类` : "未配置"}`,
     `已生成剧本：${scripts.length}集${scripts.length ? `（${scripts.map((item) => item.name).join("、")}）` : ""}`,
     `建议下一步：${suggestedNext}`,
     "当用户说“继续”“已经有了”“确认”或表达同意时，必须基于此快照推进，不得重新询问已保存阶段或已确认参数。",
@@ -222,6 +232,7 @@ async function persistPlanXml(projectIdValue: unknown, artifact: ArtifactPayload
       throw new Error("现有剧本工作区数据格式无效，已阻止覆盖");
     }
     const persistedData = {
+      ...currentData,
       storySkeleton: typeof currentData.storySkeleton === "string" ? currentData.storySkeleton : "",
       adaptationStrategy: typeof currentData.adaptationStrategy === "string" ? currentData.adaptationStrategy : "",
       [artifact.type]: artifact.content,
@@ -333,7 +344,7 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
     isSupervision?: boolean;
     workflowStage?: "storySkeleton" | "adaptationStrategy" | "script" | "supervision";
     tools?: Record<string, any>;
-    messages?: { role: "user" | "assistant" | "system"; content: string }[];
+    messages?: ModelMessage[];
   }) {
     if (supervisionStarted || supervisionCompleted) {
       return "审核已开始或完成。本轮必须立即停止并等待用户下一条消息，不能继续执行或再次审核。";
@@ -344,25 +355,53 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
     const subMsg = resTool.newMessage("assistant", name);
     const text = subMsg.text();
     let fullResponse = "";
-    let attemptMessages = messages ?? [{ role: "user" as const, content: prompt }];
+    let attemptMessages: ModelMessage[] = messages ?? [{ role: "user", content: prompt }];
 
     for (let attempt = 1; attempt <= SUB_AGENT_MAX_ATTEMPTS; attempt++) {
       let attemptResponse = "";
       try {
-        const { textStream } = await u.Ai.Text(modelKey).stream({
+        const streamResult = await u.Ai.Text(modelKey).stream({
           system: withContentSafetyConstraint(system, contentSafetyConstraint),
           messages: attemptMessages,
           abortSignal,
           tools: { ...extraTools, ...useTools({ resTool, msg: subMsg }) },
         });
 
-        for await (const chunk of textStream) {
+        for await (const chunk of streamResult.textStream) {
           await new Promise<void>((resolve) => setTimeout(() => resolve(), 1));
           text.append(chunk);
           attemptResponse += chunk;
         }
+        const responseMessages = (await streamResult.response).messages as ModelMessage[];
         if (!attemptResponse.trim()) {
-          throw new Error("模型服务未返回有效内容");
+          const toolsCompleted = hasToolResults(responseMessages);
+          if (attempt === SUB_AGENT_MAX_ATTEMPTS) {
+            throw new Error(toolsCompleted ? "资料读取完成，但模型未输出最终内容" : "模型未输出最终内容");
+          }
+
+          console.warn(
+            `[scriptAgent] ${modelKey} ${toolsCompleted ? "工具调用后未输出正文" : "返回空内容"}，准备第 ${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS} 次尝试`,
+          );
+          const retryState = subMsg.thinking(toolsCompleted ? "资料已读取，正在补充最终结果..." : "模型未输出内容，正在重新生成...");
+          retryState.appendText(`第 ${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS} 次尝试`);
+          retryState.complete();
+          resTool.workflowStatus(
+            "retrying",
+            `${getWorkflowLabel(workflowStage)}，${toolsCompleted ? "正在补充最终结果" : "正在重新生成空缺内容"}（${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS}）`,
+            workflowStage,
+          );
+          attemptMessages = [
+            ...attemptMessages,
+            ...(toolsCompleted ? responseMessages : []),
+            {
+              role: "user",
+              content: toolsCompleted
+                ? "资料读取已完成。请直接基于以上工具结果输出最终结果，不要重复调用读取工具。"
+                : "上一轮没有输出正文。请立即完成任务并输出最终结果，不要留空。",
+            },
+          ];
+          await waitBeforeRetry(300 * attempt, abortSignal);
+          continue;
         }
         if (requiredArtifact) {
           try {
@@ -377,10 +416,13 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
             resTool.workflowStatus("retrying", `${getWorkflowLabel(workflowStage)}，正在修复输出格式（${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS}）`, workflowStage);
             attemptMessages = [
               ...attemptMessages,
+              ...responseMessages,
               {
                 role: "user",
                 content:
-                  "上一轮输出未通过宿主校验。请忽略上一轮结果，重新完成任务，并且只输出一个带 name 属性、开闭标签完整的 XML 产出物；不要输出任何解释、Markdown 代码围栏或保存说明。",
+                  requiredArtifact === "scriptItem"
+                    ? "上一轮产出未通过格式校验。请基于已有内容重新输出一个带 name 属性、开闭标签完整的 <scriptItem>；不要重复读取资料，不要输出解释、Markdown 代码围栏或保存说明。"
+                    : `上一轮产出未通过格式校验。请基于已有内容重新输出一个开闭标签完整的 <${requiredArtifact}>；不要重复读取资料，不要输出解释、Markdown 代码围栏或保存说明。`,
               },
             ];
             await waitBeforeRetry(750 * attempt, abortSignal);
@@ -390,18 +432,20 @@ function createSubAgent(parentCtx: AgentContext, contentSafetyConstraint: string
         fullResponse = attemptResponse;
         break;
       } catch (err: any) {
-        const canRetry = !attemptResponse.trim() && (isTransientAiError(err) || /未返回有效内容/.test(collectErrorText(err)));
+        const canRetry = !attemptResponse.trim() && isTransientAiError(err);
         if (err?.name === "AbortError" || abortSignal?.aborted || !canRetry || attempt === SUB_AGENT_MAX_ATTEMPTS) {
+          const errorMessage = u.error(err).message;
           text.complete();
-          subMsg.error(u.error(err).message);
+          subMsg.error(errorMessage);
+          resTool.workflowStatus("error", `${getWorkflowLabel(workflowStage)}失败：${errorMessage}`, workflowStage);
           throw err;
         }
 
         console.warn(`[scriptAgent] ${modelKey} 调用失败，准备第 ${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS} 次尝试:`, u.error(err).message);
-        const retryState = subMsg.thinking("模型服务暂时不可用，正在自动重试...");
+        const retryState = subMsg.thinking("模型服务连接异常，正在自动重试...");
         retryState.appendText(`第 ${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS} 次尝试`);
         retryState.complete();
-        resTool.workflowStatus("retrying", `${getWorkflowLabel(workflowStage)}，正在自动重试（${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS}）`, workflowStage);
+        resTool.workflowStatus("retrying", `${getWorkflowLabel(workflowStage)}，正在重连模型服务（${attempt + 1}/${SUB_AGENT_MAX_ATTEMPTS}）`, workflowStage);
         await waitBeforeRetry(750 * attempt, abortSignal);
       }
     }

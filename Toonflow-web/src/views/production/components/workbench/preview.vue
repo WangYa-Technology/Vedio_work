@@ -131,6 +131,8 @@ import { VueDraggable } from "vue-draggable-plus";
 import { DialogPlugin } from "tdesign-vue-next";
 import axios from "@/utils/axios";
 import projectStore from "@/stores/project";
+import settingStore from "@/stores/setting";
+import { resolveBackendAssetUrl } from "@/utils/backendUrl";
 
 interface Shot {
   id: string | number;
@@ -165,6 +167,7 @@ interface Shot {
 
 const episodesId = inject<Ref<number>>("episodesId");
 const { project } = storeToRefs(projectStore());
+const { baseUrl } = storeToRefs(settingStore());
 const shotList = ref<Shot[]>([]);
 const currentShotIndex = ref(0);
 const selectAll = ref(false);
@@ -207,8 +210,18 @@ async function getShotList() {
       reason: item.reason || "",
       trackId: item.id,
       segmentRows: item.segmentRows || [],
-      storyboard: item.storyboard,
-      referenceAssets: item.referenceAssets || [],
+      storyboard: item.storyboard
+        ? {
+            ...item.storyboard,
+            src: item.storyboard.src
+              ? resolveBackendAssetUrl(item.storyboard.src, baseUrl.value)
+              : "",
+          }
+        : undefined,
+      referenceAssets: (item.referenceAssets || []).map((asset: any) => ({
+        ...asset,
+        src: asset.src ? resolveBackendAssetUrl(asset.src, baseUrl.value) : "",
+      })),
       associateAssetsIds: (item.referenceAssets || []).map((asset: any) => asset.id),
       excludesStoryboard: item.excludesStoryboard,
       readiness: item.readiness,

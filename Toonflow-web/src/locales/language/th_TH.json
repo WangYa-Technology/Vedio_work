@@ -392,6 +392,8 @@
         "save": "บันทึก",
         "ok": "ตกลง",
         "cancel": "ยกเลิก",
+        "projectMaterials": "ข้อมูลโครงการ",
+        "projectMaterialsDescription": "เลือกเพิ่มข้อมูลเนื้อเรื่อง ตัวละคร และโลกตอนสร้างโครงการ และแก้ไขภายหลังได้",
         "projectType": "ประเภทโปรเจกต์",
         "selectType": "เลือกประเภทโปรเจกต์",
         "basedOnNovel": "สร้างจากต้นฉบับนิยาย",
@@ -616,6 +618,12 @@
       "storySkeleton": "โครงเรื่อง",
       "adaptationStrategy": "กลยุทธ์การดัดแปลง",
       "script": "บทภาพยนตร์",
+      "globalContext": {
+        "title": "ข้อมูลโครงการ", "plot": "ฐานข้อมูลเนื้อเรื่อง", "character": "ฐานข้อมูลตัวละคร", "world": "ฐานข้อมูลโลก",
+        "plotPlaceholder": "นำเข้าหรือกรอกเนื้อเรื่อง เหตุการณ์ และปมทั้งหมด", "characterPlaceholder": "นำเข้าหรือกรอกข้อมูลตัวละคร ความสัมพันธ์ และพัฒนาการ", "worldPlaceholder": "นำเข้าหรือกรอกสถานที่ กลุ่ม องค์กร และไทม์ไลน์",
+        "import": "นำเข้า", "save": "บันทึกข้อมูล", "clear": "ล้าง", "noSource": "กรอกเอง", "characters": "อักขระ", "approved": "อนุมัติแล้ว", "proposed": "เสนอ", "unresolved": "ยังไม่สรุป",
+        "imported": "นำเข้าข้อมูลแล้ว", "saved": "บันทึกข้อมูลโครงการแล้ว", "saveFailed": "บันทึกไม่สำเร็จ", "readFailed": "อ่านไฟล์ไม่สำเร็จ", "unsupportedType": "รองรับเฉพาะ DOCX หรือ TXT", "fileTooLarge": "ไฟล์ต้องมีขนาดไม่เกิน 10MB", "clearConfirm": "ล้างข้อมูลโครงการ", "clearBody": "ยืนยันล้างข้อมูลประเภทนี้หรือไม่?"
+      },
       "noContent": "ยังไม่มีเนื้อหา",
       "relatedAssets": "สินทรัพย์ที่เกี่ยวข้อง",
       "editScript": "แก้ไขบทภาพยนตร์",
@@ -740,7 +748,18 @@
         "batchDeleteBody": "แน่ใจหรือไม่ว่าต้องการลบบทภาพยนตร์ที่เลือก {count} รายการ? การดำเนินการนี้ไม่สามารถยกเลิกได้",
         "batchDeleteSuccess": "ลบเป็นกลุ่มสำเร็จ",
         "extractingInProgress": "การสกัด",
-        "projectNotFound": "ไม่พบรายการ"
+        "projectNotFound": "ไม่พบโปรเจกต์",
+        "statusNotExtracted": "ยังไม่ได้แยกแอสเซท",
+        "statusQueued": "กำลังรอแยกแอสเซท",
+        "statusRunning": "กำลังแยกแอสเซท",
+        "statusSucceeded": "แยกแอสเซทแล้ว {count} รายการ",
+        "statusFailed": "แยกแอสเซทล้มเหลว",
+        "statusStale": "บทได้รับการแก้ไข ต้องแยกใหม่",
+        "statusEmpty": "ไม่พบแอสเซท โปรดลองใหม่",
+        "statusElapsed": "ใช้เวลา {duration}",
+        "statusPreserved": "เก็บการเชื่อมโยงเดิมไว้ {count} รายการ",
+        "statusManual": "เชื่อมโยงด้วยตนเอง {count} รายการ",
+        "retryExtract": "แยกใหม่"
       },
       "add": {
         "title": "เพิ่มบทภาพยนตร์",

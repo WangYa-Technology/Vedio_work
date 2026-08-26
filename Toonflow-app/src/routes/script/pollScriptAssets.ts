@@ -12,7 +12,22 @@ export default router.post(
   }),
   async (req, res) => {
     const { ids } = req.body;
-    const data = await u.db("o_script").whereIn("id", ids).whereNot("extractState", "生成中").select("id", "extractState", "errorReason");
+    const timeoutBefore = Date.now() - 15 * 60 * 1000;
+    await u
+      .db("o_script")
+      .whereIn("id", ids)
+      .whereIn("extractState", [0, 2])
+      .whereNotNull("extractStartedAt")
+      .where("extractStartedAt", "<", timeoutBefore)
+      .update({
+        extractState: -1,
+        errorReason: "资产提取超过15分钟，请重新提取",
+        extractFinishedAt: Date.now(),
+      });
+    const data = await u
+      .db("o_script")
+      .whereIn("id", ids)
+      .select("id", "extractState", "errorReason", "extractStartedAt", "extractFinishedAt");
     res.status(200).send(success(data));
   },
 );

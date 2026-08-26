@@ -89,7 +89,8 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import settingStore from "@/stores/setting";
-const { otherSetting } = storeToRefs(settingStore());
+import { resolveBackendAssetUrl } from "@/utils/backendUrl";
+const { otherSetting, baseUrl } = storeToRefs(settingStore());
 import axios from "@/utils/axios";
 import projectStore from "@/stores/project";
 import type { TableProps } from "tdesign-vue-next";
@@ -213,7 +214,10 @@ async function handlePageChange(pageInfo: { current: number; pageSize: number })
       limit: pageInfo.pageSize,
     });
 
-    const newData = data.data || [];
+    const newData = (Array.isArray(data.data) ? data.data : []).map((item: AssetItem) => ({
+      ...item,
+      filePath: item.filePath ? resolveBackendAssetUrl(item.filePath, baseUrl.value) : "",
+    }));
     tableData.value = newData;
     localData.value = JSON.parse(JSON.stringify(newData)); // 深拷贝避免引用问题
     pagination.value.total = data.total || 0;
@@ -399,11 +403,11 @@ async function startGenerate(data: { id: number; prompt: string; name: string; t
     if (!imageGenerateCancel.value) {
       const index = tableData.value.findIndex((item: AssetItem) => item.id === res.data.assetsId);
       if (index !== -1) {
-        tableData.value[index].filePath = res.data.path;
+        tableData.value[index].filePath = resolveBackendAssetUrl(res.data.path, baseUrl.value);
         // 同步更新 localData
         const localIndex = localData.value.findIndex((item: AssetItem) => item.id === res.data.assetsId);
         if (localIndex !== -1) {
-          localData.value[localIndex].filePath = res.data.path;
+          localData.value[localIndex].filePath = resolveBackendAssetUrl(res.data.path, baseUrl.value);
         }
       }
     }

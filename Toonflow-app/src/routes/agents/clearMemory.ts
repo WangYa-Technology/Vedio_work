@@ -3,6 +3,7 @@ import u from "@/utils";
 import { z } from "zod";
 import { success } from "@/lib/responseFormat";
 import { validateFields } from "@/middleware/middleware";
+import { getAgentIsolationKey } from "@/utils/agentPersistence";
 const router = express.Router();
 
 export default router.post(
@@ -14,8 +15,8 @@ export default router.post(
     type: z.enum(["message", "summary", "all"]).optional(),
   }),
   async (req, res) => {
-    const { projectId, episodesId,agentType, type = "all" } = req.body;
-    const isolationKey = `${projectId}:${agentType}${episodesId !== undefined ? `:${episodesId}` : ""}`;
+    const { projectId, episodesId, agentType, type = "all" } = req.body;
+    const isolationKey = getAgentIsolationKey(req.authUser!.id, projectId, agentType, episodesId);
 
     if (type === "all") {
       await u.db("memories").where({ isolationKey }).del();
