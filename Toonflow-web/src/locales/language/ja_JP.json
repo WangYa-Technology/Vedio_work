@@ -717,12 +717,30 @@
         "replaceSuccess": "交換に成功しました",
         "promptGenFail": "プロンプト単語の生成に失敗しました",
         "saveSuccess": "プロンプトワードの変更が成功しました",
-        "saveFailed": "プロンプトワードの変更に失敗しました"
+        "saveFailed": "プロンプトワードの変更に失敗しました",
+        "selectReasoningTemplate": "一括推論テンプレートを選択してください",
+        "batchReasoningStarted": "{count} 件のアセットの推論を開始しました",
+        "batchReasoningComplete": "推論完了：成功 {success}、失敗 {failed}、スキップ {skipped}",
+        "batchReasoningCancelled": "推論をキャンセルしました：成功 {success}、失敗 {failed}、スキップ {skipped}、キャンセル {cancelled}",
+        "batchReasoningStartFailed": "一括推論を開始できませんでした",
+        "batchReasoningStatusFailed": "一括推論の進捗を取得できませんでした",
+        "batchReasoningCancelFailed": "一括推論をキャンセルできませんでした"
       },
       "history": "歴史的な写真",
       "confirmReplace": "交換の確認",
       "batchGenerationPrompt": "プロンプト単語をバッチで生成する",
-      "generatingPrompt": "生成中"
+      "generatingPrompt": "生成中",
+      "batchReasoningTemplate": "一括推論テンプレート",
+      "selectReasoningTemplate": "推論テンプレートを選択",
+      "batchReasonPrompts": "プロンプトを一括推論",
+      "batchReasoningProgress": "プロンプト推論の進捗",
+      "reasoningSuccess": "成功",
+      "reasoningFailed": "失敗",
+      "reasoningSkipped": "スキップ",
+      "reasoningCancelled": "キャンセル",
+      "cancelBatchReasoning": "推論をキャンセル",
+      "batchReasoningComplete": "一括推論が完了しました。画像を生成できます",
+      "batchReasoningCancelled": "一括推論をキャンセルしました"
     },
     "script": {
       "searchPlaceholder": "シナリオ名を検索...",

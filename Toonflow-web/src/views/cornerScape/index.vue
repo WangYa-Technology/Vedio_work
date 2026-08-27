@@ -100,6 +100,14 @@
               </t-button>
             </div>
           </t-form-item>
+          <t-form-item :label="$t('workbench.cornerScape.batchReasoningTemplate')">
+            <t-select
+              v-model="selectedReasoningTemplateId"
+              :loading="reasoningTemplateLoading"
+              :options="batchReasoningTemplateOptions"
+              :placeholder="$t('workbench.cornerScape.selectReasoningTemplate')"
+              filterable />
+          </t-form-item>
           <!-- <t-form-item :label="$t('workbench.cornerScape.concurrency')">
             <t-input-number
               v-model="concurrentCount"
@@ -109,11 +117,42 @@
               :placeholder="$t('workbench.cornerScape.concurrencyPh')"></t-input-number>
           </t-form-item> -->
           <t-form-item>
-            <t-button theme="primary" block @click="batchGenerationPrompt">{{ $t("workbench.cornerScape.batchGenerationPrompt") }}</t-button>
-            <t-button theme="primary" block @click="batchGenerationImage" style="margin-left: 10px">
-              {{ $t("workbench.cornerScape.startBatch") }}
-            </t-button>
+            <div class="batchActions">
+              <t-button theme="primary" variant="outline" block :disabled="batchReasoningActive" @click="batchGenerationPrompt">
+                {{ $t("workbench.cornerScape.batchGenerationPrompt") }}
+              </t-button>
+              <t-button theme="primary" block :loading="batchReasoningActive" :disabled="batchReasoningActive" @click="batchReasonAssetPrompts">
+                {{ $t("workbench.cornerScape.batchReasonPrompts") }}
+              </t-button>
+              <t-button theme="primary" variant="outline" block :disabled="batchReasoningActive" @click="batchGenerationImage">
+                {{ $t("workbench.cornerScape.startBatch") }}
+              </t-button>
+            </div>
           </t-form-item>
+          <div v-if="batchReasoningTask" class="batchReasoningProgress">
+            <div class="batchProgressHeader">
+              <strong>{{ $t("workbench.cornerScape.batchReasoningProgress") }}</strong>
+              <span>{{ batchReasoningTask.processed }}/{{ batchReasoningTask.total }}</span>
+            </div>
+            <t-progress :percentage="batchReasoningPercentage" :label="false" size="small" />
+            <div class="batchProgressStats">
+              <span>{{ $t("workbench.cornerScape.reasoningSuccess") }} {{ batchReasoningTask.success }}</span>
+              <span>{{ $t("workbench.cornerScape.reasoningFailed") }} {{ batchReasoningTask.failed }}</span>
+              <span>{{ $t("workbench.cornerScape.reasoningSkipped") }} {{ batchReasoningTask.skipped }}</span>
+              <span v-if="batchReasoningTask.cancelled">{{ $t("workbench.cornerScape.reasoningCancelled") }} {{ batchReasoningTask.cancelled }}</span>
+            </div>
+            <t-button
+              v-if="batchReasoningActive"
+              theme="danger"
+              variant="outline"
+              size="small"
+              block
+              :loading="batchReasoningCancelling"
+              @click="cancelBatchReasoning">
+              {{ $t("workbench.cornerScape.cancelBatchReasoning") }}
+            </t-button>
+            <div v-else class="batchProgressResult">{{ batchReasoningResultText }}</div>
+          </div>
         </t-form>
       </t-card>
     </div>
@@ -480,6 +519,27 @@ interface ReasoningTemplateItem {
   template?: any;
 }
 
+type BatchReasoningStatus = "running" | "cancelling" | "completed" | "cancelled";
+type BatchReasoningItemStatus = "pending" | "running" | "success" | "failed" | "skipped" | "cancelled";
+
+interface BatchReasoningTask {
+  taskId: string;
+  status: BatchReasoningStatus;
+  total: number;
+  processed: number;
+  running: number;
+  success: number;
+  failed: number;
+  skipped: number;
+  cancelled: number;
+  items: Array<{
+    assetsId: number;
+    name: string;
+    status: BatchReasoningItemStatus;
+    error?: string;
+  }>;
+}
+
 interface ArtStyleItem {
   name: string;
   stylePath: string;
@@ -501,6 +561,8 @@ const reasoningTemplates = ref<ReasoningTemplateItem[]>([]);
 const reasoningTemplateLoading = ref(false);
 const selectedReasoningTemplateId = ref<number | undefined>(undefined);
 const reasoningRunningIds = ref<number[]>([]);
+const batchReasoningTask = ref<BatchReasoningTask | null>(null);
+const batchReasoningCancelling = ref(false);
 // This ref is consumed by reasoningTemplateOptions below; initialize it before
 // any computed getter or watcher can evaluate during drawer/workbench mount.
 const currentItem = ref<DataItem | null>(null);
@@ -544,6 +606,26 @@ const reasoningTemplateOptions = computed(() =>
       value: item.id,
     })),
 );
+const batchReasoningTemplateOptions = computed(() =>
+  reasoningTemplates.value.map((item) => ({
+    label: `${item.name}${item.group ? ` · ${item.group}` : ""}`,
+    value: item.id,
+  })),
+);
+const batchReasoningActive = computed(() =>
+  batchReasoningTask.value?.status === "running" || batchReasoningTask.value?.status === "cancelling",
+);
+const batchReasoningPercentage = computed(() => {
+  const task = batchReasoningTask.value;
+  return task?.total ? Math.round((task.processed / task.total) * 100) : 0;
+});
+const batchReasoningResultText = computed(() => {
+  const task = batchReasoningTask.value;
+  if (!task) return "";
+  return task.status === "cancelled"
+    ? $t("workbench.cornerScape.batchReasoningCancelled")
+    : $t("workbench.cornerScape.batchReasoningComplete");
+});
 const options = ref([
   { labelKey: "workbench.cornerScape.filterRole", value: "role" },
   { labelKey: "workbench.cornerScape.filterScene", value: "scene" },
@@ -564,11 +646,13 @@ onMounted(() => {
   loadReasoningTemplates();
   loadArtStyles();
   getFilteredData();
+  resumeBatchReasoningTask();
 });
 
 onUnmounted(() => {
   stopPolling();
   stopImagePolling();
+  stopBatchReasoningPolling();
   // 将所有"生成中"的项重置为空状态
   dataList.value.forEach((item) => {
     if (item.state === "生成中") item.state = "";
@@ -1335,6 +1419,170 @@ async function batchGenerationPrompt() {
     });
   }
 }
+
+function batchReasoningStorageKey() {
+  return `cornerScape.batchReasoningTask.${project.value?.id || "unknown"}`;
+}
+
+let batchReasoningPollTimer: ReturnType<typeof setTimeout> | null = null;
+let batchReasoningPollingEnabled = false;
+let completedBatchReasoningTaskId = "";
+
+function applyBatchReasoningTask(task: BatchReasoningTask) {
+  batchReasoningTask.value = task;
+  task.items.forEach((taskItem) => {
+    const stateMap: Record<BatchReasoningItemStatus, string> = {
+      pending: "生成中",
+      running: "生成中",
+      success: "已完成",
+      failed: "失败",
+      skipped: "已跳过",
+      cancelled: "已取消",
+    };
+    const target = dataList.value.find((item) => item.id === taskItem.assetsId);
+    if (target) {
+      target.promptState = stateMap[taskItem.status];
+      if (taskItem.error) target.promptErrorReason = taskItem.error;
+    }
+    if (currentItem.value?.id === taskItem.assetsId) {
+      currentItem.value.promptState = stateMap[taskItem.status];
+      if (taskItem.error) currentItem.value.promptErrorReason = taskItem.error;
+    }
+  });
+}
+
+async function finishBatchReasoning(task: BatchReasoningTask) {
+  stopBatchReasoningPolling();
+  localStorage.removeItem(batchReasoningStorageKey());
+  const currentId = currentItem.value?.id;
+  await getFilteredData();
+  if (currentId) {
+    const freshCurrent = dataList.value.find((item) => item.id === currentId);
+    if (freshCurrent) {
+      currentItem.value = freshCurrent;
+      editForm.originalPrompt = freshCurrent.originalPrompt || freshCurrent.prompt || "";
+      editForm.prompt = freshCurrent.prompt || "";
+    }
+  }
+  if (completedBatchReasoningTaskId === task.taskId) return;
+  completedBatchReasoningTaskId = task.taskId;
+  const messageKey = task.status === "cancelled"
+    ? "workbench.cornerScape.msg.batchReasoningCancelled"
+    : "workbench.cornerScape.msg.batchReasoningComplete";
+  const message = $t(messageKey, {
+    success: task.success,
+    failed: task.failed,
+    skipped: task.skipped,
+    cancelled: task.cancelled,
+  });
+  if (task.failed > 0) window.$message.warning(message);
+  else window.$message.success(message);
+}
+
+async function pollBatchReasoningTask() {
+  const taskId = batchReasoningTask.value?.taskId;
+  if (!taskId || !batchReasoningPollingEnabled) return;
+  try {
+    const { data } = await axios.post("/assetsGenerate/getBatchReasoningTask", {
+      projectId: project.value?.id,
+      taskId,
+    });
+    const task = data as BatchReasoningTask;
+    applyBatchReasoningTask(task);
+    if (task.status === "completed" || task.status === "cancelled") {
+      await finishBatchReasoning(task);
+      return;
+    }
+  } catch (error: any) {
+    stopBatchReasoningPolling();
+    localStorage.removeItem(batchReasoningStorageKey());
+    batchReasoningTask.value = null;
+    window.$message.error(error?.message || $t("workbench.cornerScape.msg.batchReasoningStatusFailed"));
+    return;
+  }
+  if (batchReasoningPollingEnabled) {
+    batchReasoningPollTimer = setTimeout(pollBatchReasoningTask, 1200);
+  }
+}
+
+function startBatchReasoningPolling() {
+  stopBatchReasoningPolling();
+  batchReasoningPollingEnabled = true;
+  void pollBatchReasoningTask();
+}
+
+function stopBatchReasoningPolling() {
+  batchReasoningPollingEnabled = false;
+  if (batchReasoningPollTimer) {
+    clearTimeout(batchReasoningPollTimer);
+    batchReasoningPollTimer = null;
+  }
+}
+
+async function resumeBatchReasoningTask() {
+  const taskId = localStorage.getItem(batchReasoningStorageKey());
+  if (!taskId) return;
+  batchReasoningTask.value = {
+    taskId,
+    status: "running",
+    total: 0,
+    processed: 0,
+    running: 0,
+    success: 0,
+    failed: 0,
+    skipped: 0,
+    cancelled: 0,
+    items: [],
+  };
+  startBatchReasoningPolling();
+}
+
+async function batchReasonAssetPrompts() {
+  if (selectedIds.value.length === 0) {
+    window.$message.warning($t("workbench.cornerScape.msg.selectAtLeastOne"));
+    return;
+  }
+  if (!selectedReasoningTemplateId.value) {
+    window.$message.warning($t("workbench.cornerScape.msg.selectReasoningTemplate"));
+    return;
+  }
+  try {
+    const { data } = await axios.post("/assetsGenerate/batchReasonAssetPrompts", {
+      projectId: project.value?.id,
+      assetsIds: [...selectedIds.value],
+      templateId: selectedReasoningTemplateId.value,
+      concurrentCount: otherSetting.value.assetsBatchGenereateSize,
+    });
+    const task = data as BatchReasoningTask;
+    applyBatchReasoningTask(task);
+    localStorage.setItem(batchReasoningStorageKey(), task.taskId);
+    completedBatchReasoningTaskId = "";
+    window.$message.success($t("workbench.cornerScape.msg.batchReasoningStarted", { count: task.total }));
+    startBatchReasoningPolling();
+  } catch (error: any) {
+    window.$message.error(error?.message || $t("workbench.cornerScape.msg.batchReasoningStartFailed"));
+  }
+}
+
+async function cancelBatchReasoning() {
+  const taskId = batchReasoningTask.value?.taskId;
+  if (!taskId || batchReasoningCancelling.value) return;
+  batchReasoningCancelling.value = true;
+  try {
+    const { data } = await axios.post("/assetsGenerate/cancelBatchReasoningTask", {
+      projectId: project.value?.id,
+      taskId,
+    });
+    const task = data as BatchReasoningTask;
+    applyBatchReasoningTask(task);
+    if (task.status === "cancelled") await finishBatchReasoning(task);
+  } catch (error: any) {
+    window.$message.error(error?.message || $t("workbench.cornerScape.msg.batchReasoningCancelFailed"));
+  } finally {
+    batchReasoningCancelling.value = false;
+  }
+}
+
 // 批量生成图片
 async function batchGenerationImage() {
   if (selectedIds.value.length === 0) {
@@ -1595,6 +1843,43 @@ watch(useReferenceImage, (enabled) => {
       display: flex;
       flex-direction: column;
       gap: 8px;
+    }
+    .batchActions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 100%;
+    }
+    .batchReasoningProgress {
+      padding: 10px;
+      border: 1px solid var(--td-component-border);
+      border-radius: 6px;
+      background: var(--td-bg-color-secondarycontainer);
+    }
+    .batchProgressHeader,
+    .batchProgressStats {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .batchProgressHeader {
+      margin-bottom: 8px;
+      color: var(--td-text-color-primary);
+      font-size: 13px;
+    }
+    .batchProgressStats {
+      flex-wrap: wrap;
+      margin: 8px 0;
+      color: var(--td-text-color-secondary);
+      font-size: 12px;
+      line-height: 18px;
+    }
+    .batchProgressResult {
+      margin-top: 8px;
+      color: var(--td-text-color-secondary);
+      font-size: 12px;
+      text-align: center;
     }
   }
   .content {

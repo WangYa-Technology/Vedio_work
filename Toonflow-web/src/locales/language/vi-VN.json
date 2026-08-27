@@ -709,12 +709,30 @@
         "replaceSuccess": "Thay thế thành công",
         "promptGenFail": "Tạo từ nhắc nhở không thành công",
         "saveSuccess": "Sửa đổi lời nhắc thành công",
-        "saveFailed": "Sửa đổi từ nhắc nhở không thành công"
+        "saveFailed": "Sửa đổi từ nhắc nhở không thành công",
+        "selectReasoningTemplate": "Vui lòng chọn mẫu suy luận hàng loạt",
+        "batchReasoningStarted": "Đã bắt đầu suy luận {count} tài nguyên",
+        "batchReasoningComplete": "Suy luận hoàn tất: {success} thành công, {failed} thất bại, {skipped} bỏ qua",
+        "batchReasoningCancelled": "Đã hủy suy luận: {success} thành công, {failed} thất bại, {skipped} bỏ qua, {cancelled} đã hủy",
+        "batchReasoningStartFailed": "Không thể bắt đầu suy luận hàng loạt",
+        "batchReasoningStatusFailed": "Không thể tải tiến độ suy luận hàng loạt",
+        "batchReasoningCancelFailed": "Không thể hủy suy luận hàng loạt"
       },
       "history": "hình ảnh lịch sử",
       "confirmReplace": "Xác nhận thay thế",
       "batchGenerationPrompt": "Tạo các từ nhắc nhở theo đợt",
-      "generatingPrompt": "Đang tạo"
+      "generatingPrompt": "Đang tạo",
+      "batchReasoningTemplate": "Mẫu suy luận hàng loạt",
+      "selectReasoningTemplate": "Chọn mẫu suy luận",
+      "batchReasonPrompts": "Suy luận lời nhắc hàng loạt",
+      "batchReasoningProgress": "Tiến độ suy luận lời nhắc",
+      "reasoningSuccess": "Thành công",
+      "reasoningFailed": "Thất bại",
+      "reasoningSkipped": "Bỏ qua",
+      "reasoningCancelled": "Đã hủy",
+      "cancelBatchReasoning": "Hủy suy luận",
+      "batchReasoningComplete": "Suy luận hàng loạt hoàn tất; có thể tạo ảnh",
+      "batchReasoningCancelled": "Đã hủy suy luận hàng loạt"
     },
     "script": {
       "searchPlaceholder": "Tìm kiếm tên kịch bản...",

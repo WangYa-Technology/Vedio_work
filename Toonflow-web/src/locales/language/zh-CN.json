@@ -839,12 +839,30 @@
         "emptyPrompt": "勾选的数据{emptyPromptNames}提示词为空,请先生成提示词",
         "promptGenFail": "提示词生成失败",
         "saveSuccess": "修改提示词成功",
-        "saveFailed": "提示词修改失败"
+        "saveFailed": "提示词修改失败",
+        "selectReasoningTemplate": "请选择批量推理模板",
+        "batchReasoningStarted": "已开始推理 {count} 个资产",
+        "batchReasoningComplete": "推理完成：成功 {success}，失败 {failed}，跳过 {skipped}",
+        "batchReasoningCancelled": "推理已取消：成功 {success}，失败 {failed}，跳过 {skipped}，取消 {cancelled}",
+        "batchReasoningStartFailed": "批量推理启动失败",
+        "batchReasoningStatusFailed": "无法获取批量推理进度",
+        "batchReasoningCancelFailed": "取消批量推理失败"
       },
       "history": "历史图片",
       "confirmReplace": "确认替换",
       "batchGenerationPrompt": "批量生成提示词",
-      "generatingPrompt": "生成中"
+      "generatingPrompt": "生成中",
+      "batchReasoningTemplate": "批量推理模板",
+      "selectReasoningTemplate": "选择一个推理模板",
+      "batchReasonPrompts": "批量推理提示词",
+      "batchReasoningProgress": "提示词推理进度",
+      "reasoningSuccess": "成功",
+      "reasoningFailed": "失败",
+      "reasoningSkipped": "跳过",
+      "reasoningCancelled": "取消",
+      "cancelBatchReasoning": "取消推理",
+      "batchReasoningComplete": "批量推理已完成，可直接生成图片",
+      "batchReasoningCancelled": "批量推理已取消"
     },
     "script": {
       "searchPlaceholder": "搜索剧本名称...",

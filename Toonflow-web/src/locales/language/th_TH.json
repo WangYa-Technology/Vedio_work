@@ -718,12 +718,30 @@
         "replaceSuccess": "การเปลี่ยนสำเร็จ",
         "promptGenFail": "การสร้างคำพร้อมท์ล้มเหลว",
         "saveSuccess": "การแก้ไขคำพร้อมท์สำเร็จ",
-        "saveFailed": "การแก้ไขคำพร้อมท์ล้มเหลว"
+        "saveFailed": "การแก้ไขคำพร้อมท์ล้มเหลว",
+        "selectReasoningTemplate": "โปรดเลือกเทมเพลตการอนุมานแบบชุด",
+        "batchReasoningStarted": "เริ่มการอนุมานสินทรัพย์ {count} รายการแล้ว",
+        "batchReasoningComplete": "อนุมานเสร็จแล้ว: สำเร็จ {success}, ล้มเหลว {failed}, ข้าม {skipped}",
+        "batchReasoningCancelled": "ยกเลิกการอนุมานแล้ว: สำเร็จ {success}, ล้มเหลว {failed}, ข้าม {skipped}, ยกเลิก {cancelled}",
+        "batchReasoningStartFailed": "เริ่มการอนุมานแบบชุดไม่สำเร็จ",
+        "batchReasoningStatusFailed": "โหลดความคืบหน้าการอนุมานแบบชุดไม่สำเร็จ",
+        "batchReasoningCancelFailed": "ยกเลิกการอนุมานแบบชุดไม่สำเร็จ"
       },
       "history": "ภาพประวัติศาสตร์",
       "confirmReplace": "ยืนยันการเปลี่ยน",
       "batchGenerationPrompt": "สร้างคำพร้อมท์เป็นชุด",
-      "generatingPrompt": "กำลังสร้าง"
+      "generatingPrompt": "กำลังสร้าง",
+      "batchReasoningTemplate": "เทมเพลตการอนุมานแบบชุด",
+      "selectReasoningTemplate": "เลือกเทมเพลตการอนุมาน",
+      "batchReasonPrompts": "อนุมานพรอมต์แบบชุด",
+      "batchReasoningProgress": "ความคืบหน้าการอนุมานพรอมต์",
+      "reasoningSuccess": "สำเร็จ",
+      "reasoningFailed": "ล้มเหลว",
+      "reasoningSkipped": "ข้าม",
+      "reasoningCancelled": "ยกเลิก",
+      "cancelBatchReasoning": "ยกเลิกการอนุมาน",
+      "batchReasoningComplete": "อนุมานแบบชุดเสร็จแล้ว พร้อมสร้างภาพ",
+      "batchReasoningCancelled": "ยกเลิกการอนุมานแบบชุดแล้ว"
     },
     "script": {
       "searchPlaceholder": "ค้นหาชื่อบทภาพยนตร์...",

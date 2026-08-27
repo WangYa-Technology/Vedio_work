@@ -824,12 +824,30 @@
         "replaceSuccess": "Replacement successful",
         "promptGenFail": "Prompt word generation failed",
         "saveSuccess": "Modification of prompt word successful",
-        "saveFailed": "Prompt word modification failed"
+        "saveFailed": "Prompt word modification failed",
+        "selectReasoningTemplate": "Select a batch reasoning template",
+        "batchReasoningStarted": "Started reasoning for {count} assets",
+        "batchReasoningComplete": "Reasoning complete: {success} succeeded, {failed} failed, {skipped} skipped",
+        "batchReasoningCancelled": "Reasoning cancelled: {success} succeeded, {failed} failed, {skipped} skipped, {cancelled} cancelled",
+        "batchReasoningStartFailed": "Failed to start batch reasoning",
+        "batchReasoningStatusFailed": "Failed to load batch reasoning progress",
+        "batchReasoningCancelFailed": "Failed to cancel batch reasoning"
       },
       "history": "historical pictures",
       "confirmReplace": "Confirm replacement",
       "batchGenerationPrompt": "Generate prompt words in batches",
-      "generatingPrompt": "Generating"
+      "generatingPrompt": "Generating",
+      "batchReasoningTemplate": "Batch reasoning template",
+      "selectReasoningTemplate": "Select a reasoning template",
+      "batchReasonPrompts": "Batch infer prompts",
+      "batchReasoningProgress": "Prompt reasoning progress",
+      "reasoningSuccess": "Succeeded",
+      "reasoningFailed": "Failed",
+      "reasoningSkipped": "Skipped",
+      "reasoningCancelled": "Cancelled",
+      "cancelBatchReasoning": "Cancel reasoning",
+      "batchReasoningComplete": "Batch reasoning completed; images can now be generated",
+      "batchReasoningCancelled": "Batch reasoning cancelled"
     },
     "script": {
       "searchPlaceholder": "Search script names...",

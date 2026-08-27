@@ -722,12 +722,30 @@
         "replaceSuccess": "替換成功",
         "promptGenFail": "提示詞生成失敗",
         "saveSuccess": "修改提示詞成功",
-        "saveFailed": "提示詞修改失敗"
+        "saveFailed": "提示詞修改失敗",
+        "selectReasoningTemplate": "請選擇批次推理範本",
+        "batchReasoningStarted": "已開始推理 {count} 個資產",
+        "batchReasoningComplete": "推理完成：成功 {success}，失敗 {failed}，略過 {skipped}",
+        "batchReasoningCancelled": "推理已取消：成功 {success}，失敗 {failed}，略過 {skipped}，取消 {cancelled}",
+        "batchReasoningStartFailed": "批次推理啟動失敗",
+        "batchReasoningStatusFailed": "無法取得批次推理進度",
+        "batchReasoningCancelFailed": "取消批次推理失敗"
       },
       "history": "歷史圖片",
       "confirmReplace": "確認替換",
       "batchGenerationPrompt": "大量生成提示詞",
-      "generatingPrompt": "生成中"
+      "generatingPrompt": "生成中",
+      "batchReasoningTemplate": "批次推理範本",
+      "selectReasoningTemplate": "選擇一個推理範本",
+      "batchReasonPrompts": "批次推理提示詞",
+      "batchReasoningProgress": "提示詞推理進度",
+      "reasoningSuccess": "成功",
+      "reasoningFailed": "失敗",
+      "reasoningSkipped": "略過",
+      "reasoningCancelled": "取消",
+      "cancelBatchReasoning": "取消推理",
+      "batchReasoningComplete": "批次推理已完成，可直接生成圖片",
+      "batchReasoningCancelled": "批次推理已取消"
     },
     "script": {
       "searchPlaceholder": "搜尋劇本名稱...",
