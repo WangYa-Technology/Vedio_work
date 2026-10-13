@@ -51,6 +51,7 @@ class Logger {
   private write(level: LogLevel, args: unknown[]): void {
     const line = `[${this.formatTime()}] [${level.toUpperCase()}] ${args.map((a) => this.stringify(a)).join(" ")}\n`;
     if (this.stream && !this.stream.destroyed) this.stream.write(line);
+    this.remember(line);
     this.checkRotate();
   }
 
@@ -61,9 +62,29 @@ class Logger {
       let str = typeof chunk === "string" ? chunk : chunk?.toString?.("utf-8") ?? "";
       str = str.replace(/\x1B\[\d*m/g, ""); // 去除 ANSI 颜色码
       if (str.trim() && this.stream && !this.stream.destroyed) this.stream.write(str.endsWith("\n") ? str : str + "\n");
+      if (str.trim()) this.remember(str);
     } finally {
       this.writing = false;
     }
+  }
+
+  /** 最近日志环形缓冲：供事件循环阻塞告警附带上下文（把"刚发生了什么"和"卡住了"对上） */
+  private readonly recentLines: string[] = [];
+  private static readonly RECENT_LIMIT = 40;
+
+  private remember(text: string): void {
+    for (const line of text.split("\n")) {
+      if (!line.trim()) continue;
+      this.recentLines.push(line.trimEnd());
+    }
+    if (this.recentLines.length > Logger.RECENT_LIMIT) {
+      this.recentLines.splice(0, this.recentLines.length - Logger.RECENT_LIMIT);
+    }
+  }
+
+  /** 取最近若干条日志（不含换行） */
+  getRecentLogs(count = 20): string[] {
+    return this.recentLines.slice(-Math.max(1, count));
   }
 
   private checkRotate(): void {
@@ -148,5 +169,8 @@ class Logger {
   }
 }
 
-const logger = new Logger().init();
+// 文件日志默认开启（落盘 data/logs/app.log，便于断连等现场取证）；
+// 设置环境变量 TOONFLOW_FILE_LOG=0 可关闭（关闭后仅保留控制台输出与内存环形缓冲）。
+const logger = new Logger();
+if (process.env.TOONFLOW_FILE_LOG !== "0") logger.init();
 export default logger;

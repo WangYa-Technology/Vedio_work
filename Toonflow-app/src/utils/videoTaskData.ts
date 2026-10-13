@@ -3,6 +3,8 @@ import { buildProductionFlowData } from "@/utils/productionFlow";
 import { resolveProjectVideoModel } from "@/services/videoGeneration";
 import { parseModelReference } from "@/utils/modelRef";
 import { resolveVideoModelPromptProfile } from "@/utils/videoModelPromptProfile";
+import { isSameSpeaker, cleanSpeakerName } from "@/utils/videoPromptContract";
+import { extractOnScreenText } from "@/utils/onScreenText";
 
 type AnyObject = Record<string, any>;
 
@@ -105,6 +107,129 @@ export function groupStoryboardRowsBySegments(
 function parseDuration(value: unknown): number {
   const match = String(value ?? "").match(/\d+(?:\.\d+)?/);
   return match ? Number(match[0]) : 0;
+}
+
+// 从台词文本里提取全部说话人（一个镜头可能包含多句不同角色的对话）。
+// "老王问：""陈照野答："这类写法会把叙述动词并进说话人，统一交给
+// cleanSpeakerName 归一化，避免把已有角色当成新角色。
+export function extractSpeakerNames(dialogue: unknown): string[] {
+  const raw = String(dialogue || "").trim();
+  if (!raw || /^(?:无|无台词|无对白|暂无|-)$/i.test(raw)) return [];
+  return [
+    ...new Set(
+      raw
+        .split(/<br\s*\/?>|\n+/i)
+        .map((segment) => segment.trim())
+        .filter(Boolean)
+        // 画内文字（"屏幕文字：…""VO（摊车灯牌文字）：…"）不是说话人：否则会把来源标签
+        // 当成角色名，触发说话人自动补全去找同名角色资产（甚至复制脸替身）。
+        .filter((segment) => !extractOnScreenText(segment))
+        .map((segment) => {
+          const withoutLabel = segment
+            .replace(/^台词[：:]\s*/, "")
+            .replace(
+              /^(?:普通对白|对白|内心独白|画外音|旁白)\s*(?:OS|VO)?\s*[：:]?\s*/i,
+              "",
+            )
+            .trim();
+          const match = withoutLabel.match(/^([^：:\n]{1,24})[：:]/);
+          return cleanSpeakerName(match?.[1] ?? "");
+        })
+        .filter(Boolean),
+    ),
+  ];
+}
+
+// 片段时长档位：分镜按计划时长规划，生成时按 target 等比压缩镜头节奏，
+// 台词逐字保留，只加快画面与语速，使成片节奏更紧凑。
+export const DURATION_TIERS = [
+  { min: 11, max: 13, target: 10 }, // 12 秒档：分镜计划 11~13 秒，按 10 秒生成
+  { min: 16, max: 18, target: 15 }, // 17 秒档：分镜计划 16~18 秒，按 15 秒生成
+];
+
+// 命中档位且当前模型支持该目标时长时才返回 target。
+// supported 为空表示模型未声明时长档位，此时以模型上限做保守判断。
+export function resolveTierDuration(
+  rawDuration: number,
+  supported: number[],
+  maxDuration: number,
+): number | null {
+  const tier = DURATION_TIERS.find(
+    (item) => rawDuration >= item.min && rawDuration <= item.max,
+  );
+  if (!tier) return null;
+  if (supported.length) return supported.includes(tier.target) ? tier.target : null;
+  return tier.target <= maxDuration ? tier.target : null;
+}
+
+// 片段各镜按时长上限等比压缩：台词逐字保留，只压缩画面节奏，
+// 保证提示词时间轴、h3CutTimestamp 与最终视频时长严格一致。
+function scaleSegmentRowsToLimit<T extends { duration?: number }>(
+  rows: T[],
+  limit: number,
+): { rows: T[]; scale: number } {
+  const total = rows.reduce((sum, row) => sum + (Number(row.duration) || 0), 0);
+  if (!(limit > 0) || !(total > limit) || !rows.length) return { rows, scale: 1 };
+  const scale = limit / total;
+  let emitted = 0;
+  const scaled = rows.map((row, index) => {
+    const isLast = index === rows.length - 1;
+    const raw = isLast ? limit - emitted : (Number(row.duration) || 0) * scale;
+    // 末镜负责取余，若同样套用 0.5 秒地板值会把合计顶出目标时长，
+    // 因此末镜只保底 0.1 秒。
+    const duration = isLast
+      ? Math.max(0.1, Math.round(raw * 10) / 10)
+      : Math.max(0.5, Math.round(raw * 10) / 10);
+    emitted = Math.round((emitted + duration) * 10) / 10;
+    return { ...row, duration };
+  }) as T[];
+  // 逐镜取整与地板值可能残留误差，回填到最长镜，保证合计严格等于 limit。
+  const sum = scaled.reduce((acc, row) => acc + (Number(row.duration) || 0), 0);
+  const drift = Math.round((limit - sum) * 10) / 10;
+  if (Math.abs(drift) >= 0.1) {
+    let longest = 0;
+    scaled.forEach((row, index) => {
+      if ((Number(row.duration) || 0) > (Number(scaled[longest].duration) || 0)) {
+        longest = index;
+      }
+    });
+    scaled[longest] = {
+      ...scaled[longest],
+      duration: Math.max(
+        0.1,
+        Math.round(((Number(scaled[longest].duration) || 0) + drift) * 10) / 10,
+      ),
+    };
+  }
+  return { rows: scaled, scale };
+}
+
+export interface SegmentDurationMapping<T extends { duration?: number }> {
+  rows: T[];
+  /** 实际生成时长（秒） */
+  duration: number;
+  /** tier=档位映射；overflow=超模型上限的安全压缩；null=原样生成 */
+  mapping: "tier" | "overflow" | null;
+}
+
+// 片段时长统一入口：命中档位按档位目标生成，未命中则仅在超过模型上限时兜底压缩。
+export function mapSegmentRowsToDuration<T extends { duration?: number }>(
+  rows: T[],
+  rawDuration: number,
+  supportedDurations: number[],
+  maxDuration: number,
+): SegmentDurationMapping<T> {
+  const tierTarget = resolveTierDuration(rawDuration, supportedDurations, maxDuration);
+  const scaleTarget = tierTarget ?? maxDuration;
+  const { rows: scaledRows, scale } = scaleSegmentRowsToLimit(rows, scaleTarget);
+  if (!(scale < 1)) {
+    return { rows: scaledRows, duration: rawDuration, mapping: null };
+  }
+  return {
+    rows: scaledRows,
+    duration: scaleTarget,
+    mapping: tierTarget ? "tier" : "overflow",
+  };
 }
 
 function narrativeTrigrams(value: unknown) {
@@ -529,6 +654,21 @@ export async function buildVideoTaskData(
           "o_image.errorReason",
         )
     : [];
+  // 说话人自动补全的数据源：项目内全部有参考图的角色资产。
+  // 台词角色未绑定但资产库存在时，视频侧自动补齐参考（不改动分镜绑定与分镜图）。
+  const projectRoleAssets = await u
+    .db("o_assets")
+    .leftJoin("o_image", "o_assets.imageId", "o_image.id")
+    .where("o_assets.projectId", projectId)
+    .where("o_assets.type", "role")
+    .select(
+      "o_assets.id",
+      "o_assets.name",
+      "o_assets.describe",
+      "o_assets.prompt",
+      "o_image.filePath",
+      "o_image.state",
+    );
   const roleRelationIds = [...new Set(relations.filter((row) => row.type === "role").map((row) => Number(row.id)))].filter(Number.isFinite);
   const uniqueRoleRelationIds = [...new Set(roleRelationIds)];
   const voiceMap = new Map<number, AnyObject>();
@@ -610,6 +750,16 @@ export async function buildVideoTaskData(
     (item) => item.type === "imageReference",
   )?.count;
   const referenceMode = mode === "multiImage" || capabilities.some((item) => item.type === "imageReference");
+  const configuredDurations = (modelDetail?.durationResolutionMap || [])
+    .flatMap((item: AnyObject) =>
+      Array.isArray(item?.duration) ? item.duration : [item?.duration],
+    )
+    .map(Number)
+    .filter((value: number) => Number.isFinite(value));
+  const modelMaxDuration = Math.max(
+    Number(videoPromptProfile?.maxDuration) || 15,
+    ...(configuredDurations.length ? configuredDurations : [15]),
+  );
 
   const storyboardGroups = groupStoryboardRowsBySegments(storyboardList, segments);
   const tasks = await Promise.all(storyboardGroups.map(async ({ storyboards, segment }, index) => {
@@ -621,6 +771,50 @@ export async function buildVideoTaskData(
           list.findIndex((candidate) => Number(candidate.id) === Number(asset.id)) ===
           assetIndex,
       );
+    // 说话人自动补全：台词里的角色若未绑定该片段、但项目资产库中存在同名且有参考图的
+    // 角色，自动加入视频参考，避免"说话角色缺少独立角色参考"反复卡住生成。
+    const roleAssets = assets.filter((asset) =>
+      /role|character|人物|角色/i.test(String(asset.type || "")),
+    );
+    const segmentSpeakerNames = [
+      ...new Set(
+        (segment?.rows || []).flatMap((row) => extractSpeakerNames(row.dialogue)),
+      ),
+    ];
+    for (const speakerName of segmentSpeakerNames) {
+      if (!speakerName) continue;
+      if (
+        roleAssets.some((asset) => isSameSpeaker(speakerName, asset.name))
+      ) {
+        continue;
+      }
+      const matched = projectRoleAssets.find(
+        (asset: AnyObject) =>
+          isSameSpeaker(speakerName, asset.name) &&
+          String(asset.filePath || "").trim(),
+      );
+      if (
+        !matched ||
+        assets.some((asset) => Number(asset.id) === Number(matched.id))
+      ) {
+        continue;
+      }
+      const src = await fileUrl(matched.filePath);
+      const autoAsset = {
+        id: Number(matched.id),
+        name: matched.name || speakerName,
+        type: "role",
+        describe: matched.describe || "",
+        prompt: matched.prompt || "",
+        fileType: "image",
+        sources: "assets",
+        src,
+        state: src ? matched.state || "已完成" : "未生成",
+      };
+      assets.push(autoAsset);
+      // 同步进已绑定角色列表：避免"老王"与"老王问"这类同一角色的多种写法重复补全。
+      roleAssets.push(autoAsset);
+    }
     const storyboardWithImage =
       storyboards.find((item) => item.filePath) || storyboard;
     const storyboardMedia = {
@@ -648,9 +842,21 @@ export async function buildVideoTaskData(
         : assets.filter((asset) => asset.src).slice(0, 1);
     }
 
-    const segmentDuration =
+    const rawSegmentDuration =
       segment?.rows.reduce((sum, row) => sum + row.duration, 0) ||
       parseDuration(storyboard.duration);
+    // 档位映射优先：分镜计划 11~13s / 16~18s 的片段按 10s / 15s 生成（有意压缩节奏）；
+    // 未命中档位时才退化为"超过模型上限"的安全兜底压缩。
+    const {
+      rows: scaledSegmentRows,
+      duration: segmentDuration,
+      mapping: durationMapping,
+    } = mapSegmentRowsToDuration(
+      segment?.rows || [],
+      rawSegmentDuration,
+      configuredDurations,
+      modelMaxDuration,
+    );
     const groupTracks = storyboards
       .map((item) => trackMap.get(Number(item.trackId)))
       .filter(Boolean);
@@ -725,13 +931,16 @@ export async function buildVideoTaskData(
       dayPart: segment?.dayPart || "",
       interiorExterior: segment?.interiorExterior || "",
       spatialLayers: segment?.spatialLayers || "",
-      segmentRows: segment?.rows || [],
-      dialogue: summarizeSegmentField(segment?.rows || [], "dialogue"),
-      sound: summarizeSegmentField(segment?.rows || [], "sound"),
+      segmentRows: scaledSegmentRows,
+      dialogue: summarizeSegmentField(scaledSegmentRows, "dialogue"),
+      sound: summarizeSegmentField(scaledSegmentRows, "sound"),
       summary:
-        segment?.rows.map((row) => row.description).join("\n") ||
+        scaledSegmentRows.map((row) => row.description).join("\n") ||
         videoDescription,
       duration: segmentDuration,
+      originalDuration: rawSegmentDuration,
+      durationMapping,
+      durationCompressed: durationMapping === "overflow",
       imagePrompt: storyboard.prompt || "",
       videoDesc: videoDescription,
       prompt,

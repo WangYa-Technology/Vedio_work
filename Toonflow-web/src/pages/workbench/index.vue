@@ -78,6 +78,7 @@ const { showSetting } = storeToRefs(settingStore());
 const menuList = ref([
   { type: "btn", path: "/project", labelKey: "workbench.menu.myProject", icon: "i-folder-close" },
   { type: "btn", path: "/task", labelKey: "workbench.menu.taskCenter", icon: "i-view-list" },
+  { type: "btn", path: "/videoLibrary", labelKey: "workbench.menu.videoLibrary", icon: "i-movie" },
   // { type: "divider" },
 ]);
 

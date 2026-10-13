@@ -1,4 +1,4 @@
-// import "./logger";
+import fileLogger from "@/logger";
 import "./err";
 import "./env";
 import express, { Request, Response, NextFunction } from "express";
@@ -11,6 +11,8 @@ import buildRoute from "@/core";
 import fs from "fs";
 import u from "@/utils";
 import socketInit from "@/socket/index";
+import { startLoopLagMonitor } from "@/utils/loopLagMonitor";
+import { startVideoTaskWatchdog } from "@/utils/videoTaskWatchdog";
 import path from "path";
 import { authenticate, authorizeRequest, userOwnsProject } from "@/middleware/auth";
 
@@ -31,8 +33,21 @@ const server = http.createServer(app);
 
 export default async function startServe(randomPort: Boolean = false) {
   await u.writeVersion();
-  const io = new Server(server, { cors: { origin: "*" } });
+  // pingTimeout 默认 300 秒（可用 SOCKET_PING_TIMEOUT_MS 覆盖）：浏览器后台标签节流/
+  // 机器短暂休眠不再触发心跳超时断连；真断连由前端 HTTP 轮询兜底，不会"发现不了"。
+  // maxHttpBufferSize 放宽到 64MB：engine.io 默认单包上限 1MB，thinking 等全量合并报文
+  // 一旦超限会让对端直接关闭连接（表现为生成中途“连接已断开”）。前端 socket.io-client
+  // 已同步设置相同上限，两端必须一致。
+  const pingTimeoutMs = Math.max(20_000, Number(process.env.SOCKET_PING_TIMEOUT_MS) || 300_000);
+  const io = new Server(server, {
+    cors: { origin: "*" },
+    pingInterval: 25_000,
+    pingTimeout: pingTimeoutMs,
+    maxHttpBufferSize: 64 * 1024 * 1024,
+  });
   socketInit(io);
+  // 事件循环阻塞监测：阻塞超过 1 秒时告警并附带最近日志，用于定位"心跳超时"根因
+  startLoopLagMonitor({ contextProvider: () => fileLogger.getRecentLogs(20) });
 
   if (process.env.NODE_ENV == "dev") await buildRoute();
 
@@ -88,6 +103,8 @@ export default async function startServe(randomPort: Boolean = false) {
 
   const router = await import("@/router");
   await router.default(app);
+  // 「生成中」视频的超时兜底：默认 30 分钟未返回即标记失败并保留修复入口。
+  startVideoTaskWatchdog();
 
   // 404 处理
   app.use((_, res, next: NextFunction) => {

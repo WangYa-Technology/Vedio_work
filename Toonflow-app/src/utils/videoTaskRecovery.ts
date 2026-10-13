@@ -16,6 +16,13 @@ export interface PersistedVideoTask {
   runId: string;
   startedAt: number;
   submittedAt?: number;
+  /** 平台偶发失败自动重试次数（达到上限后不再自动重提） */
+  autoRetryCount?: number;
+  lastAutoRetryAt?: number;
+  /** 用户手动标记失败/放弃的时间：此后云端结果不再改写状态 */
+  abandonedAt?: number;
+  /** 超时兜底判定的时间：避免重复判定 */
+  timeoutAt?: number;
 }
 
 interface ComfyFileOutput {
@@ -95,6 +102,12 @@ export async function updateVideoTaskState(
 ) {
   if (video.id == null) return;
   await knex.transaction(async (trx) => {
+    const existing = await trx("o_video")
+      .where({ id: video.id })
+      .first("providerTaskData");
+    // 已被用户手动标记失败（abandonedAt）的记录不再接收云端结果：
+    // 否则「标记失败后云端又返回成功」会让状态来回跳，用户无法判断该看哪一条。
+    if (parseVideoTaskData(existing?.providerTaskData)?.abandonedAt) return;
     await trx("o_video")
       .where({ id: video.id })
       .update({ state, errorReason: reason });
@@ -190,10 +203,10 @@ async function recoverOne(video: o_video): Promise<void> {
   if (!task || task.runId === VIDEO_WORKER_RUN_ID) return;
 
   if (!task.taskId) {
-    await updateVideoTaskState(
-      video,
-      "生成失败",
-      "服务重启时云端任务尚未提交，请重新生成",
+    // 供应商（如 AutoDL 工作流）没上报任务号时无法续查，这里不再立刻判失败：
+    // 交给超时看门狗（默认 30 分钟）兜底标记失败并保留「可修复重试」入口。
+    console.warn(
+      `[视频任务恢复] ${video.id} 缺少云端任务号，等待超时兜底判定（可修复重试）`,
     );
     return;
   }

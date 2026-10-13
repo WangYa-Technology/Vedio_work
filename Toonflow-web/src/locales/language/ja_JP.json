@@ -372,6 +372,7 @@
     "menu": {
       "myProject": "マイプロジェクト",
       "taskCenter": "タスクセンター",
+      "videoLibrary": "完成動画",
       "novel": "小説の原文",
       "scriptAgent": "シナリオ Agent",
       "scriptManage": "シナリオ管理",
@@ -380,6 +381,28 @@
       "assetCenter": "アセットセンター",
       "settings": "設定",
       "jumpGithub": "Githubにジャンプ"
+    },
+    "videoLibrary": {
+      "title": "完成動画ライブラリ",
+      "subtitle": "エピソードごとに生成済みの動画を確認",
+      "refresh": "更新",
+      "total": "全 {count} 本",
+      "episode": "第 {episode} 話",
+      "otherEpisode": "その他",
+      "videoCount": "{count} 本",
+      "shot": "カット {index}",
+      "empty": "生成済みの動画はまだありません",
+      "emptyTip": "「動画制作」で動画を生成すると、ここに自動でまとめられます",
+      "noProject": "先に「マイプロジェクト」でプロジェクトを選択してください",
+      "loadFailed": "動画の取得に失敗しました",
+      "generating": "生成中",
+      "failed": "生成失敗",
+      "playFailed": "動画の読み込みに失敗しました。ファイルを確認するか再生成してください",
+      "play": "再生",
+      "pause": "一時停止",
+      "mute": "ミュート",
+      "unmute": "ミュート解除",
+      "fullscreen": "全画面"
     },
     "project": {
       "title": "マイプロジェクト",

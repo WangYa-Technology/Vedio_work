@@ -12,6 +12,10 @@
             <template #icon><i-undo theme="outline" size="16" /></template>
             恢复排序
           </t-button>
+          <t-button theme="danger" variant="text" size="small" :disabled="removing || !shotList.length" @click="confirmResetStoryboard">
+            <template #icon><i-delete theme="outline" size="16" /></template>
+            清空分镜
+          </t-button>
           <t-button theme="default" variant="text" size="small" @click="exportImage">
             <template #icon><i-download theme="outline" size="16" /></template>
             导出
@@ -52,6 +56,17 @@
                   {{ shot.content || shot.description || shot.videoDesc }}
                 </div>
               </div>
+              <t-button
+                class="shotDelete"
+                theme="danger"
+                variant="text"
+                shape="square"
+                size="small"
+                :disabled="removing"
+                title="删除该片段"
+                @click.stop="confirmDeleteShot(index)">
+                <template #icon><i-delete theme="outline" size="16" /></template>
+              </t-button>
             </article>
           </TransitionGroup>
         </VueDraggable>
@@ -65,7 +80,18 @@
           <span class="detailKicker">分镜 {{ currentShot.shotNumber ?? currentShotIndex + 1 }}</span>
           <h2>{{ getShotTitle(currentShot, currentShotIndex) }}</h2>
         </div>
-        <t-tag v-if="currentShot.state" :theme="stateTheme(currentShot.state)">{{ currentShot.state }}</t-tag>
+        <div class="detailHeaderActions">
+          <t-tag v-if="currentShot.state" :theme="stateTheme(currentShot.state)">{{ currentShot.state }}</t-tag>
+          <t-button
+            theme="danger"
+            variant="outline"
+            size="small"
+            :disabled="removing"
+            @click="confirmDeleteShot(currentShotIndex)">
+            <template #icon><i-delete theme="outline" size="16" /></template>
+            删除此片段
+          </t-button>
+        </div>
       </div>
 
       <div class="detailStoryboard" v-if="currentShot.storyboard?.src">
@@ -131,6 +157,7 @@ import { VueDraggable } from "vue-draggable-plus";
 import { DialogPlugin } from "tdesign-vue-next";
 import axios from "@/utils/axios";
 import projectStore from "@/stores/project";
+import productionAgentStore from "@/stores/productionAgent";
 import settingStore from "@/stores/setting";
 import { resolveBackendAssetUrl } from "@/utils/backendUrl";
 
@@ -153,6 +180,7 @@ interface Shot {
   cameraMovement?: string;
   track?: string;
   trackId?: number;
+  segmentIndex?: number;
   associateAssetsIds?: Array<number | string>;
   characters?: Array<{ name?: string; type?: string; avatar?: string }>;
   state?: string;
@@ -209,6 +237,7 @@ async function getShotList() {
       state: item.state ?? item.status ?? "未生成",
       reason: item.reason || "",
       trackId: item.id,
+      segmentIndex: Number.isInteger(item.index) ? item.index : index,
       segmentRows: item.segmentRows || [],
       storyboard: item.storyboard
         ? {
@@ -234,6 +263,8 @@ async function getShotList() {
     shotList.value = [];
   }
 }
+
+defineExpose({ refresh: getShotList });
 
 function getShotTitle(shot: Shot, index: number) {
   return shot.title || `第 ${shot.shotNumber ?? index + 1} 镜`;
@@ -298,6 +329,99 @@ function confirmRestoreSort() {
     },
     onClose: () => dialog.destroy(),
   });
+}
+
+// ============ 片段删除 / 清空 ============
+
+const productionStore = productionAgentStore();
+const removing = ref(false);
+
+function currentContext() {
+  const projectId = project.value?.id != null ? Number(project.value.id) : undefined;
+  const scriptId = episodesId?.value ?? undefined;
+  if (!projectId || !scriptId) {
+    window.$message.error("缺少项目或剧集上下文，请刷新后重试");
+    return null;
+  }
+  return { projectId, scriptId };
+}
+
+async function syncProductionFlowData() {
+  try {
+    await productionStore.getFlowData();
+  } catch (error) {
+    // 生产页数据同步失败不影响弹窗内的删除结果。
+    console.warn("同步生产工作区数据失败", error);
+  }
+}
+
+function confirmDeleteShot(index: number) {
+  const shot = shotList.value[index];
+  if (!shot) return;
+  const dialog = DialogPlugin.confirm({
+    header: "删除片段",
+    body: `确定删除「${getShotTitle(shot, index)}」吗？该片段的分镜图、已生成视频与相关数据会一并删除，删除后可回到对话框重新生成。`,
+    confirmBtn: "删除",
+    cancelBtn: "取消",
+    theme: "warning",
+    onConfirm: async () => {
+      dialog.destroy();
+      await deleteShot(shot);
+    },
+  });
+}
+
+async function deleteShot(shot: Shot) {
+  if (removing.value) return;
+  const context = currentContext();
+  if (!context) return;
+  const payload: Record<string, number> = { ...context };
+  const trackId = Number(shot.trackId);
+  if (Number.isFinite(trackId)) payload.trackId = trackId;
+  else if (shot.segmentIndex !== undefined) payload.segmentIndex = shot.segmentIndex;
+
+  removing.value = true;
+  try {
+    await axios.post("/production/workbench/deleteSegment", payload);
+    window.$message.success("片段已删除，可回到对话框重新生成");
+    await getShotList();
+    await syncProductionFlowData();
+  } catch (error: any) {
+    window.$message.error(error?.message || "删除片段失败");
+  } finally {
+    removing.value = false;
+  }
+}
+
+function confirmResetStoryboard() {
+  const dialog = DialogPlugin.confirm({
+    header: "清空分镜",
+    body: "确定清空本集全部分镜吗？分镜列表、分镜图与已生成视频会一并清空，清空后可回到对话框重新生成。",
+    confirmBtn: "清空",
+    cancelBtn: "取消",
+    theme: "warning",
+    onConfirm: async () => {
+      dialog.destroy();
+      await resetStoryboard();
+    },
+  });
+}
+
+async function resetStoryboard() {
+  if (removing.value) return;
+  const context = currentContext();
+  if (!context) return;
+  removing.value = true;
+  try {
+    await axios.post("/production/workbench/resetStage", { ...context, stage: "storyboard" });
+    window.$message.success("分镜已清空，可回到对话框重新生成");
+    await getShotList();
+    await syncProductionFlowData();
+  } catch (error: any) {
+    window.$message.error(error?.message || "清空分镜失败");
+  } finally {
+    removing.value = false;
+  }
 }
 
 function onDragEnd() {
@@ -468,6 +592,13 @@ h2 {
   white-space: nowrap;
 }
 
+.detailHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .shotListWrapper {
   flex: 1;
   overflow-y: auto;
@@ -512,6 +643,12 @@ h2 {
   text-align: center;
   border-radius: 5px;
   background: var(--td-brand-color-1);
+}
+
+.shotDelete {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  color: var(--td-error-color-6);
 }
 
 .shotRowBody {

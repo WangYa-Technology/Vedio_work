@@ -127,6 +127,10 @@
               <t-button theme="primary" variant="outline" block :disabled="batchReasoningActive" @click="batchGenerationImage">
                 {{ $t("workbench.cornerScape.startBatch") }}
               </t-button>
+              <t-button theme="danger" variant="outline" block :disabled="deletingAssets || batchReasoningActive" @click="confirmBatchDeleteAssets">
+                <template #icon><t-icon name="delete" /></template>
+                删除已选资产（{{ selectedIds.length }}）
+              </t-button>
             </div>
           </t-form-item>
           <div v-if="batchReasoningTask" class="batchReasoningProgress">
@@ -189,6 +193,9 @@
               </div>
             </template>
           </t-image>
+          <span class="deleteButton" title="删除资产" @click.stop="confirmDeleteAsset(item)">
+            <t-icon name="delete" />
+          </span>
         </div>
         <div class="infoBox">
           <div class="title">{{ item.name }}</div>
@@ -422,6 +429,14 @@
               <t-button theme="primary" :loading="currentItem ? isRegenerating(currentItem.id) : false" @click="regenerateItem" :disabled="currentItem.state == '生成中' || (currentItem ? isRegenerating(currentItem.id) : true)">
                 <template v-if="!(currentItem && isRegenerating(currentItem.id))" #icon><t-icon name="refresh" /></template>
                 {{ useReferenceImage ? "参考图生成" : $t("workbench.cornerScape.regenerate") }}
+              </t-button>
+              <t-button
+                theme="danger"
+                variant="outline"
+                :disabled="deletingAssets || currentItem.promptState == '生成中' || currentItem.state == '生成中'"
+                @click="confirmDeleteAsset(currentItem)">
+                <template #icon><t-icon name="delete" /></template>
+                删除资产
               </t-button>
             </div>
           </t-form-item>
@@ -872,6 +887,79 @@ function toggleSelectAll() {
 }
 function clearSelection() {
   selectedIds.value = [];
+}
+
+// ============ 资产删除 ============
+
+const deletingAssets = ref(false);
+
+function isGeneratingItem(item: DataItem) {
+  return item.promptState === "生成中" || item.state === "生成中";
+}
+
+function confirmDeleteAsset(item?: DataItem | null) {
+  if (!item) return;
+  if (isGeneratingItem(item)) {
+    window.$message.warning(`资产「${item.name}」正在生成中，请等待完成或停止后再删除`);
+    return;
+  }
+  const dialog = DialogPlugin.confirm({
+    header: "删除资产",
+    body: `确定删除「${item.name}」吗？其衍生资产、分镜引用绑定、剧本关联、声音关联与图片文件会一并删除。`,
+    confirmBtn: "删除",
+    cancelBtn: "取消",
+    theme: "warning",
+    onConfirm: async () => {
+      dialog.destroy();
+      await deleteAssets([item.id], { closeDrawer: true });
+    },
+  });
+}
+
+function confirmBatchDeleteAssets() {
+  const ids = [...selectedIds.value];
+  if (!ids.length) {
+    window.$message.warning($t("workbench.cornerScape.msg.selectAtLeastOne"));
+    return;
+  }
+  const items = dataList.value.filter((item) => ids.includes(item.id));
+  const generating = items.find((item) => isGeneratingItem(item));
+  if (generating) {
+    window.$message.warning(`资产「${generating.name}」正在生成中，请等待完成或停止后再删除`);
+    return;
+  }
+  const dialog = DialogPlugin.confirm({
+    header: "批量删除资产",
+    body: `确定删除已选中的 ${ids.length} 个资产吗？其衍生资产、分镜引用绑定、剧本关联、声音关联与图片文件会一并删除。`,
+    confirmBtn: "删除",
+    cancelBtn: "取消",
+    theme: "warning",
+    onConfirm: async () => {
+      dialog.destroy();
+      await deleteAssets(ids);
+    },
+  });
+}
+
+async function deleteAssets(ids: number[], options: { closeDrawer?: boolean } = {}) {
+  if (deletingAssets.value || !ids.length) return;
+  deletingAssets.value = true;
+  try {
+    if (ids.length > 1) {
+      await axios.post("/assets/batchDelete", { id: ids });
+    } else {
+      await axios.post("/assets/delAssets", { id: ids[0] });
+    }
+    window.$message.success(ids.length > 1 ? `已删除 ${ids.length} 个资产` : "资产已删除");
+    selectedIds.value = selectedIds.value.filter((id) => !ids.includes(id));
+    if (currentItem.value && ids.includes(currentItem.value.id)) currentItem.value = null;
+    if (options.closeDrawer) drawerVisible.value = false;
+    await getFilteredData();
+  } catch (error: any) {
+    window.$message.error(error?.message || "删除资产失败");
+  } finally {
+    deletingAssets.value = false;
+  }
 }
 
 const selectedReasoningTemplate = computed(() => reasoningTemplates.value.find((item) => item.id === selectedReasoningTemplateId.value) ?? null);
@@ -1917,6 +2005,28 @@ watch(useReferenceImage, (enabled) => {
           top: 8px;
           left: 8px;
           z-index: 10;
+        }
+        .deleteButton {
+          position: absolute;
+          top: 8px;
+          right: 8px;
+          z-index: 10;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 24px;
+          height: 24px;
+          color: var(--td-error-color-6, #d54941);
+          background: rgba(255, 255, 255, 0.92);
+          border-radius: 50%;
+          cursor: pointer;
+          box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+          transition: color 0.2s, background 0.2s;
+
+          &:hover {
+            color: #fff;
+            background: var(--td-error-color-6, #d54941);
+          }
         }
         .generatingBox {
           display: flex;

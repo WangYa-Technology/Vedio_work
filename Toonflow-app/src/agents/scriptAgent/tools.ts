@@ -4,6 +4,8 @@ import { z } from "zod";
 import _ from "lodash";
 import ResTool from "@/socket/resTool";
 import { EMPTY_PROJECT_GLOBAL_CONTEXT, ProjectGlobalContextSchema } from "@/schemas/projectGlobalContext";
+import { reportToMarkdown, runScriptChecks } from "@/agents/scriptAgent/scriptChecks";
+import { runSkeletonChecks, skeletonReportToMarkdown } from "@/agents/scriptAgent/skeletonChecks";
 
 export const ScriptSchema = z.object({
   name: z.string().describe("剧本名称"),
@@ -210,6 +212,63 @@ export default (toolCpnfig: ToolConfig) => {
         thinking.updateTitle(`获取脚本内容完成`);
         thinking.complete();
         return text ?? "无数据";
+      },
+    }),
+    run_script_checks: tool({
+      description:
+        "对已保存剧本执行确定性检查：单集时长折算、原文台词逐字比对、格式与红线关键词扫描、结构与场号校验。结果为事实层，审核报告中不得改写其结论",
+      inputSchema: z.object({
+        scriptNames: z.array(z.string()).optional().describe("只检查指定名称的剧本；不传则检查项目下全部剧本"),
+      }),
+      execute: async ({ scriptNames }) => {
+        console.log("[tools] run_script_checks", scriptNames);
+        const thinking = msg.thinking("正在执行剧本确定性检查...");
+        try {
+          const report = await runScriptChecks(
+            Number(resTool.data.projectId),
+            scriptNames?.length ? { scriptNames } : undefined,
+          );
+          const markdown = reportToMarkdown(report);
+          thinking.appendText(
+            `检查完成：${report.summary.episodeCount} 集；阻塞项 ${report.summary.blockingCount}，提示项 ${report.summary.noticeCount}`,
+          );
+          thinking.updateTitle("剧本确定性检查完成");
+          thinking.complete();
+          return markdown;
+        } catch (err) {
+          const message = u.error(err).message;
+          thinking.appendText(`检查失败：${message}`);
+          thinking.complete();
+          return `确定性检查执行失败：${message}`;
+        }
+      },
+    }),
+    run_skeleton_checks: tool({
+      description:
+        "对已保存的故事骨架执行容量体检：逐集按原著台词素材的章份额核算刚性台词下限与预计时长（口径与剧本层/分镜层同一把尺子：逐字保留 + 每镜缓冲 + 标点停顿 + 动作预算；同一章在全剧分集中合计不超过100%，份额来自片段/场次/比例等显式标注，未标注时按场次或引用集数等比推断并在报告中标明来源），输出四级分级、制作侧三态（通过/可骑线/建议拆集/必拆/素材不足）、建议拆集数、授权删减反算字数、解析来源与全剧集数建议。结果为事实层，审核报告中不得改写其结论",
+      inputSchema: z.object({}),
+      execute: async () => {
+        console.log("[tools] run_skeleton_checks");
+        const thinking = msg.thinking("正在执行骨架容量体检...");
+        try {
+          const report = await runSkeletonChecks(Number(resTool.data.projectId));
+          const markdown = skeletonReportToMarkdown(report);
+          const severeCount = report.estimates.filter((item) => item.level === "severeOver").length;
+          const splitCount = report.estimates.filter(
+            (item) => item.capacityLevel === "splitRequired" || item.capacityLevel === "splitPressure",
+          ).length;
+          thinking.appendText(
+            `体检完成：${report.estimates.length} 集；严重超载 ${severeCount} 集${splitCount ? `；建议/必须拆集 ${splitCount} 集` : ""}`,
+          );
+          thinking.updateTitle("骨架容量体检完成");
+          thinking.complete();
+          return markdown;
+        } catch (err) {
+          const message = u.error(err).message;
+          thinking.appendText(`体检失败：${message}`);
+          thinking.complete();
+          return `骨架容量体检执行失败：${message}`;
+        }
       },
     }),
   };

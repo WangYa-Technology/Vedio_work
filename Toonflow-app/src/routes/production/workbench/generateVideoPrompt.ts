@@ -16,7 +16,15 @@ import {
   migrateLegacyPromptForH3,
   removeNarrationLipSyncInstructions,
 } from "@/utils/videoPromptMigration";
-import { collectVideoPromptContractViolations } from "@/utils/videoPromptContract";
+import {
+  buildMissingActionRetentionHints,
+  collectVideoPromptContractIssues,
+} from "@/utils/videoPromptContract";
+import {
+  collectMissingSpeakerEntries,
+  normalizeShot,
+  normalizeShots,
+} from "@/utils/speakerReferences";
 import {
   resolveVideoPromptVariation,
   trimPreviousVideoPrompt,
@@ -26,6 +34,205 @@ import {
   CONTENT_SAFETY_SETTING_KEY,
   DEFAULT_CONTENT_SAFETY_CONSTRAINT,
 } from "@/constants/contentSafety";
+
+interface PromptBatchParams {
+  batchTasks: any[];
+  systemPrompt: string;
+  projectConfig: Record<string, any>;
+  narrativeContext: Record<string, any>;
+  creativeVariation?: VideoPromptVariation;
+  modelPromptProtocol: string;
+}
+
+/**
+ * 生成一个批次的视频提示词（含契约校验与一次自动修复重试）。
+ * 分批调用的目的是降低单次输出量与格式压力：整场一次输出时，长指令 + 长输出
+ * 容易超出模型输出预算，导致工具参数被截断、整批校验失败（部分成功也作废）。
+ */
+async function generatePromptBatch({
+  batchTasks,
+  systemPrompt,
+  projectConfig,
+  narrativeContext,
+  creativeVariation,
+  modelPromptProtocol,
+}: PromptBatchParams): Promise<{
+  returnedMap: Map<number, string>;
+  warnings: string[];
+}> {
+  const batchTrackIds = batchTasks.map((task) => Number(task.id));
+  let generatedPrompts: Array<z.infer<typeof GeneratedPromptSchema>> = [];
+  const resultTool = tool({
+    description: "返回本批每个视频片段对应的最终视频提示词",
+    inputSchema: z.object({
+      prompts: z
+        .array(GeneratedPromptSchema)
+        .length(batchTasks.length)
+        .describe("必须为输入中的每个 trackId 返回且只返回一条提示词"),
+    }),
+    execute: async ({ prompts }) => {
+      generatedPrompts = prompts;
+      return "视频提示词已接收，无需继续回复";
+    },
+  });
+  const sceneInput = buildSceneInput(
+    batchTasks,
+    projectConfig,
+    narrativeContext,
+    creativeVariation,
+  );
+  const invokeGeneration = async (
+    messages: Array<{ role: "user"; content: string }>,
+  ) => {
+    generatedPrompts = [];
+    await u.Ai.Text("universalAi").invoke({
+      system: systemPrompt,
+      messages,
+      tools: { resultTool },
+      toolChoice: "required",
+      stopWhen: stepCountIs(1),
+      maxRetries: 0,
+      maxOutputTokens: modelPromptProtocol ? 8192 : 4096,
+      abortSignal: AbortSignal.timeout(getVideoPromptTimeoutMs()),
+    });
+  };
+  const normalizeReturnedPrompts = () =>
+    new Map(
+      generatedPrompts.map((item) => {
+        const trackId = Number(item.trackId);
+        const task = batchTasks.find(
+          (candidate) => Number(candidate.id) === trackId,
+        );
+        return [
+          trackId,
+          removeNarrationLipSyncInstructions(
+            migrateLegacyPromptForH3(item.prompt.trim(), {
+              profile: projectConfig.videoPromptProfile,
+              referenceToken: projectConfig.referenceToken,
+              references: task?.medias,
+              task,
+            }),
+          ),
+        ];
+      }),
+    );
+  const validateReturnedPrompts = (lenient = false) => {
+    const returnedMap = normalizeReturnedPrompts();
+    const missingIds = batchTrackIds.filter((id) => !returnedMap.get(id));
+    const unexpectedIds = generatedPrompts
+      .map((item) => Number(item.trackId))
+      .filter((id) => !batchTrackIds.includes(id));
+    if (missingIds.length || unexpectedIds.length) {
+      throw new Error(
+        `AI 返回的片段对应关系不完整${missingIds.length ? `，缺少 ${missingIds.join("、")}` : ""}`,
+      );
+    }
+
+    const contractViolations: string[] = [];
+    const contractWarnings: string[] = [];
+    for (const task of batchTasks) {
+      const prompt = returnedMap.get(Number(task.id)) || "";
+      const issues = collectVideoPromptContractIssues(task, prompt, {
+        artStyle: projectConfig.artStyle,
+        videoRatio: projectConfig.videoRatio,
+        referenceToken: projectConfig.referenceToken,
+        visualStyleManual: projectConfig.visualStyleManual,
+        audio: projectConfig.audio,
+        audioSupported: projectConfig.audio,
+        videoPromptProfile: projectConfig.videoPromptProfile,
+      });
+      const label = task.segmentTitle || task.id;
+      // 只提示"超过模型上限的安全兜底压缩"；分镜档位映射（计划 12s→按 10s 生成、
+      // 计划 17s→按 15s 生成）属于预期节奏设计，由分镜台任务卡直接展示，不进告警列表。
+      if (task.durationMapping === "overflow") {
+        contractWarnings.push(
+          `${label}：分镜原时长 ${task.originalDuration}s 超过模型上限，已按 ${task.duration}s 等比压缩镜头节奏（台词逐字保留，画面节奏会变紧）`,
+        );
+      }
+      contractViolations.push(
+        ...issues.violations.map((violation) => `${label}：${violation}`),
+      );
+      contractWarnings.push(
+        ...issues.warnings.map((warning) => `${label}：${warning}`),
+      );
+    }
+    if (contractViolations.length) {
+      // 二次校验（修复重试后）时，"人脸清晰度"这类画质增强项降级为警告：
+      // 它不涉及剧情/身份保真，反复拦截导致整批失败的代价高于收益。
+      const degradableKeywords = ["人脸清晰度约束"];
+      const blocking = lenient
+        ? contractViolations.filter(
+            (violation) =>
+              !degradableKeywords.some((keyword) =>
+                violation.includes(keyword),
+              ),
+          )
+        : contractViolations;
+      const degraded = lenient
+        ? contractViolations.filter((violation) =>
+            degradableKeywords.some((keyword) => violation.includes(keyword)),
+          )
+        : [];
+      contractWarnings.push(
+        ...degraded.map(
+          (violation) =>
+            `${violation}（已放行，该镜头生成的脸部可能不够锐利，建议核对）`,
+        ),
+      );
+      if (blocking.length) {
+        throw new Error(
+          `视频提示词未通过 H3 契约校验：${blocking.slice(0, 8).join("；")}`,
+        );
+      }
+    }
+
+    return { returnedMap, warnings: contractWarnings };
+  };
+
+  await invokeGeneration([{ role: "user", content: sceneInput }]);
+  try {
+    return validateReturnedPrompts();
+  } catch (firstValidationError) {
+    // 只回传"某动作未保留"过于笼统，附上该动作必须出现的英文表达再重试一次。
+    const actionRetentionRequirements = batchTasks.flatMap((task) => {
+      const previousPrompt =
+        generatedPrompts.find(
+          (item) => Number(item.trackId) === Number(task.id),
+        )?.prompt || "";
+      const hints = buildMissingActionRetentionHints(task, previousPrompt);
+      return hints.length
+        ? [`${task.segmentTitle || task.id}：${hints.join("；")}`]
+        : [];
+    });
+    // 中景/中远景的人脸清晰度要求模型常遗漏；重试时直接给出标准英文句式。
+    const needsFaceClarity = batchTasks.some((task) =>
+      (task.segmentRows || []).some((row: any) =>
+        /中景|中远景|medium(?:[- ]long)? shot/i.test(
+          String(row.scale || row.shotScale || ""),
+        ),
+      ),
+    );
+    const repairRequest = JSON.stringify({
+      purpose: "repair_invalid_h3_prompts",
+      instruction:
+        "上一轮输出未通过硬契约校验。必须重新生成全部 trackId；严格按原始 sceneInput，不增加或改写剧情。修复下列问题后再次调用 resultTool。",
+      violations:
+        firstValidationError instanceof Error
+          ? firstValidationError.message
+          : String(firstValidationError),
+      actionRetentionRequirements,
+      faceClarityRequirement: needsFaceClarity
+        ? "凡中景/中远景且主要人物可见的镜头，必须在英文正文中写明主要人物面部锐利对焦、五官清晰可辨，例如 the main character's face remains sharp and in focus, with clear eyes, nose and mouth，不得省略。"
+        : "",
+      previousOutputs: generatedPrompts,
+    });
+    await invokeGeneration([
+      { role: "user", content: sceneInput },
+      { role: "user", content: repairRequest },
+    ]);
+    return validateReturnedPrompts(true);
+  }
+}
 
 const router = express.Router();
 
@@ -126,47 +333,6 @@ const GeneratedPromptSchema = z.object({
   prompt: z.string().min(1),
 });
 
-function stripFieldLabel(value: unknown, label: string) {
-  return String(value || "")
-    .trim()
-    .replace(new RegExp(`^${label}[：:]\\s*`), "")
-    .trim();
-}
-
-function extractOnScreenText(value: string) {
-  const match = value.match(
-    /^(?:日历|画面|屏幕|招牌|纸张|海报|字幕|标题)文字[：:]\s*(.+)$/,
-  );
-  return match?.[1]?.trim() || "";
-}
-
-function parseDialogue(value: string) {
-  const raw = String(value || "").trim();
-  if (!raw || /^(?:无|无台词|无对白|暂无|-)$/i.test(raw)) {
-    return {
-      dialogueType: "none",
-      speakerName: "",
-      actualDialogue: "",
-    };
-  }
-  const dialogueType = /(?:内心独白|\bOS\b)/i.test(raw)
-    ? "inner_monologue_os"
-    : /(?:画外音|旁白|\bVO\b)/i.test(raw)
-      ? "voiceover_vo"
-      : "dialogue";
-  const withoutType = raw
-    .replace(/^(?:普通对白|对白|内心独白|画外音|旁白)\s*(?:OS|VO)?\s*[：:]?\s*/i, "")
-    .trim();
-  const speakerMatch = withoutType.match(/^([^：:\n]{1,24})[：:]\s*([\s\S]+)$/);
-  return {
-    dialogueType,
-    speakerName: speakerMatch?.[1]?.trim() || "",
-    actualDialogue: (speakerMatch?.[2] || withoutType)
-      .replace(/^[“"「『]|[”"」』]$/g, "")
-      .trim(),
-  };
-}
-
 function assetTypeLabel(value: unknown) {
   const normalized = String(value || "").toLowerCase();
   if (normalized === "role" || normalized === "character") return "角色";
@@ -176,53 +342,6 @@ function assetTypeLabel(value: unknown) {
   return String(value || "资产");
 }
 
-function normalizeShot(row: Record<string, any>) {
-  const rawDialogue = stripFieldLabel(row.dialogue, "台词");
-  const onScreenText = extractOnScreenText(rawDialogue);
-  const dialogue = onScreenText ? "无台词" : rawDialogue || "无台词";
-  const speech = parseDialogue(dialogue);
-  return {
-    sequence: String(row.serial || ""),
-    visualAndAction: String(row.description || "").trim(),
-    durationSeconds: Number(row.duration) || 0,
-    shotScale: String(row.scale || "").trim() || "未标注",
-    shotScaleDescription: String(row.scaleDescription || "").trim() || "未标注",
-    cameraAngle: String(row.cameraAngle || "").trim() || "未标注",
-    cameraMovement: String(row.cameraMovement || "").trim() || "未标注",
-    location: String(row.location || "").trim() || "未标注",
-    dayPart: String(row.dayPart || "").trim() || "未标注",
-    interiorExterior: String(row.interiorExterior || "").trim() || "未标注",
-    spatialLayers: String(row.spatialLayers || "").trim() || "未标注",
-    dialogue,
-    ...speech,
-    onScreenText,
-    speechAllowed: dialogue !== "无台词",
-    sound: stripFieldLabel(row.sound, "音效") || "无音效",
-  };
-}
-
-function normalizeShots(rows: Record<string, any>[]) {
-  let elapsed = 0;
-  return rows.map((row) => {
-    const shot = normalizeShot(row);
-    const startSeconds = elapsed;
-    elapsed += shot.durationSeconds;
-    return {
-      ...shot,
-      startSeconds,
-      endSeconds: elapsed,
-      h3CutTimestamp:
-        startSeconds > 0
-          ? `At ${String(Math.floor(startSeconds / 60)).padStart(2, "0")}:${(
-              startSeconds % 60
-            )
-              .toFixed(3)
-              .padStart(6, "0")}`
-          : "opening shot - no timestamp",
-    };
-  });
-}
-
 function buildVideoDescription(task: Record<string, any>) {
   const shots = normalizeShots(task.segmentRows || []);
   if (!shots.length) return String(task.videoDesc || "").trim();
@@ -230,25 +349,9 @@ function buildVideoDescription(task: Record<string, any>) {
   return shots
     .map(
       (shot: ReturnType<typeof normalizeShots>[number]) =>
-        `${shot.sequence}. ${shot.visualAndAction}；地点：${shot.location}；时段：${shot.dayPart}；内外：${shot.interiorExterior}；空间层级：${shot.spatialLayers}；累计时间：${shot.startSeconds}-${shot.endSeconds}s；H3切镜标记：${shot.h3CutTimestamp}；景别：${shot.shotScale}；景别说明：${shot.shotScaleDescription}；摄影角度：${shot.cameraAngle}；运镜：${shot.cameraMovement}；对白类型：${shot.dialogueType}；说话人：${shot.speakerName || "无"}；实际台词：${shot.actualDialogue || "无"}；画内文字：${shot.onScreenText || "无"}；音效：${shot.sound}`,
+        `${shot.sequence}. ${shot.visualAndAction}；地点：${shot.location}；时段：${shot.dayPart}；内外：${shot.interiorExterior}；空间层级：${shot.spatialLayers}；累计时间：${shot.startSeconds}-${shot.endSeconds}s；H3切镜标记：${shot.h3CutTimestamp}；景别：${shot.shotScale}；景别说明：${shot.shotScaleDescription}；摄影角度：${shot.cameraAngle}；运镜：${shot.cameraMovement}；对白类型：${shot.dialogueType}；说话人：${shot.speakerNames?.length ? shot.speakerNames.join("、") : shot.speakerName || "无"}；实际台词：${shot.actualDialogue || "无"}；画内文字：${shot.onScreenText || "无"}；音效：${shot.sound}`,
     )
     .join("\n");
-}
-
-function missingSpeakerReferences(task: Record<string, any>) {
-  const roleNames = new Set(
-    (task.medias || [])
-      .filter((media: any) => /role|character|人物|角色/i.test(String(media.type || "")))
-      .map((media: any) => String(media.name || "").trim())
-      .filter(Boolean),
-  );
-  return [
-    ...new Set(
-      normalizeShots(task.segmentRows || [])
-        .map((shot) => shot.speakerName)
-        .filter((speakerName) => speakerName && !roleNames.has(speakerName)),
-    ),
-  ];
 }
 
 export function buildSceneInput(
@@ -396,15 +499,18 @@ export default router.post(
         String(data.projectConfig.videoPromptProfile?.modeKind || ""),
       )
     ) {
-      const missingSpeakers = tasks.flatMap((task) =>
-        missingSpeakerReferences(task).map(
-          (name) => `${task.segmentTitle || task.id}：${name}`,
-        ),
-      );
-      if (missingSpeakers.length) {
+      const missingSpeakerEntries = collectMissingSpeakerEntries(tasks);
+      if (missingSpeakerEntries.length) {
+        const missingSpeakers = missingSpeakerEntries.map(
+          (entry) => `${entry.segmentTitle || entry.trackId}：${entry.speakerName}`,
+        );
         return res.status(400).send(
           error(
             `说话角色缺少独立角色参考，已停止推理以避免复制脸或串台：${missingSpeakers.join("、")}。请先在分镜资产中绑定对应角色。`,
+            {
+              code: "MISSING_SPEAKER_REFERENCES",
+              missingSpeakers: missingSpeakerEntries,
+            },
           ),
         );
       }
@@ -479,21 +585,6 @@ export default router.post(
     const contentSafety = String(
       safetySetting?.value ?? DEFAULT_CONTENT_SAFETY_CONSTRAINT,
     ).trim();
-    let generatedPrompts: Array<z.infer<typeof GeneratedPromptSchema>> = [];
-    const resultTool = tool({
-      description: "返回本场每个视频片段对应的最终视频提示词",
-      inputSchema: z.object({
-        prompts: z
-          .array(GeneratedPromptSchema)
-          .length(tasks.length)
-          .describe("必须为输入中的每个 trackId 返回且只返回一条提示词"),
-      }),
-      execute: async ({ prompts }) => {
-        generatedPrompts = prompts;
-        return "视频提示词已接收，无需继续回复";
-      },
-    });
-
     const batchConstraint = `
 ## 本次场次批量推理的最高优先级规则
 1. 输入中同一场次包含多个独立视频片段；一次读取全部片段，但每个 trackId 必须分别生成一条独立提示词。
@@ -526,27 +617,6 @@ export default router.post(
 `;
     const systemPrompt = `${templateContent}\n\n${modelPromptProtocol ? `${modelPromptProtocol}\n\n` : ""}${styleReasoning}\n\n${contentSafety ? `## 内容安全约束\n${contentSafety}\n` : ""}${batchConstraint}`;
     const templateVersion = hashTemplateContent(systemPrompt);
-    const sceneInput = buildSceneInput(
-      tasks,
-      data.projectConfig,
-      data.narrativeContext,
-      creativeVariation,
-    );
-    const invokeGeneration = async (messages: Array<{ role: "user"; content: string }>) => {
-      generatedPrompts = [];
-      await u.Ai.Text("universalAi").invoke({
-        system: systemPrompt,
-        messages,
-        tools: { resultTool },
-        toolChoice: "required",
-        stopWhen: stepCountIs(1),
-        maxRetries: 0,
-        // Batch generation can legitimately need more than a single model round-trip.
-        // Keep the limit bounded, but allow deployments to tune it for their provider.
-        maxOutputTokens: modelPromptProtocol ? 8192 : 4096,
-        abortSignal: AbortSignal.timeout(getVideoPromptTimeoutMs()),
-      });
-    };
     const respondAiFailure = (caught: unknown) => {
       const normalized = u.error(caught);
       const details = `${normalized.message} ${JSON.stringify(normalized.cause || {})}`;
@@ -559,86 +629,47 @@ export default router.post(
         : `视频提示词推理失败：${normalized.message || "上游模型请求失败"}`;
       return res.status(isTimeout ? 504 : 502).send(error(message));
     };
-    const normalizeReturnedPrompts = () =>
-      new Map(
-        generatedPrompts.map((item) => {
-          const trackId = Number(item.trackId);
-          const task = tasks.find((candidate) => Number(candidate.id) === trackId);
-          return [
-            trackId,
-            removeNarrationLipSyncInstructions(migrateLegacyPromptForH3(item.prompt.trim(), {
-              profile: data.projectConfig.videoPromptProfile,
-              referenceToken: data.projectConfig.referenceToken,
-              references: task?.medias,
-              task,
-            })),
-          ];
-        }),
-      );
-    const validateReturnedPrompts = () => {
-      const returnedMap = normalizeReturnedPrompts();
-      const missingIds = requestedTrackIds.filter((id) => !returnedMap.get(id));
-      const unexpectedIds = generatedPrompts
-        .map((item) => Number(item.trackId))
-        .filter((id) => !requestedTrackIds.includes(id));
-      if (missingIds.length || unexpectedIds.length) {
-        throw new Error(
-          `AI 返回的片段对应关系不完整${missingIds.length ? `，缺少 ${missingIds.join("、")}` : ""}`,
-        );
-      }
-
-      const contractViolations = tasks.flatMap((task) => {
-        const prompt = returnedMap.get(Number(task.id)) || "";
-        return collectVideoPromptContractViolations(task, prompt, {
-          artStyle: data.projectConfig.artStyle,
-          videoRatio: data.projectConfig.videoRatio,
-          referenceToken: data.projectConfig.referenceToken,
-          visualStyleManual: data.projectConfig.visualStyleManual,
-          audio: data.projectConfig.audio,
-          audioSupported: data.projectConfig.audio,
-          videoPromptProfile: data.projectConfig.videoPromptProfile,
-        }).map((violation) => `${task.segmentTitle || task.id}：${violation}`);
-      });
-      if (contractViolations.length) {
-        throw new Error(
-          `视频提示词未通过 H3 契约校验：${contractViolations.slice(0, 8).join("；")}`,
-        );
-      }
-
-      return returnedMap;
-    };
-
-    let returnedMap: Map<number, string>;
+    // 分批生成：整场一次输出所有片段时，长指令 + 长输出容易超出模型输出预算，
+    // 导致工具参数被截断、整批校验失败（部分成功也作废）。拆成小批后单次
+    // 输出量显著下降，小模型也能稳定返回。
+    const PROMPT_BATCH_SIZE = 3;
+    const totalBatches = Math.ceil(tasks.length / PROMPT_BATCH_SIZE);
+    const returnedMap = new Map<number, string>();
+    const contractWarnings: string[] = [];
+    let completedBatches = 0;
     try {
-      await invokeGeneration([{ role: "user", content: sceneInput }]);
+      for (
+        let batchStart = 0;
+        batchStart < tasks.length;
+        batchStart += PROMPT_BATCH_SIZE
+      ) {
+        const batchTasks = tasks.slice(
+          batchStart,
+          batchStart + PROMPT_BATCH_SIZE,
+        );
+        const batchResult = await generatePromptBatch({
+          batchTasks,
+          systemPrompt,
+          projectConfig: data.projectConfig,
+          narrativeContext: data.narrativeContext,
+          creativeVariation,
+          modelPromptProtocol,
+        });
+        for (const [batchTrackId, batchPrompt] of batchResult.returnedMap) {
+          returnedMap.set(batchTrackId, batchPrompt);
+        }
+        contractWarnings.push(...batchResult.warnings);
+        completedBatches += 1;
+      }
     } catch (caught) {
-      return respondAiFailure(caught);
+      return respondAiFailure(
+        completedBatches > 0
+          ? new Error(
+              `第 ${completedBatches + 1}/${totalBatches} 批生成失败（前面 ${completedBatches} 批已通过校验，本次未落库）— ${u.error(caught).message}`,
+            )
+          : caught,
+      );
     }
-
-    try {
-      returnedMap = validateReturnedPrompts();
-    } catch (firstValidationError) {
-      const repairRequest = JSON.stringify({
-        purpose: "repair_invalid_h3_prompts",
-        instruction:
-          "上一轮输出未通过硬契约校验。必须重新生成全部 trackId；严格按原始 sceneInput，不增加或改写剧情。修复下列问题后再次调用 resultTool。",
-        violations:
-          firstValidationError instanceof Error
-            ? firstValidationError.message
-            : String(firstValidationError),
-        previousOutputs: generatedPrompts,
-      });
-      try {
-        await invokeGeneration([
-          { role: "user", content: sceneInput },
-          { role: "user", content: repairRequest },
-        ]);
-        returnedMap = validateReturnedPrompts();
-      } catch (repairError) {
-        return respondAiFailure(repairError);
-      }
-    }
-
     try {
       await knexDb.transaction(async (trx) => {
         for (const trackId of requestedTrackIds) {
@@ -678,6 +709,7 @@ export default router.post(
           trackId,
           prompt: returnedMap.get(trackId),
         })),
+        warnings: contractWarnings,
       }),
     );
   },

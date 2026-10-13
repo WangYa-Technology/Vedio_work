@@ -2,6 +2,7 @@
 import { ref, shallowRef, onMounted, onUnmounted, computed } from "vue";
 import { io, Socket } from "socket.io-client";
 import type { ChatMessagesData, AIMessage, UserMessage, AIMessageContent, ChatMessageStatus } from "@tdesign-vue-next/chat";
+import { installLongTaskObserver, noteSocketPacket, recordSocketDisconnect, recordSocketReconnect } from "./chatDiagnostics";
 
 // Socket 事件类型定义
 export interface MessageEvent {
@@ -76,6 +77,10 @@ export interface ChatSocketEvents {
   error: { code: string; message: string };
 }
 
+// 断连提示前缀统一常量：断连文案带原因后缀，重连恢复时按前缀匹配清除。
+// store 侧轮询也会用它判断"当前是否处于断连提示状态"，避免被后台任务阶段文案覆盖。
+export const DISCONNECT_LABEL_PREFIX = "连接已断开";
+
 export interface UseChatOptions {
   url: string;
   auth?: Record<string, any>;
@@ -97,8 +102,33 @@ export function useChat(options: UseChatOptions) {
   const connecting = ref(false);
   const messages = ref<ChatMessagesData[]>([]);
   const currentMessageId = ref<string | null>(null);
+  // 断连期间用户点过"停止"时记下来：重连后补发，否则后台任务无法被中止
+  let pendingStopMessageId: string | null = null;
   const status = ref<"idle" | "pending" | "streaming">("idle");
   const workflowStatus = ref<WorkflowStatus>({ state: "idle", label: "" });
+  // 内容版本号：聊天内容/消息状态每次实际变化时自增。上层 store 用它做浅层 watch，
+  // 避免对 messages 整体做 deep watch 深遍历（长剧本生成时每 chunk 深遍历会拖满主线程）。
+  const contentVersion = ref(0);
+  const bumpContentVersion = () => {
+    contentVersion.value += 1;
+  };
+  // 断连原因中文化：便于用户直接看到断连的真实来源，而不用翻控制台
+  const describeDisconnectReason = (reason: string) => {
+    switch (reason) {
+      case "ping timeout":
+        return "心跳超时";
+      case "transport close":
+        return "网络链路中断";
+      case "transport error":
+        return "传输错误";
+      case "io server disconnect":
+        return "服务端断开";
+      case "io client disconnect":
+        return "本地主动断开";
+      default:
+        return reason;
+    }
+  };
   const xmlData = ref<Record<string, string>>({});
   const xmlDataByMessage = ref<Record<string, Record<string, string>>>({});
   const normalizedXmlTagOptions = Array.from(
@@ -391,6 +421,7 @@ export function useChat(options: UseChatOptions) {
     // 无数据时仅更新状态
     if (data === undefined || data === null) {
       syncXmlData(messageId, content, msg.status);
+      bumpContentVersion();
       return;
     }
 
@@ -422,6 +453,7 @@ export function useChat(options: UseChatOptions) {
     }
 
     syncXmlData(messageId, content, msg.status);
+    bumpContentVersion();
   };
 
   // 消息处理器
@@ -460,6 +492,7 @@ export function useChat(options: UseChatOptions) {
         currentMessageId.value = data.id;
         status.value = data.status === "streaming" ? "streaming" : "pending";
       }
+      bumpContentVersion();
     });
 
     // 消息状态更新
@@ -489,6 +522,7 @@ export function useChat(options: UseChatOptions) {
           status.value = "idle";
         }
       }
+      bumpContentVersion();
     });
 
     // 添加内容块 - 修复：不要在这里改变消息状态
@@ -533,6 +567,7 @@ export function useChat(options: UseChatOptions) {
           msg.status = "streaming";
         }
       }
+      bumpContentVersion();
     });
 
     // 内容更新（流式/完成）
@@ -552,12 +587,29 @@ export function useChat(options: UseChatOptions) {
       onError?.(error);
     });
 
+    // 任意服务端推送都算"后端活跃"：用于状态条展示"最后活跃 X 秒前"与断连现场取证
+    socket.value.onAny(() => noteSocketPacket());
+
     // 连接事件
     socket.value.on("connect", () => {
       connected.value = true;
       connecting.value = false;
-      if (workflowStatus.value.state === "error" && workflowStatus.value.label === "连接已断开，当前任务可重新继续") {
-        workflowStatus.value = { state: "idle", label: "" };
+      noteSocketPacket();
+      installLongTaskObserver();
+      recordSocketReconnect();
+      // 断连恢复：先给过渡态，真实终态由运行记录同步（store 轮询 / loadRuntime）覆盖
+      if (workflowStatus.value.label.startsWith(DISCONNECT_LABEL_PREFIX)) {
+        workflowStatus.value = {
+          state: "working",
+          label: "已重新连接，正在同步后台进度…",
+          ...(workflowStatus.value.phase ? { phase: workflowStatus.value.phase } : {}),
+        };
+      }
+      if (pendingStopMessageId) {
+        const pendingId = pendingStopMessageId;
+        pendingStopMessageId = null;
+        socket.value?.emit("stop", { messageId: pendingId });
+        console.log("[Chat] 断连期间记录的停止请求已补发");
       }
       onConnect?.();
     });
@@ -565,16 +617,15 @@ export function useChat(options: UseChatOptions) {
     socket.value.on("disconnect", (reason) => {
       connected.value = false;
       connecting.value = false;
-      if (currentMessageId.value) {
-        const currentMessage = findMessage(currentMessageId.value);
-        if (currentMessage && (currentMessage.status === "pending" || currentMessage.status === "streaming")) {
-          currentMessage.status = "error";
-        }
-        currentMessageId.value = null;
-        status.value = "idle";
-      }
+      recordSocketDisconnect(reason);
+      // 断连不等于任务失败：服务端任务在后台继续，消息与忙碌态保持不变，
+      // 真正的终态由运行记录同步后覆盖（各 store 在断连期间会用 HTTP 轮询兜底）。
       if (reason !== "io client disconnect" && (workflowStatus.value.state === "working" || workflowStatus.value.state === "retrying")) {
-        workflowStatus.value = { state: "error", label: "连接已断开，当前任务可重新继续" };
+        workflowStatus.value = {
+          state: "working",
+          label: `${DISCONNECT_LABEL_PREFIX}（${describeDisconnectReason(reason)}），后台任务仍在运行，正在重新连接并同步…`,
+          ...(workflowStatus.value.phase ? { phase: workflowStatus.value.phase } : {}),
+        };
       }
       onDisconnect?.();
       console.log("[Chat Disconnected]", reason);
@@ -599,15 +650,20 @@ export function useChat(options: UseChatOptions) {
     connecting.value = true;
 
     if (!socket.value) {
-      socket.value = io(url, {
-        transports: ["websocket", "polling"],
+      const socketOptions = {
+        transports: ["websocket", "polling"] as const,
         reconnection: true,
         reconnectionAttempts: Infinity,
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
         timeout: 10000,
+        // 单包上限与服务端对齐（默认 1MB）：服务端 thinking 等全量合并报文一旦超过
+        // 默认上限，客户端会直接断开连接，表现为生成中途“连接已断开”。
+        // 该选项未收录在 socket.io-client 的类型里，仅做类型放宽，运行时行为不变。
+        maxHttpBufferSize: 64 * 1024 * 1024,
         auth: { token: localStorage.getItem("token"), ...auth },
-      });
+      };
+      socket.value = io(url, socketOptions as unknown as Parameters<typeof io>[1]);
 
       setupHandlers();
     } else {
@@ -660,6 +716,11 @@ export function useChat(options: UseChatOptions) {
   // 业务方法
   const chat = (content: string, attachments?: any[]) => {
     if (!content.trim() && !attachments?.length) return false;
+    // 断连时不发送：避免出现"消息已显示但实际没发出去"的假成功
+    if (!socket.value?.connected) {
+      console.warn("[Chat] 连接已断开，指令未发送");
+      return false;
+    }
 
     const userMessage: UserMessage = {
       id: `user_${Date.now()}`,
@@ -678,6 +739,7 @@ export function useChat(options: UseChatOptions) {
     }
 
     messages.value.push(userMessage);
+    bumpContentVersion();
 
     return emit("chat", { content, attachments });
   };
@@ -691,9 +753,21 @@ export function useChat(options: UseChatOptions) {
     if (msg) {
       msg.status = "stop";
     }
+
+    // 断连状态下的停止：先记账，重连后补发，保证后台任务能被真正中止
+    if (!socket.value?.connected) {
+      pendingStopMessageId = id;
+      currentMessageId.value = null;
+      status.value = "idle";
+      workflowStatus.value = { state: "idle", label: "连接已断开，已记录停止请求，恢复连接后中止后台任务" };
+      bumpContentVersion();
+      return true;
+    }
+
     currentMessageId.value = null;
     status.value = "idle";
     workflowStatus.value = { state: "idle", label: "已停止当前生成" };
+    bumpContentVersion();
 
     return emit("stop", { messageId: id });
   };
@@ -712,6 +786,7 @@ export function useChat(options: UseChatOptions) {
     xmlDataByMessage.value = {};
     emittedXmlState.clear();
     rawContentState.clear();
+    bumpContentVersion();
   };
 
   const removeMessage = (id: string) => {
@@ -726,6 +801,7 @@ export function useChat(options: UseChatOptions) {
       delete nextByMessage[id];
       xmlDataByMessage.value = nextByMessage;
       messages.value.splice(idx, 1);
+      bumpContentVersion();
     }
   };
 
@@ -733,6 +809,7 @@ export function useChat(options: UseChatOptions) {
     const idx = findMessageIndex(id);
     if (idx > -1) {
       messages.value.splice(idx + 1);
+      bumpContentVersion();
     }
   };
 
@@ -740,6 +817,7 @@ export function useChat(options: UseChatOptions) {
     const msg = findMessage(id);
     if (msg) {
       Object.assign(msg, updates);
+      bumpContentVersion();
     }
   };
 
@@ -772,6 +850,7 @@ export function useChat(options: UseChatOptions) {
     workflowStatus,
     messages,
     renderableMessages,
+    contentVersion,
     currentMessageId,
     xmlData,
     xmlDataByMessage,

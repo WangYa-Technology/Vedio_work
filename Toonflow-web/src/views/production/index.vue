@@ -36,6 +36,7 @@
             <i-loading-four v-if="workflowBusy" class="workflowSpinner" size="16" />
             <i-info v-else-if="workflowStatus.state === 'error'" size="16" />
             <span>{{ workflowStatusLabel }}</span>
+            <span v-if="lastActivitySeconds !== null" class="activityHint">最后活跃 {{ lastActivitySeconds }} 秒前</span>
           </div>
           <div v-if="nextAction" class="nextAction">
             <div class="nextActionCopy">
@@ -70,10 +71,6 @@
                 </t-button>
                 <template #content>
                   <div class="settingMenu">
-                    <div class="settingMenuItem settingMenuControl">
-                      <span>思考级别</span>
-                      <t-select :value="thinkLevel" :options="thinkLevelOptions" autoWidth size="small" @change="handleThinkLevelChange" />
-                    </div>
                     <div class="settingMenuItem" @click="handleReconnect">
                       <i-api size="14" />
                       <span>{{ $t("workbench.scriptAgent.reconnect") }}</span>
@@ -134,6 +131,17 @@
 
             <t-tab-panel value="directorPlan" :label="$t('workbench.production.directorPlan')">
               <div class="directorPlan" v-loading="loadingData">
+                <div v-if="directorPlanPreview" class="planActions">
+                  <t-button
+                    theme="danger"
+                    variant="outline"
+                    size="small"
+                    :disabled="workflowBusy || loadingData || resettingStage"
+                    @click="confirmResetDirectorPlan">
+                    <template #icon><i-delete theme="outline" size="16" /></template>
+                    删除导演规划
+                  </t-button>
+                </div>
                 <MdPreview v-if="directorPlanPreview" :modelValue="directorPlanPreview" />
                 <div v-else class="workspaceEmpty">
                   <t-empty :description="$t('workbench.production.noDirectorPlan')" />
@@ -144,6 +152,18 @@
             <t-tab-panel value="storyboard" :label="$t('workbench.production.storyboardList')">
               <div class="shotList" v-loading="loadingData">
                 <template v-if="storyboardSegments.length > 0">
+                  <div class="shotListToolbar">
+                    <span class="shotListCount">共 {{ storyboardSegments.length }} 个片段</span>
+                    <t-button
+                      theme="danger"
+                      variant="outline"
+                      size="small"
+                      :disabled="workflowBusy || loadingData || resettingStage"
+                      @click="confirmResetStoryboard">
+                      <template #icon><i-delete theme="outline" size="16" /></template>
+                      清空分镜
+                    </t-button>
+                  </div>
                   <div v-for="(segment, index) in storyboardSegments" :key="segment.id" class="shotCard segmentCard">
                     <div class="shotIndex">{{ index + 1 }}</div>
                     <div class="shotContent">
@@ -170,6 +190,17 @@
                         </div>
                       </div>
                     </div>
+                    <t-button
+                      class="shotCardDelete"
+                      theme="danger"
+                      variant="text"
+                      shape="square"
+                      size="small"
+                      :disabled="workflowBusy || loadingData || deletingSegment"
+                      :title="`删除${segment.segmentTitle || '该片段'}`"
+                      @click="confirmDeleteSegment(index, segment)">
+                      <template #icon><i-delete theme="outline" size="16" /></template>
+                    </t-button>
                   </div>
                 </template>
                 <div v-else class="workspaceEmpty">
@@ -194,12 +225,13 @@ import { MdPreview } from "md-editor-v3";
 import "md-editor-v3/lib/preview.css";
 import { useRouter } from "vue-router";
 import { Splitpanes, Pane } from "splitpanes";
+import { getLastActivityAgoMs } from "@/utils/chatDiagnostics";
 
 const projectState = projectStore();
 const { project, allProject } = storeToRefs(projectState);
 const productionStore = productionAgentStore();
 const router = useRouter();
-const { flowData, connected, renderableMessages, status, workflowStatus, loadingHistory, thinkLevel } = storeToRefs(productionStore);
+const { flowData, connected, renderableMessages, status, workflowStatus, loadingHistory } = storeToRefs(productionStore);
 
 const inputValue = ref("");
 const loadingData = ref(false);
@@ -207,11 +239,6 @@ const workbenchVisible = ref(false);
 const activeWorkspaceTab = ref<"directorPlan" | "storyboard">("directorPlan");
 const episodesOptions = ref<{ label: string; value: number }[]>([]);
 const currentEpisodesId = ref<number | null>(null);
-const thinkLevelOptions = [
-  { label: "关闭思考", value: 0 },
-  { label: "快速思考", value: 1 },
-  { label: "深度思考", value: 2 },
-];
 const storyboardShots = computed(() => (Array.isArray(flowData.value?.storyboard) ? flowData.value.storyboard : []));
 const storyboardSegments = computed(() => {
   const segments = parseStoryboardTable(flowData.value?.storyboardTable || "");
@@ -263,6 +290,30 @@ const workflowBusy = computed(() =>
 );
 const showWorkflowStatus = computed(() => Boolean(workflowStatus.value.label) && (workflowBusy.value || workflowStatus.value.state === "error"));
 const workflowStatusLabel = computed(() => workflowStatus.value.label || "正在处理当前制作任务");
+
+// "最后活跃 X 秒前"：忙碌时每秒刷新，用于分辨后端是"在跑"还是"卡住了"
+const lastActivitySeconds = ref<number | null>(null);
+let activityTimer: ReturnType<typeof setInterval> | null = null;
+function stopActivityTimer() {
+  if (!activityTimer) return;
+  clearInterval(activityTimer);
+  activityTimer = null;
+  lastActivitySeconds.value = null;
+}
+watch(workflowBusy, (busy) => {
+  if (!busy) {
+    stopActivityTimer();
+    return;
+  }
+  if (activityTimer) return;
+  const refresh = () => {
+    const ago = getLastActivityAgoMs();
+    lastActivitySeconds.value = ago >= 0 ? Math.round(ago / 1000) : null;
+  };
+  refresh();
+  activityTimer = setInterval(refresh, 1000);
+});
+onUnmounted(stopActivityTimer);
 const productionStage = computed(() => {
   if (!flowData.value.scriptPlan.trim()) return "directorPlan" as const;
   if (!flowData.value.storyboardTable.trim()) return "storyboardTable" as const;
@@ -633,6 +684,110 @@ async function refreshData() {
   }
 }
 
+// ============ 分镜删除 / 阶段重置 ============
+
+const deletingSegment = ref(false);
+const resettingStage = ref(false);
+
+function currentProductionContext() {
+  const projectId = project.value?.id != null ? Number(project.value.id) : undefined;
+  const scriptId = currentEpisodesId.value ?? undefined;
+  if (!projectId || !scriptId) {
+    window.$message.error("缺少项目或剧集上下文，请刷新后重试");
+    return null;
+  }
+  return { projectId, scriptId };
+}
+
+function segmentLabel(segment?: { sceneTitle?: string; segmentTitle?: string }) {
+  const label = [segment?.sceneTitle, segment?.segmentTitle].filter(Boolean).join(" / ");
+  return label || "该片段";
+}
+
+function confirmDeleteSegment(index: number, segment?: { sceneTitle?: string; segmentTitle?: string }) {
+  const dialog = DialogPlugin.confirm({
+    header: "删除片段",
+    body: `确定删除「${segmentLabel(segment)}」吗？该片段的分镜图、已生成视频与相关数据会一并删除，删除后可回到对话框重新生成。`,
+    confirmBtn: "删除",
+    cancelBtn: "取消",
+    theme: "warning",
+    onConfirm: async () => {
+      dialog.destroy();
+      await deleteSegment(index, segment);
+    },
+  });
+}
+
+async function deleteSegment(index: number, segment?: { sceneTitle?: string; segmentTitle?: string }) {
+  if (deletingSegment.value) return;
+  const context = currentProductionContext();
+  if (!context) return;
+  deletingSegment.value = true;
+  try {
+    await axios.post("/production/workbench/deleteSegment", {
+      projectId: context.projectId,
+      scriptId: context.scriptId,
+      segmentIndex: index,
+    });
+    window.$message.success(`「${segmentLabel(segment)}」已删除，可回到对话框重新生成`);
+    await refreshData();
+  } catch (error: any) {
+    window.$message.error(error?.message || "删除片段失败");
+  } finally {
+    deletingSegment.value = false;
+  }
+}
+
+function confirmResetStoryboard() {
+  const dialog = DialogPlugin.confirm({
+    header: "清空分镜",
+    body: "确定清空本集全部分镜吗？分镜表、分镜面板、分镜图与已生成视频会一并清空，清空后可回到对话框重新生成。",
+    confirmBtn: "清空",
+    cancelBtn: "取消",
+    theme: "warning",
+    onConfirm: async () => {
+      dialog.destroy();
+      await resetStage("storyboard");
+    },
+  });
+}
+
+function confirmResetDirectorPlan() {
+  const dialog = DialogPlugin.confirm({
+    header: "删除导演规划",
+    body: "确定删除整份导演规划吗？分镜表、分镜面板、分镜图与已生成视频会一并清空，删除后可回到对话框重新制定。",
+    confirmBtn: "删除",
+    cancelBtn: "取消",
+    theme: "warning",
+    onConfirm: async () => {
+      dialog.destroy();
+      await resetStage("directorPlan");
+    },
+  });
+}
+
+async function resetStage(stage: "directorPlan" | "storyboard") {
+  if (resettingStage.value) return;
+  const context = currentProductionContext();
+  if (!context) return;
+  resettingStage.value = true;
+  try {
+    await axios.post("/production/workbench/resetStage", {
+      projectId: context.projectId,
+      scriptId: context.scriptId,
+      stage,
+    });
+    window.$message.success(
+      stage === "directorPlan" ? "导演规划已删除，可回到对话框重新制定" : "分镜已清空，可回到对话框重新生成",
+    );
+    await refreshData();
+  } catch (error: any) {
+    window.$message.error(error?.message || (stage === "directorPlan" ? "删除导演规划失败" : "清空分镜失败"));
+  } finally {
+    resettingStage.value = false;
+  }
+}
+
 async function handleEpisodesChange(value: unknown) {
   const rawValue = Array.isArray(value) ? value[0] : value;
   const nextId = Number(rawValue);
@@ -668,11 +823,6 @@ function runNextAction() {
 
 function openAssetLibrary() {
   router.push({ path: "/assets", query: { from: "production" } });
-}
-
-function handleThinkLevelChange(value: unknown) {
-  const rawValue = Array.isArray(value) ? value[0] : value;
-  productionStore.updateThinkConfig(Number(rawValue));
 }
 
 function handleReconnect() {
@@ -715,6 +865,9 @@ function handleClearMemory(type: "message" | "summary" | "all") {
         episodesId: currentEpisodesId.value,
         type,
       });
+      if ((type === "message" || type === "all") && project.value?.id && currentEpisodesId.value) {
+        await productionStore.clearRuntime(Number(project.value.id), Number(currentEpisodesId.value));
+      }
       window.$message.success($t("workbench.production.chatBox.memoryCleared", { type: memoryTypeLabel[type] }));
       dialog.destroy();
       productionStore.getHistory();
@@ -887,6 +1040,13 @@ onUnmounted(() => {
           &.is-error {
             color: var(--td-error-color);
             border-color: var(--td-error-color-4);
+          }
+
+          .activityHint {
+            margin-left: auto;
+            font-size: 12px;
+            opacity: 0.72;
+            white-space: nowrap;
           }
         }
 
@@ -1114,6 +1274,17 @@ onUnmounted(() => {
       box-sizing: border-box;
       padding: 16px 20px 32px;
 
+      .planActions {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        display: flex;
+        justify-content: flex-end;
+        margin-bottom: 8px;
+        padding: 2px 0;
+        background: var(--td-bg-color-container, #fff);
+      }
+
       :deep(.md-editor-preview-wrapper) {
         padding: 0;
       }
@@ -1201,6 +1372,25 @@ onUnmounted(() => {
         &:first-child {
           margin-top: 0;
         }
+      }
+
+      .shotListToolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 2px 2px 4px;
+
+        .shotListCount {
+          color: var(--td-text-color-secondary, #777);
+          font-size: 12px;
+        }
+      }
+
+      .shotCardDelete {
+        flex-shrink: 0;
+        align-self: flex-start;
+        color: var(--td-error-color-6, #d54941);
       }
 
       .shotCard {

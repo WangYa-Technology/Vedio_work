@@ -5,6 +5,7 @@ import {
   migrateLegacyPromptForH3,
   removeNarrationLipSyncInstructions,
 } from "./videoPromptMigration";
+import type { VideoModelPromptProfile } from "./videoModelPromptProfile";
 
 test("removes negative lip-sync controls from prompts", () => {
   const prompt = "旁白 VO：他本来能掌控一切，却失去了退路；角色闭嘴。";
@@ -163,4 +164,48 @@ test("migrates the Chinese four-module shell without leaking negative constraint
 
   assert.match(migrated, /detailed_description:[\s\S]*降落伞塌陷/);
   assert.doesNotMatch(migrated, /人物远景镜头|反向运动/);
+});
+
+test("profile 参数位是接缝：传与不传的输出逐字一致（当前不门控）", () => {
+  const prompt = `subject_definitions:
+<Subject 1> is the night alley stall environment bound to @图1（夜市后巷炸串摊夜景）.
+summary:
+[reference generation] The target video is a 12-second sequence in <Subject 1>.
+retention_analysis:
+<Subject 1> (appears in [Shot 1]): fully_preserved - the referenced stall layout stays fixed.
+detailed_description:
+[Shot 1] 中景，摊主低头切菜，油锅翻滚。 (no srt, no music)
+overall_soundscape:
+夜市人声与油锅声。
+non_diegetic_music:
+低沉配乐渐入。`;
+
+  const h3Profile: VideoModelPromptProfile = {
+    modelFamily: "minimax-h3",
+    modeKind: "multiReference",
+    referenceToken: "@图",
+    referenceLimit: 9,
+    maxDuration: 15,
+    audioPolicy: "optional",
+    requiresStartEnd: false,
+  };
+  const genericProfile: VideoModelPromptProfile = {
+    modelFamily: "generic",
+    modeKind: "firstLastFrame",
+    referenceToken: "@图",
+    referenceLimit: null,
+    maxDuration: 15,
+    audioPolicy: "supported",
+    requiresStartEnd: true,
+  };
+
+  const plain = enforceVideoPromptOutputConstraints(prompt);
+  const withH3 = enforceVideoPromptOutputConstraints(prompt, undefined, { profile: h3Profile });
+  const withGeneric = enforceVideoPromptOutputConstraints(prompt, undefined, { profile: genericProfile });
+
+  assert.equal(withH3, plain);
+  assert.equal(withGeneric, plain);
+  assert.match(plain, /non_diegetic_music:\s*N\/A\s*$/);
+  assert.match(plain, /画面文字：N\/A，标题：N\/A，对话气泡：N\/A/);
+  assert.doesNotMatch(plain, /低沉配乐/);
 });

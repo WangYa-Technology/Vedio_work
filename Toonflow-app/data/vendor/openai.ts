@@ -1,6 +1,9 @@
 /**
  * Toonflow AI供应商模板
- * @version 2.0
+ * @version 2.2
+ * 说明：文本请求默认按「开启思考 + 最高档」处理。按模型族注入思考参数：
+ * OpenAI 系（gpt-5+/o 系）→ reasoning_effort；GLM 系 → thinking:{type:"enabled"}；
+ * DeepSeek 系 → thinking + reasoning_effort(max)。上游因参数不支持返回 400/422 时自动回退原样请求。
  */
 // ============================================================
 // 类型定义
@@ -100,7 +103,7 @@ declare const createMinimax: any;
 declare const createGoogleGenerativeAI: any;
 declare const exports: {
   vendor: VendorConfig;
-  textRequest: (m: TextModel, t: boolean, tl: 0 | 1 | 2 | 3) => any;
+  textRequest: (m: TextModel, t?: boolean, tl?: 0 | 1 | 2 | 3) => any;
   imageRequest: (c: ImageConfig, m: ImageModel) => Promise<string>;
   videoRequest: (c: VideoConfig, m: VideoModel) => Promise<string>;
   ttsRequest: (c: TTSConfig, m: TTSModel) => Promise<string>;
@@ -112,7 +115,7 @@ declare const exports: {
 // ============================================================
 const vendor: VendorConfig = {
   id: "openai",
-  version: "2.0",
+  version: "2.2",
   author: "Toonflow",
   name: "OpenAI标准接口",
   description: "OpenAI标准格式接口，可修改请求地址并手动添加模型。",
@@ -136,10 +139,49 @@ const vendor: VendorConfig = {
 // ============================================================
 // 适配器函数
 // ============================================================
-const textRequest = (model: TextModel, think: boolean, thinkLevel: 0 | 1 | 2 | 3) => {
+
+// 需要注入思考参数的模型族（gpt-4o/gpt-4.1 等非思考模型不注入）：
+// - OpenAI 系（gpt-5+/o 系）：注入 reasoning_effort（0/1/2/3 → minimal/low/medium/high）
+// - GLM 系（glm-4.5+/5.x，含 glm-5.3）：OpenAI 兼容接口用 thinking:{type:"enabled"} 开启思考（无 effort 档位）
+// - DeepSeek 系：thinking:{type:"enabled"} + reasoning_effort（0/1/2 → high，3 → max）
+const THINKING_MODEL_PATTERN = /^(gpt-[5-9]|o[3-9]|glm-[45]|deepseek-v[3-9]|kimi-k[2-9]|minimax-m2)/i;
+
+function buildThinkingAttrs(modelName: string, thinkLevel: 0 | 1 | 2 | 3): Record<string, any> {
+  const lowerName = String(modelName || "").toLowerCase();
+  if (/^glm-/.test(lowerName)) {
+    return { thinking: { type: "enabled" } };
+  }
+  if (/^deepseek-/.test(lowerName)) {
+    const deepseekEffortMap: Record<number, string> = { 0: "high", 1: "high", 2: "high", 3: "max" };
+    return { thinking: { type: "enabled" }, reasoning_effort: deepseekEffortMap[thinkLevel] ?? "max" };
+  }
+  const effortMap: Record<number, string> = { 0: "minimal", 1: "low", 2: "medium", 3: "high" };
+  return { reasoning_effort: effortMap[thinkLevel] ?? "high" };
+}
+
+const textRequest = (model: TextModel, think: boolean = true, thinkLevel: 0 | 1 | 2 | 3 = 3) => {
   if (!vendor.inputValues.apiKey) throw new Error("缺少API Key");
   const apiKey = vendor.inputValues.apiKey.replace(/^Bearer\s+/i, "");
-  return createOpenAI({ baseURL: vendor.inputValues.baseUrl, apiKey }).chat(model.modelName);
+  const enableThinking = THINKING_MODEL_PATTERN.test(String(model.modelName || "")) && think !== false;
+  const thinkingAttrs = enableThinking ? buildThinkingAttrs(model.modelName, thinkLevel) : null;
+
+  return createOpenAI({
+    baseURL: vendor.inputValues.baseUrl,
+    apiKey,
+    fetch: async (url: string, options?: RequestInit) => {
+      if (!thinkingAttrs) return await fetch(url, options as RequestInit);
+      const rawBody = JSON.parse((options?.body as string) ?? "{}");
+      // 调用方已给出的同名字段优先（不覆盖）
+      const modifiedBody = { ...thinkingAttrs, ...rawBody };
+      const first = await fetch(url, { ...options, body: JSON.stringify(modifiedBody) });
+      // 自愈回退：上游不认识思考参数时（400/422）用原始请求体重试一次，保证网关可用性
+      if (first.status === 400 || first.status === 422) {
+        logger(`[openai] 上游拒绝思考参数，已回退原样请求: ${model.modelName}`);
+        return await fetch(url, options as RequestInit);
+      }
+      return first;
+    },
+  }).chat(model.modelName);
 };
 const imageRequest = async (config: ImageConfig, model: ImageModel): Promise<string> => {
   return "";
@@ -151,7 +193,7 @@ const ttsRequest = async (config: TTSConfig, model: TTSModel): Promise<string> =
   return "";
 };
 const checkForUpdates = async (): Promise<{ hasUpdate: boolean; latestVersion: string; notice: string }> => {
-  return { hasUpdate: false, latestVersion: "2.0", notice: "" };
+  return { hasUpdate: false, latestVersion: "2.2", notice: "" };
 };
 const updateVendor = async (): Promise<string> => {
   return "";

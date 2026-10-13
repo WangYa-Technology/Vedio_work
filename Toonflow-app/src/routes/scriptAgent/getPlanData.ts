@@ -4,6 +4,7 @@ import u from "@/utils";
 import { z } from "zod";
 import { validateFields } from "@/middleware/middleware";
 import { EMPTY_PROJECT_GLOBAL_CONTEXT } from "@/schemas/projectGlobalContext";
+import { loadScriptAgentProgress } from "@/agents/scriptAgent/progress";
 const router = express.Router();
 
 export default router.post(
@@ -15,6 +16,8 @@ export default router.post(
   async (req, res) => {
     const { projectId, agentType } = req.body;
     const row = await u.db("o_agentWorkData").where({ projectId: projectId, key: agentType }).first();
+    // 进度快照（三阶段状态 / 每集审核状态 / 结论句）：派生数据、只读展示，前端不得回写工作表
+    const progress = await loadScriptAgentProgress(projectId);
 
     if (!row) {
       const now = Date.now();
@@ -36,6 +39,7 @@ export default router.post(
             adaptationStrategy: "",
             script: [],
             projectGlobalContext: EMPTY_PROJECT_GLOBAL_CONTEXT,
+            progress,
           },
           id,
         }),
@@ -51,6 +55,7 @@ export default router.post(
       data.projectGlobalContext = EMPTY_PROJECT_GLOBAL_CONTEXT;
     }
     data.script = await u.db("o_script").where({ projectId }).select("id", "name", "content");
+    data.progress = progress;
 
     res.status(200).send(success({ data, id: row.id }));
   },

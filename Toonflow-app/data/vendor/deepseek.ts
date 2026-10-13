@@ -1,6 +1,7 @@
 /**
  * Toonflow AI供应商模板 - DeepSeek
- * @version 2.1
+ * @version 2.2
+ * 说明：textRequest 未显式传入思考参数时，默认开启思考（thinking enabled）并取最高强度 max。
  */
 
 // ============================================================
@@ -113,7 +114,7 @@ declare const createMinimax: any;
 declare const createGoogleGenerativeAI: any;
 declare const exports: {
   vendor: VendorConfig;
-  textRequest: (m: TextModel, t: boolean, tl: 0 | 1 | 2 | 3) => any;
+  textRequest: (m: TextModel, t?: boolean, tl?: 0 | 1 | 2 | 3) => any;
   imageRequest: (c: ImageConfig, m: ImageModel) => Promise<string>;
   videoRequest: (c: VideoConfig, m: VideoModel) => Promise<string>;
   ttsRequest: (c: TTSConfig, m: TTSModel) => Promise<string>;
@@ -127,7 +128,7 @@ declare const exports: {
 
 const vendor: VendorConfig = {
   id: "deepseek",
-  version: "2.1",
+  version: "2.2",
   author: "Toonflow",
   name: "DeepSeek",
   description:
@@ -151,12 +152,13 @@ const vendor: VendorConfig = {
 // 适配器函数
 // ============================================================
 
-const textRequest = (model: TextModel, think: boolean, thinkLevel: 0 | 1 | 2 | 3) => {
+const textRequest = (model: TextModel, think: boolean = true, thinkLevel: 0 | 1 | 2 | 3 = 3) => {
   if (!vendor.inputValues.apiKey) throw new Error("缺少API Key");
   const apiKey = vendor.inputValues.apiKey.replace(/^Bearer\s+/i, "");
 
   // DeepSeek 思考强度仅支持 high / max（low、medium 会被映射为 high，xhigh 会被映射为 max）
-  // thinkLevel: 0/1/2 → high, 3 → max
+  // 默认：未显式传参时开启思考并取最高档 max（think=true、thinkLevel=3）；
+  //       调用方显式传 think=false 可关闭思考，传 thinkLevel 可改档（0/1/2 → high，3 → max）。
   const effortMap: Record<0 | 1 | 2 | 3, "high" | "max"> = {
     0: "high",
     1: "high",

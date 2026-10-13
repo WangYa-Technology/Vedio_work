@@ -39,6 +39,7 @@
             <i-loading-four v-if="workflowBusy" class="workflowSpinner" size="16" />
             <i-info v-else-if="workflowStatus.state === 'error'" size="16" />
             <span>{{ workflowStatusLabel }}</span>
+            <span v-if="lastActivitySeconds !== null" class="activityHint">最后活跃 {{ lastActivitySeconds }} 秒前</span>
           </div>
           <div v-if="nextAction" class="nextAction">
             <div class="nextActionCopy">
@@ -51,7 +52,7 @@
           </div>
           <t-chat-sender
             class="inputBox"
-            :disabled="status === 'pending' || status === 'streaming' || loadingProjectData || !activeProjectId"
+            :disabled="status === 'pending' || status === 'streaming' || loadingProjectData || !activeProjectId || !connected"
             v-model="inputValue"
             :loading="status === 'pending' || status === 'streaming'"
             placeholder="$t('workbench.scriptAgent.inputPlaceholder')"
@@ -59,7 +60,8 @@
             @stop="handleStop">
             <template #footer-prefix>
               <t-popup trigger="click" placement="top-left">
-                <t-button shape="square" variant="outline" size="small" :disabled="status === 'pending' || status === 'streaming'">
+                <!-- 断连期间必须保留"重新连接"入口，因此这里不按生成状态禁用 -->
+                <t-button shape="square" variant="outline" size="small" :disabled="loadingProjectData">
                   <template #icon>
                     <i-setting-config size="16" />
                   </template>
@@ -100,14 +102,68 @@
         </div>
       </Pane>
       <Pane :size="70" :min-size="30" class="data">
+        <div v-if="stageProgress" class="progressPanel">
+          <div class="stagePills">
+            <button
+              type="button"
+              class="stagePill"
+              :class="{ 'is-ready': stageProgress.storySkeleton.ready, 'is-active': currentTable === 1 }"
+              @click="currentTable = 1">
+              <span class="stageName">{{ $t("workbench.scriptAgent.storySkeleton") }}</span>
+              <span class="stageMeta">{{ stageMeta(stageProgress.storySkeleton) }}</span>
+            </button>
+            <button
+              type="button"
+              class="stagePill"
+              :class="{ 'is-ready': stageProgress.adaptationStrategy.ready, 'is-active': currentTable === 2 }"
+              @click="currentTable = 2">
+              <span class="stageName">{{ $t("workbench.scriptAgent.adaptationStrategy") }}</span>
+              <span class="stageMeta">{{ stageMeta(stageProgress.adaptationStrategy) }}</span>
+            </button>
+            <button
+              type="button"
+              class="stagePill"
+              :class="{ 'is-ready': (scriptProgress?.savedCount ?? 0) > 0, 'is-active': currentTable === 3 }"
+              @click="currentTable = 3">
+              <span class="stageName">{{ $t("workbench.scriptAgent.script") }}</span>
+              <span class="stageMeta">{{ scriptStageMeta }}</span>
+            </button>
+          </div>
+          <div v-if="scriptProgress" class="progressRow">
+            <div class="progressTrack">
+              <span class="progressText">{{ episodeCountText }}</span>
+              <t-progress :percentage="scriptProgressPercentage" :label="false" size="small" />
+            </div>
+            <t-button v-if="nextBatchRange && !workflowBusy" size="small" theme="primary" @click="startNextBatch">
+              {{ $t("workbench.scriptAgent.progress.continueRange", { range: formatEpisodeRange(nextBatchRange.from, nextBatchRange.to) }) }}
+            </t-button>
+          </div>
+          <div v-if="conclusiveText" class="conclusiveLine">{{ conclusiveText }}</div>
+        </div>
         <div class="tabsWrapper">
           <t-tabs v-model="currentTable">
             <template #action>
-              <div class="ac" v-if="currentTable == 1">
+              <div class="ac stageTabActions" v-if="currentTable == 1">
                 <t-button @click="editMdPreview">{{ $t("workbench.scriptAgent.edit") }}</t-button>
+                <t-button
+                  theme="danger"
+                  variant="outline"
+                  :disabled="!planData.storySkeleton || workflowBusy || deletingStage"
+                  @click="confirmDeleteStage('storySkeleton')">
+                  <template #icon><i-delete size="16" /></template>
+                  删除
+                </t-button>
               </div>
-              <div class="ac" v-else-if="currentTable == 2">
+              <div class="ac stageTabActions" v-else-if="currentTable == 2">
                 <t-button @click="editMdPreview">{{ $t("workbench.scriptAgent.edit") }}</t-button>
+                <t-button
+                  theme="danger"
+                  variant="outline"
+                  :disabled="!planData.adaptationStrategy || workflowBusy || deletingStage"
+                  @click="confirmDeleteStage('adaptationStrategy')">
+                  <template #icon><i-delete size="16" /></template>
+                  删除
+                </t-button>
               </div>
             </template>
             <!-- <t-tab-panel :value="1" :label="$t('workbench.scriptAgent.chapterEvents')">
@@ -115,12 +171,14 @@
             </t-tab-panel> -->
             <t-tab-panel :value="1" :label="$t('workbench.scriptAgent.storySkeleton')">
               <div class="panelContent">
+                <div v-if="stageProgress?.storySkeleton.ready" class="stageReviewLine">{{ stageMeta(stageProgress.storySkeleton) }}</div>
                 <MdPreview v-if="planData.storySkeleton" :modelValue="normalizeScriptAgentContent(planData.storySkeleton)" />
                 <t-empty v-else :title="$t('workbench.scriptAgent.noContent')" />
               </div>
             </t-tab-panel>
             <t-tab-panel :value="2" :label="$t('workbench.scriptAgent.adaptationStrategy')">
               <div class="panelContent">
+                <div v-if="stageProgress?.adaptationStrategy.ready" class="stageReviewLine">{{ stageMeta(stageProgress.adaptationStrategy) }}</div>
                 <MdPreview v-if="planData.adaptationStrategy" :modelValue="normalizeScriptAgentContent(planData.adaptationStrategy)" />
                 <t-empty v-else :title="$t('workbench.scriptAgent.noContent')" />
               </div>
@@ -143,6 +201,14 @@
                           <template #icon><i-delete size="14" /></template>
                         </t-button>
                       </div>
+                    </div>
+                    <div class="scriptCardMeta">
+                      <span class="metaChip">EP{{ String(scriptBadgeOf(item.name, index)?.episodeNo ?? episodeNoFromScriptName(item.name, index)).padStart(2, "0") }}</span>
+                      <span class="metaChip">{{ $t("workbench.scriptAgent.progress.chars", { chars: scriptBadgeOf(item.name, index)?.chars ?? item.content.trim().length }) }}</span>
+                      <t-tag size="small" variant="light" :theme="reviewBadgeTheme(scriptBadgeOf(item.name, index)?.review)">
+                        {{ reviewBadgeText(scriptBadgeOf(item.name, index)?.review) }}
+                      </t-tag>
+                      <span v-if="scriptBadgeOf(item.name, index)?.savedAt" class="metaTime">{{ formatSavedAt(scriptBadgeOf(item.name, index)?.savedAt) }}</span>
                     </div>
                     <div class="scriptCardBody">
                       <pre v-if="item.content">{{ item.content }}</pre>
@@ -201,10 +267,13 @@ import projectStore from "@/stores/project";
 import router from "@/router";
 const { project } = storeToRefs(projectStore());
 import editMdPreivew from "@/components/editMdPreivew.vue";
-import scriptAgentStore from "@/stores/scriptAgent";
+import scriptAgentStore, { type EpisodeProgress, type ScriptAgentProgressSnapshot } from "@/stores/scriptAgent";
 import { createEmptyProjectGlobalContext } from "@/types/projectGlobalContext";
 import type { ProjectGlobalMaterial } from "@/types/projectGlobalContext";
 import { normalizeScriptAgentContent } from "@/utils/scriptAgentContent";
+import { getLastActivityAgoMs } from "@/utils/chatDiagnostics";
+import { useI18n } from "vue-i18n";
+const { t } = useI18n();
 const scriptAgent = scriptAgentStore();
 const { connected, messages, renderableMessages, status, workflowStatus, planData } = storeToRefs(scriptAgent);
 const currentTable = ref(1);
@@ -223,7 +292,39 @@ const workflowBusy = computed(() =>
   status.value === "pending" || status.value === "streaming" || workflowStatus.value.state === "working" || workflowStatus.value.state === "retrying",
 );
 const showWorkflowStatus = computed(() => Boolean(workflowStatus.value.label) && (workflowBusy.value || workflowStatus.value.state === "error"));
-const workflowStatusLabel = computed(() => workflowStatus.value.label || "正在处理当前任务");
+const workflowStatusLabel = computed(() => {
+  const recordLabel = workflowStatus.value.label || "正在处理当前任务";
+  // 非忙碌的失败/中断态：优先展示"已完成什么、下一步做什么"的确定性结论；
+  // 老记录里"上次生成已中断，可继续"这类含糊文案会被结论替换
+  if (!workflowBusy.value && workflowStatus.value.state === "error" && conclusiveText.value && !recordLabel.includes(conclusiveText.value)) {
+    return conclusiveText.value;
+  }
+  return recordLabel;
+});
+
+// "最后活跃 X 秒前"：忙碌时每秒刷新，用于分辨后端是"在跑"还是"卡住了"
+const lastActivitySeconds = ref<number | null>(null);
+let activityTimer: ReturnType<typeof setInterval> | null = null;
+function stopActivityTimer() {
+  if (!activityTimer) return;
+  clearInterval(activityTimer);
+  activityTimer = null;
+  lastActivitySeconds.value = null;
+}
+watch(workflowBusy, (busy) => {
+  if (!busy) {
+    stopActivityTimer();
+    return;
+  }
+  if (activityTimer) return;
+  const refresh = () => {
+    const ago = getLastActivityAgoMs();
+    lastActivitySeconds.value = ago >= 0 ? Math.round(ago / 1000) : null;
+  };
+  refresh();
+  activityTimer = setInterval(refresh, 1000);
+});
+onUnmounted(stopActivityTimer);
 
 function getTargetEpisodeCount(...contents: string[]) {
   const text = contents.join("\n");
@@ -233,11 +334,105 @@ function getTargetEpisodeCount(...contents: string[]) {
   return Number.isSafeInteger(count) && count > 0 && count <= 100 ? count : undefined;
 }
 
-const targetEpisodeCount = computed(() => getTargetEpisodeCount(planData.value.adaptationStrategy, planData.value.storySkeleton));
-const persistedScriptCount = computed(() => planData.value.script.filter((item) => item.name.trim() && item.content.trim()).length);
-const remainingScriptCount = computed(() =>
-  targetEpisodeCount.value === undefined ? undefined : Math.max(targetEpisodeCount.value - persistedScriptCount.value, 0),
+/* ==================== 进度快照（后端派生，只读展示） ==================== */
+const progressSnapshot = computed(() => planData.value.progress);
+const stageProgress = computed(() => progressSnapshot.value?.stages);
+const scriptProgress = computed(() => progressSnapshot.value?.scripts);
+const conclusiveText = computed(() => progressSnapshot.value?.conclusive ?? "");
+const nextBatchRange = computed(() => scriptProgress.value?.nextRange);
+
+// 优先用后端确定性进度，缺失（老后端/接口失败）时回退到原有文本推导
+const targetEpisodeCount = computed(
+  () => scriptProgress.value?.targetEpisodes ?? getTargetEpisodeCount(planData.value.adaptationStrategy, planData.value.storySkeleton),
 );
+const persistedScriptCount = computed(
+  () => scriptProgress.value?.savedCount ?? planData.value.script.filter((item) => item.name.trim() && item.content.trim()).length,
+);
+const remainingScriptCount = computed(() => {
+  const fromProgress = scriptProgress.value?.remaining;
+  if (fromProgress !== undefined) return fromProgress;
+  return targetEpisodeCount.value === undefined ? undefined : Math.max(targetEpisodeCount.value - persistedScriptCount.value, 0);
+});
+
+function formatEpisodeRange(from: number, to: number) {
+  const label = (value: number) => `EP${String(value).padStart(2, "0")}`;
+  return from === to ? label(from) : `${label(from)}-${label(to)}`;
+}
+
+/** 阶段胶囊文案：未生成 / 已生成（字数）· 最近审核评级 */
+function stageMeta(progress?: { ready: boolean; chars: number; latestReview?: { rating: string } }) {
+  if (!progress?.ready) return t("workbench.scriptAgent.progress.notStarted");
+  const parts = [t("workbench.scriptAgent.progress.generated", { chars: progress.chars })];
+  if (progress.latestReview?.rating) parts.push(t("workbench.scriptAgent.progress.ratingShort", { rating: progress.latestReview.rating }));
+  return parts.join(" · ");
+}
+
+const scriptStageMeta = computed(() => {
+  const scripts = scriptProgress.value;
+  if (!scripts) return t("workbench.scriptAgent.progress.notStarted");
+  const total = scripts.targetEpisodes;
+  const parts = [
+    total === undefined
+      ? t("workbench.scriptAgent.progress.episodesUnknown", { saved: scripts.savedCount })
+      : t("workbench.scriptAgent.progress.episodes", { saved: scripts.savedCount, target: total }),
+  ];
+  if (scripts.latestReview?.rating) parts.push(t("workbench.scriptAgent.progress.ratingShort", { rating: scripts.latestReview.rating }));
+  return parts.join(" · ");
+});
+
+const scriptProgressPercentage = computed(() => {
+  const scripts = scriptProgress.value;
+  if (!scripts?.targetEpisodes) return 0;
+  return Math.min(100, Math.round((scripts.savedCount / scripts.targetEpisodes) * 100));
+});
+
+/** 剧本集数进度文案：3/19 集；目标集数未识别时只显示已保存数 */
+const episodeCountText = computed(() => {
+  const scripts = scriptProgress.value;
+  if (!scripts) return "";
+  return scripts.targetEpisodes === undefined
+    ? t("workbench.scriptAgent.progress.episodesUnknown", { saved: scripts.savedCount })
+    : t("workbench.scriptAgent.progress.episodes", { saved: scripts.savedCount, target: scripts.targetEpisodes });
+});
+
+/** 每集进度：按集号匹配剧本卡片，用于徽标；匹配不到时按列表顺序兜底 */
+function episodeNoFromScriptName(name: string, fallbackIndex: number) {
+  const matched = String(name ?? "").match(/\bEP\s*0*(\d{1,4})\b/i) ?? String(name ?? "").match(/第\s*0*(\d{1,4})\s*集/);
+  const value = Number(matched?.[1]);
+  return Number.isSafeInteger(value) && value > 0 ? value : fallbackIndex + 1;
+}
+const episodeProgressByNo = computed(() => {
+  const map = new Map<number, EpisodeProgress>();
+  for (const episode of scriptProgress.value?.episodes ?? []) map.set(episode.episodeNo, episode);
+  return map;
+});
+function scriptBadgeOf(name: string, index: number) {
+  return episodeProgressByNo.value.get(episodeNoFromScriptName(name, index));
+}
+function reviewBadgeText(review?: EpisodeProgress["review"]) {
+  if (!review || review.status === "unreviewed") return t("workbench.scriptAgent.progress.reviewUnreviewed");
+  if (review.status === "blocked") return t("workbench.scriptAgent.progress.reviewBlocked", { count: review.blocking });
+  if (review.status === "issues") return t("workbench.scriptAgent.progress.reviewIssues", { count: review.medium + review.light });
+  return t("workbench.scriptAgent.progress.reviewPassed");
+}
+function reviewBadgeTheme(review?: EpisodeProgress["review"]) {
+  if (!review || review.status === "unreviewed") return "default";
+  if (review.status === "blocked") return "danger";
+  if (review.status === "issues") return "warning";
+  return "success";
+}
+function formatSavedAt(at?: number) {
+  if (!at) return "";
+  const date = new Date(at);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getMonth() + 1}/${date.getDate()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+/** 面板里的进度操作按钮：直接发起"继续生成 EPxx-EPyy" */
+function startNextBatch() {
+  const range = nextBatchRange.value;
+  if (!range || workflowBusy.value) return;
+  scriptAgent.chat(`继续生成 ${formatEpisodeRange(range.from, range.to)}`);
+}
 
 const nextAction = computed(() => {
   if (workflowBusy.value || loadingProjectData.value || !activeProjectId.value) return null;
@@ -252,11 +447,15 @@ const nextAction = computed(() => {
   }
   if (remainingScriptCount.value !== undefined && remainingScriptCount.value > 0) {
     const generatedCount = persistedScriptCount.value;
+    const range = nextBatchRange.value;
+    const rangeText = range ? formatEpisodeRange(range.from, range.to) : "";
     return {
       title: "剧本尚未完成",
-      description: `已生成 ${generatedCount}/${targetEpisodeCount.value} 集，剩余 ${remainingScriptCount.value} 集待生成。`,
-      label: workflowStatus.value.state === "error" ? "重新生成" : "继续生成",
-      prompt: "继续生成剩余剧本",
+      description: range
+        ? `已生成 ${generatedCount}/${targetEpisodeCount.value} 集，下一步 ${rangeText}（共 ${remainingScriptCount.value} 集待生成）。`
+        : `已生成 ${generatedCount}/${targetEpisodeCount.value} 集，剩余 ${remainingScriptCount.value} 集待生成。`,
+      label: range ? `继续生成 ${rangeText}` : workflowStatus.value.state === "error" ? "重新生成" : "继续生成",
+      prompt: range ? `继续生成 ${rangeText}` : "继续生成剩余剧本",
       type: "chat" as const,
     };
   }
@@ -366,6 +565,65 @@ function normalizePlanResponse(response: any) {
       character: normalizeGlobalMaterial(value?.projectGlobalContext?.character, emptyGlobalContext.character),
       world: normalizeGlobalMaterial(value?.projectGlobalContext?.world, emptyGlobalContext.world),
     },
+    // 只读进度快照：后端派生，缺字段时保持 undefined（界面自动回退到文本推导）
+    progress: normalizeProgress(value?.progress),
+  };
+}
+
+function normalizeProgress(input: any): ScriptAgentProgressSnapshot | undefined {
+  if (!input || typeof input !== "object") return undefined;
+  const normalizeReview = (review: any) =>
+    review && typeof review === "object" && Number.isFinite(Number(review.at))
+      ? {
+          rating: typeof review.rating === "string" ? review.rating : "-",
+          at: Number(review.at),
+          blocking: Number(review.blocking) || 0,
+          medium: Number(review.medium) || 0,
+          light: Number(review.light) || 0,
+          closed: Number(review.closed) || 0,
+        }
+      : undefined;
+  const normalizeStage = (stage: any) => ({
+    ready: Boolean(stage?.ready),
+    chars: Number(stage?.chars) || 0,
+    ...(normalizeReview(stage?.latestReview) ? { latestReview: normalizeReview(stage?.latestReview) } : {}),
+  });
+  const scripts = input.scripts && typeof input.scripts === "object" ? input.scripts : {};
+  return {
+    stages: {
+      storySkeleton: normalizeStage(input.stages?.storySkeleton),
+      adaptationStrategy: normalizeStage(input.stages?.adaptationStrategy),
+    },
+    scripts: {
+      ...(Number.isSafeInteger(Number(scripts.targetEpisodes)) && Number(scripts.targetEpisodes) > 0
+        ? { targetEpisodes: Number(scripts.targetEpisodes) }
+        : {}),
+      savedCount: Number(scripts.savedCount) || 0,
+      ...(Number.isFinite(Number(scripts.remaining)) ? { remaining: Math.max(Number(scripts.remaining), 0) } : {}),
+      ...(Number(scripts.nextRange?.from) > 0 && Number(scripts.nextRange?.to) >= Number(scripts.nextRange?.from)
+        ? { nextRange: { from: Number(scripts.nextRange.from), to: Number(scripts.nextRange.to) } }
+        : {}),
+      episodes: Array.isArray(scripts.episodes)
+        ? scripts.episodes
+            .filter((episode: any) => Number.isSafeInteger(Number(episode?.episodeNo)) && Number(episode.episodeNo) > 0)
+            .map((episode: any) => ({
+              episodeNo: Number(episode.episodeNo),
+              name: typeof episode.name === "string" ? episode.name : "",
+              chars: Number(episode.chars) || 0,
+              ...(Number.isFinite(Number(episode.savedAt)) ? { savedAt: Number(episode.savedAt) } : {}),
+              review: {
+                status: ["passed", "blocked", "issues"].includes(episode.review?.status) ? episode.review.status : "unreviewed",
+                ...(typeof episode.review?.rating === "string" ? { rating: episode.review.rating } : {}),
+                blocking: Number(episode.review?.blocking) || 0,
+                medium: Number(episode.review?.medium) || 0,
+                light: Number(episode.review?.light) || 0,
+                ...(Number.isFinite(Number(episode.review?.at)) ? { at: Number(episode.review.at) } : {}),
+              },
+            }))
+        : [],
+      ...(normalizeReview(scripts.latestReview) ? { latestReview: normalizeReview(scripts.latestReview) } : {}),
+    },
+    conclusive: typeof input.conclusive === "string" ? input.conclusive : "",
   };
 }
 
@@ -538,6 +796,45 @@ async function delScript(index: number) {
     },
   });
 }
+
+/* ==================== 阶段内容删除（故事骨架 / 改编策略） ==================== */
+const deletingStage = ref(false);
+
+const stageLabels: Record<"storySkeleton" | "adaptationStrategy", string> = {
+  storySkeleton: "故事骨架",
+  adaptationStrategy: "改编策略",
+};
+
+function confirmDeleteStage(stage: "storySkeleton" | "adaptationStrategy") {
+  const label = stageLabels[stage];
+  const dialog = DialogPlugin.confirm({
+    header: `删除${label}`,
+    body: `确定删除全部${label}吗？仅清空该阶段内容，项目设定与已生成的剧本不受影响，删除后可回到对话框让 AI 重新生成。`,
+    confirmBtn: "删除",
+    cancelBtn: "取消",
+    theme: "danger",
+    onConfirm: async () => {
+      dialog.destroy();
+      await deleteStage(stage);
+    },
+  });
+}
+
+async function deleteStage(stage: "storySkeleton" | "adaptationStrategy") {
+  const projectId = activeProjectId.value;
+  if (!projectId || deletingStage.value) return;
+  const label = stageLabels[stage];
+  deletingStage.value = true;
+  try {
+    await axios.post("/scriptAgent/deleteStage", { projectId, stage });
+    window.$message.success(`${label}已删除，可回到对话框重新生成`);
+    await getPlanData();
+  } catch (error: any) {
+    window.$message.error(error?.message || `删除${label}失败`);
+  } finally {
+    deletingStage.value = false;
+  }
+}
 async function onConfirm(value: string) {
   const projectId = activeProjectId.value;
   if (!projectId) return;
@@ -577,11 +874,17 @@ async function refreshProjectData(projectId: number | null) {
 }
 
 watch(activeProjectId, (projectId) => void refreshProjectData(projectId), { immediate: true });
+// 后台任务结束（多为断连期间在服务端跑完）后，重新拉取正式工作区数据补上前端没收到的那部分
+watch(
+  () => scriptAgent.runtimeSyncTick,
+  () => void getPlanData(),
+);
 
 onUnmounted(() => {
   ++projectLoadVersion.value;
   ++planRequestVersion.value;
-  scriptAgent.disconnect();
+  // 离开页面不主动断开连接，避免中断正在运行的剧本任务；
+  // 连接生命周期由项目切换 / 明确的操作（重新连接、停止）管理。
 });
 
 </script>
@@ -721,6 +1024,12 @@ onUnmounted(() => {
             color: var(--td-error-color);
             border-color: var(--td-error-color-4);
           }
+          .activityHint {
+            margin-left: auto;
+            font-size: 12px;
+            opacity: 0.72;
+            white-space: nowrap;
+          }
         }
         .workflowSpinner {
           animation: workflowRotate 0.9s linear infinite;
@@ -815,6 +1124,105 @@ onUnmounted(() => {
       flex-direction: column;
       height: 100%;
       position: relative;
+      .progressPanel {
+        margin: 10px 12px 0;
+        padding: 10px 12px;
+        border: 1px solid var(--td-border-level-2-color);
+        border-radius: 8px;
+        background: linear-gradient(180deg, var(--td-bg-color-container) 0%, var(--td-bg-color-secondarycontainer) 100%);
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+
+        .stagePills {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .stagePill {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 2px;
+          flex: 1 1 120px;
+          min-width: 0;
+          padding: 6px 10px;
+          border: 1px solid var(--td-border-level-2-color);
+          border-radius: 6px;
+          background: var(--td-bg-color-container);
+          cursor: pointer;
+          transition:
+            border-color 0.2s ease,
+            box-shadow 0.2s ease;
+
+          &:hover {
+            border-color: var(--td-brand-color);
+            box-shadow: 0 2px 8px rgba(0, 82, 217, 0.12);
+          }
+
+          &.is-active {
+            border-color: var(--td-brand-color);
+            box-shadow: inset 0 0 0 1px var(--td-brand-color);
+          }
+
+          &.is-ready .stageName {
+            color: var(--td-success-color);
+          }
+
+          .stageName {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--td-text-color-primary);
+          }
+
+          .stageMeta {
+            max-width: 100%;
+            overflow: hidden;
+            font-size: 12px;
+            color: var(--td-text-color-secondary);
+            white-space: nowrap;
+            text-overflow: ellipsis;
+          }
+        }
+
+        .progressRow {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+
+          .progressTrack {
+            display: flex;
+            flex: 1;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+
+            .progressText {
+              font-size: 12px;
+              color: var(--td-text-color-secondary);
+              white-space: nowrap;
+            }
+
+            .t-progress {
+              flex: 1;
+              min-width: 80px;
+              transition: width 0.3s ease;
+            }
+          }
+        }
+
+        .conclusiveLine {
+          font-size: 12px;
+          line-height: 1.6;
+          color: var(--td-text-color-secondary);
+          word-break: break-word;
+        }
+      }
+      .stageTabActions {
+        gap: 8px;
+      }
+
       .tabsWrapper {
         flex: 1;
         overflow: hidden;
@@ -859,6 +1267,39 @@ onUnmounted(() => {
   overflow-y: auto;
   padding: 12px 16px;
   box-sizing: border-box;
+}
+
+.stageReviewLine {
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--td-brand-color);
+  border-radius: 4px;
+  background: var(--td-bg-color-secondarycontainer);
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+}
+
+.scriptCardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 0;
+
+  .metaChip {
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--td-bg-color-secondarycontainer);
+    font-size: 12px;
+    line-height: 18px;
+    color: var(--td-text-color-secondary);
+  }
+
+  .metaTime {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--td-text-color-placeholder);
+  }
 }
 
 .scriptList {

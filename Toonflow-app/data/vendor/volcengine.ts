@@ -1,6 +1,7 @@
 /**
  * Toonflow AI供应商模板 - 火山引擎(豆包)
- * @version 2.0
+ * @version 2.5
+ * 说明：文本请求默认按「开启思考 + 最高档」处理，仅思考模型族注入 thinking/reasoning_effort。
  */
 
 // ============================================================
@@ -133,7 +134,7 @@ declare const exports: {
 
 const vendor: VendorConfig = {
   id: "volcengine",
-  version: "2.4",
+  version: "2.5",
   author: "leeqi",
   name: "火山引擎(豆包)",
   description: "火山引擎豆包大模型，支持文本、图片生成、视频生成等能力。\n\n需要在[火山引擎控制台](https://console.volcengine.com/ark)获取API密钥。",
@@ -289,7 +290,7 @@ const getBaseUrl = () => vendor.inputValues.baseUrl.replace(/\/+$/, "");
 // 适配器函数
 // ============================================================
 
-const textRequest = (model: TextModel, think: boolean, thinkLevel: 0 | 1 | 2 | 3) => {
+const textRequest = (model: TextModel, think: boolean = true, thinkLevel: 0 | 1 | 2 | 3 = 3) => {
   if (!vendor.inputValues.apiKey) throw new Error("缺少API Key");
   const apiKey = vendor.inputValues.apiKey.replace(/^Bearer\s+/i, "");
 
@@ -300,19 +301,25 @@ const textRequest = (model: TextModel, think: boolean, thinkLevel: 0 | 1 | 2 | 3
     3: "high",
   };
 
+  // 仅对支持思考的模型族注入；deepseek-v3 / doubao-1.5-pro 等非思考模型注入会被拒，保持原样
+  const supportsThinking = /doubao-seed-2|doubao-1-5-thinking|glm-4-[78]/i.test(model.modelName);
+  const enableThinking = supportsThinking && think !== false;
+
   return createOpenAICompatible({
     name: "volcengine",
     baseURL: getBaseUrl(),
     apiKey,
     fetch: async (url: string, options?: RequestInit) => {
       const rawBody = JSON.parse((options?.body as string) ?? "{}");
-      const modifiedBody = {
-        ...rawBody,
-        thinking: {
-          type: "enabled",
-        },
-        reasoning_effort: effortMap[thinkLevel],
-      };
+      const modifiedBody = enableThinking
+        ? {
+          ...rawBody,
+          thinking: {
+            type: "enabled",
+          },
+          reasoning_effort: effortMap[thinkLevel] ?? "high",
+        }
+        : rawBody;
       return await fetch(url, {
         ...options,
         body: JSON.stringify(modifiedBody),

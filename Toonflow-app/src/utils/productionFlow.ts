@@ -210,6 +210,7 @@ export async function buildProductionFlowData(projectId: number, scriptId: numbe
     script: flowData.script || script?.content || "",
     scriptPlan: flowData.scriptPlan || "",
     storyboardTable: flowData.storyboardTable || "",
+    waivers: Array.isArray(flowData.waivers) ? flowData.waivers : [],
     assets,
     storyboard,
     workbench: flowData.workbench || { videoList: [] },
@@ -301,4 +302,80 @@ export async function saveProductionFlowArtifact(
   const saved = await u.db("o_agentWorkData").where({ projectId, episodesId: scriptId, key: "productionFlowData" }).select("data").first();
   const savedData = safeJsonParse<AnyObject>(saved?.data, {});
   if (savedData[key] !== content) throw new Error(`${key === "scriptPlan" ? "导演规划" : "分镜表"}写入后回读校验失败`);
+}
+
+/**
+ * 追加一条容量豁免登记（只在用户显式选择「接受现状/授权删减」后调用；工具不得自动生成）。
+ * patch 合并，不影响工作区其他字段；写入后逐字节回读校验。
+ */
+export async function appendProductionFlowWaiver(
+  projectId: number,
+  scriptId: number,
+  waiver: {
+    scope: "duration" | "dialogue";
+    allowanceSeconds?: number;
+    allowanceChars?: number;
+    reason?: string;
+    grantedBy?: string;
+  },
+) {
+  if (!Number.isSafeInteger(projectId) || projectId <= 0 || !Number.isSafeInteger(scriptId) || scriptId <= 0) {
+    throw new Error("生产工作区缺少有效的项目或剧本上下文");
+  }
+  const scope = waiver.scope === "dialogue" ? "dialogue" : "duration";
+  const allowanceSeconds = Number(waiver.allowanceSeconds ?? 0);
+  const allowanceChars = Number(waiver.allowanceChars ?? 0);
+  if (scope === "duration" && !(allowanceSeconds > 0)) throw new Error("时长豁免必须给出大于 0 的秒数");
+  if (scope === "dialogue" && !(allowanceChars > 0)) throw new Error("台词豁免必须给出大于 0 的字数");
+  const record = {
+    scope,
+    allowanceSeconds: scope === "duration" ? allowanceSeconds : undefined,
+    allowanceChars: scope === "dialogue" ? allowanceChars : undefined,
+    reason: String(waiver.reason ?? "").trim() || undefined,
+    grantedBy: String(waiver.grantedBy ?? "user").trim() || "user",
+    at: Date.now(),
+  };
+
+  let rowId = 0;
+  await u.db.transaction(async (trx) => {
+    const existing = await trx("o_agentWorkData").where({ projectId, episodesId: scriptId, key: "productionFlowData" }).first();
+    let current: AnyObject = {};
+    try {
+      current = existing?.data ? JSON.parse(existing.data) : {};
+    } catch {
+      throw new Error("现有生产工作区数据格式无效，已阻止覆盖");
+    }
+    const waivers = Array.isArray(current.waivers) ? current.waivers : [];
+    const next = { ...current, waivers: [...waivers, record].slice(-20) };
+    const payload = JSON.stringify(next);
+    const now = Date.now();
+    if (existing) {
+      rowId = Number(existing.id);
+      await trx("o_agentWorkData")
+        .where({ id: existing.id, projectId, episodesId: scriptId })
+        .update({ data: payload, updateTime: now });
+      return;
+    }
+    const maxRow = await trx("o_agentWorkData").max("id as id").first();
+    rowId = Number((maxRow as any)?.id || 0) + 1;
+    await trx("o_agentWorkData").insert({
+      id: rowId,
+      projectId,
+      episodesId: scriptId,
+      key: "productionFlowData",
+      data: payload,
+      createTime: now,
+      updateTime: now,
+    });
+  });
+
+  const saved = await u
+    .db("o_agentWorkData")
+    .where({ id: rowId, projectId, episodesId: scriptId, key: "productionFlowData" })
+    .select("data")
+    .first();
+  const savedData = safeJsonParse<AnyObject>(saved?.data, {});
+  const savedWaivers = Array.isArray(savedData.waivers) ? savedData.waivers : [];
+  if (!savedWaivers.length) throw new Error("容量豁免写入后回读校验失败");
+  return record;
 }

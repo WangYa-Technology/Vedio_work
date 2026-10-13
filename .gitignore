@@ -1,0 +1,17 @@
+# 运行时日志
+*.log
+
+# 本地调试临时文件（Playwright 页面快照等）
+cs-*.yaml
+
+# 误创建的临时文件
+{if(e){console.error(e.message)
+
+# 运行时数据备份（体积大，不入库）
+Toonflow-app/data/backups/
+
+# 临时脚本
+Toonflow-app/scripts/tmp-*
+
+# AI 工具数据
+.codebuddy/

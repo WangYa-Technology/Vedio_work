@@ -10,9 +10,24 @@ import {
   type MirrorAttempt,
   runWithMirrorFailover,
 } from "@/utils/vendorMirrorPool";
+import { normalizeGeneratedImage } from "@/utils/imageNormalize";
+import {
+  describeAiError,
+  isForcedToolChoice,
+  isToolChoiceNeedsNoThinking,
+  isToolChoiceRejected,
+  isToolChoiceRelaxed,
+  markToolChoiceNeedsNoThinking,
+  markToolChoiceRelaxed,
+  resultHasToolCall,
+} from "@/utils/toolChoiceCompat";
 
 type AiType = "scriptAgent" | "productionAgent" | "universalAi";
 type FnName = "textRequest" | "imageRequest" | "videoRequest" | "ttsRequest";
+
+// 前端已移除「思考级别」档位控件：文本请求统一按「开启思考 + 最高档」发起。
+// 供应商模板自行决定如何把该意图映射到各自接口（不支持思考参数的模板会忽略这两个参数）。
+const TEXT_THINK_DEFAULT = { think: true, thinkLevel: 3 as 0 | 1 | 2 | 3 };
 
 const AiTypeValues: AiType[] = ["scriptAgent", "productionAgent", "universalAi"];
 async function resolveModelName(value: AiType | `${string}:${string}`): Promise<`${string}:${string}`> {
@@ -23,6 +38,16 @@ async function resolveModelName(value: AiType | `${string}:${string}`): Promise<
     if (!agentDeployData.modelName) throw new Error(`${value}模型未配置`);
     return agentDeployData.modelName as `${string}:${string}`;
   }
+  // 子层级未单独部署时回退到父级 Agent 的模型配置（如 productionAgent:baseAssetsAgent → productionAgent），
+  // 避免新增子 Agent 未同步部署行时抛“未找到供应商配置”。
+  const parentKey = String(value).split(":")[0];
+  if (parentKey !== value && AiTypeValues.includes(parentKey as AiType)) {
+    const parentDeployData = await u.db("o_agentDeploy").where("key", parentKey).first();
+    if (parentDeployData) {
+      if (!parentDeployData.modelName) throw new Error(`${value}模型未配置（父级 ${parentKey} 未配置模型）`);
+      return parentDeployData.modelName as `${string}:${string}`;
+    }
+  }
   if (AiTypeValues.includes(value as AiType)) throw new Error(`${value}模型未配置`);
   return value as `${number}:${string}`;
 }
@@ -31,6 +56,7 @@ async function getVendorTemplateFn(
   fnName: FnName,
   modelName: `${string}:${string}`,
   runtimeHooks?: VmRuntimeHooks,
+  textThink?: { think: boolean; thinkLevel?: 0 | 1 | 2 | 3 },
 ) {
   const { vendorId, modelName: name } = parseModelReference(modelName);
   const vendorConfigData = await u.db("o_vendorConfig").where("id", vendorId).first();
@@ -63,7 +89,13 @@ async function getVendorTemplateFn(
   }
   const fn = running[fnName];
   if (!fn) throw new Error(`未找到供应商配置中的函数 ${fnName} id=${vendorId}`);
-  if (fnName == "textRequest") return fn(selectedModel);
+  if (fnName == "textRequest") {
+    return fn(
+      selectedModel,
+      textThink?.think ?? TEXT_THINK_DEFAULT.think,
+      textThink?.thinkLevel ?? TEXT_THINK_DEFAULT.thinkLevel,
+    );
+  }
   if (fnName === "videoRequest" && vendorId.toLowerCase().includes("comfyui")) {
     return <T>(input: T) => {
       return (async () => {
@@ -131,35 +163,107 @@ class AiText {
   constructor(AiType: AiType | `${string}:${string}`) {
     this.AiType = AiType;
   }
-  async invoke(input: Omit<Parameters<typeof generateText>[0], "model">) {
+  private async buildTextOptions(
+    input: Omit<Parameters<typeof generateText>[0], "model">,
+    controls: {
+      modelName?: `${string}:${string}`;
+      disableThinking?: boolean;
+      relaxToolChoice?: boolean;
+    } = {},
+  ) {
     const switchAiDevTool = await u.db("o_setting").where("key", "switchAiDevTool").first();
+    const modelName = controls.modelName || (await resolveModelName(this.AiType));
+    const model = await getVendorTemplateFn(
+      "textRequest",
+      modelName,
+      undefined,
+      controls.disableThinking ? { think: false } : undefined,
+    );
+    const relaxed =
+      controls.relaxToolChoice && isForcedToolChoice(input.toolChoice)
+        ? { toolChoice: "auto" }
+        : {};
+    return {
+      modelName,
+      options: {
+        ...(input.tools && { stopWhen: stepCountIs(Object.keys(input.tools).length * 50) }),
+        ...input,
+        ...relaxed,
+        model:
+          switchAiDevTool?.value === "1"
+            ? wrapLanguageModel({ model, middleware: devToolsMiddleware() })
+            : model,
+      } as Parameters<typeof generateText>[0],
+    };
+  }
+  /**
+   * 文本请求。调用方显式强制工具选择（toolChoice: required 等）时，必须拿到工具结果，
+   * 因此这里按实测结论组织降级链（见 `toolChoiceCompat.ts`）：
+   *   1. 思考 + 强制（作者意图）；
+   *   2. 供应商在思考模式下拒绝 → 思考 + auto（保留思考，工具调用靠提示词强制）；
+   *   3. 仍没有工具调用 → 关思考 + 强制（实测稳定返回工具调用）。
+   * 每次命中的策略会记在进程内，后续同模型请求直接从可用形态发起。
+   */
+  async invoke(input: Omit<Parameters<typeof generateText>[0], "model">) {
+    if (!isForcedToolChoice(input.toolChoice)) {
+      const { options } = await this.buildTextOptions(input);
+      return await generateText(options);
+    }
+
     const modelName = await resolveModelName(this.AiType);
-    return generateText({
-      ...(input.tools && { stopWhen: stepCountIs(Object.keys(input.tools).length * 50) }),
-      ...input,
-      model:
-        switchAiDevTool?.value === "1"
-          ? wrapLanguageModel({
-              model: await getVendorTemplateFn("textRequest", modelName),
-              middleware: devToolsMiddleware(),
-            })
-          : await getVendorTemplateFn("textRequest", modelName),
-    } as Parameters<typeof generateText>[0]);
+    const runAttempt = async (
+      controls: { disableThinking?: boolean; relaxToolChoice?: boolean },
+    ) => {
+      const { options } = await this.buildTextOptions(input, { modelName, ...controls });
+      try {
+        return { options, result: await generateText(options) };
+      } catch (error) {
+        return { options, error };
+      }
+    };
+
+    if (
+      !isToolChoiceNeedsNoThinking(modelName) &&
+      !isToolChoiceRelaxed(modelName)
+    ) {
+      const first = await runAttempt({});
+      if (!first.error) {
+        if (resultHasToolCall(first.result)) return first.result;
+        markToolChoiceNeedsNoThinking(modelName);
+      } else if (isToolChoiceRejected(first.error)) {
+        markToolChoiceRelaxed(modelName);
+        console.warn(
+          `[ai] ${this.AiType}（${modelName}）在思考模式下拒绝强制工具选择，已降级为 toolChoice: auto：${describeAiError(first.error)}`,
+        );
+      } else {
+        throw first.error;
+      }
+    }
+
+    if (!isToolChoiceNeedsNoThinking(modelName)) {
+      const relaxed = await runAttempt({ relaxToolChoice: true });
+      if (!relaxed.error) {
+        if (resultHasToolCall(relaxed.result)) return relaxed.result;
+        markToolChoiceNeedsNoThinking(modelName);
+        console.warn(
+          `[ai] ${this.AiType}（${modelName}）在 auto 下未调用工具，已改用"关闭思考 + 强制工具选择"重试`,
+        );
+      } else if (!isToolChoiceRejected(relaxed.error)) {
+        throw relaxed.error;
+      }
+    }
+
+    const finalAttempt = await runAttempt({ disableThinking: true });
+    if (finalAttempt.error) throw finalAttempt.error;
+    return finalAttempt.result;
   }
   async stream(input: Omit<Parameters<typeof streamText>[0], "model">) {
-    const switchAiDevTool = await u.db("o_setting").where("key", "switchAiDevTool").first();
-    const modelName = await resolveModelName(this.AiType);
-    return streamText({
-      ...(input.tools && { stopWhen: stepCountIs(Object.keys(input.tools).length * 50) }),
-      ...input,
-      model:
-        switchAiDevTool?.value == "1"
-          ? wrapLanguageModel({
-              model: await getVendorTemplateFn("textRequest", modelName),
-              middleware: devToolsMiddleware(),
-            })
-          : await getVendorTemplateFn("textRequest", modelName),
-    } as Parameters<typeof streamText>[0]);
+    // 选项构建与 invoke 共用；streamText 与 generateText 的差异只在 onStepFinish 等回调
+    // 的签名上，运行时结构一致，这里显式收窄回 streamText 的入参类型。
+    const { options } = await this.buildTextOptions(
+      input as Omit<Parameters<typeof generateText>[0], "model">,
+    );
+    return streamText(options as Parameters<typeof streamText>[0]);
   }
 }
 
@@ -215,7 +319,9 @@ class AiImage {
     if (!this.result.trim()) {
       throw new Error("图片生成未返回有效图像数据");
     }
-    await u.oss.writeFile(path, this.result);
+    // 统一为不透明 JPEG，避免透明通道导致同批图片背景不一致
+    const buffer = await normalizeGeneratedImage(this.result);
+    await u.oss.writeFile(path, buffer);
     return this;
   }
 }
@@ -247,15 +353,34 @@ class AiVideo {
       const provider = parseModelReference(mn).vendorId;
       const fn = await getVendorTemplateFn("videoRequest", mn, {
         onAxiosResponse: async ({ url, method, data }) => {
-          const taskId = (data as any)?.prompt_id;
-          if (method !== "POST" || !taskId || !/\/prompt(?:\?|$)/i.test(url)) return;
-          const baseUrl = url.replace(/\/prompt(?:\?.*)?$/i, "").replace(/\/$/, "");
-          await taskRecord?.onProviderTask?.({
-            provider,
-            taskId: String(taskId),
-            baseUrl,
-            submittedAt: Date.now(),
-          });
+          if (method !== "POST") return;
+          const payload = data as any;
+          // 原生 ComfyUI：POST /prompt → prompt_id
+          const comfyTaskId = payload?.prompt_id;
+          if (comfyTaskId && /\/prompt(?:\?|$)/i.test(url)) {
+            const baseUrl = url.replace(/\/prompt(?:\?.*)?$/i, "").replace(/\/$/, "");
+            await taskRecord?.onProviderTask?.({
+              provider,
+              taskId: String(comfyTaskId),
+              baseUrl,
+              submittedAt: Date.now(),
+            });
+            return;
+          }
+          // AutoDL.Art ComfyUI 工作流：POST /api/v1/comfyui/comfyui_workflow/{workflowId} → data.data.task_id
+          // 上报后才能续查/恢复；否则服务重启时这些任务只能被判失败。
+          const workflowMatch = url.match(
+            /^(.*)\/api\/v1\/comfyui\/comfyui_workflow\/[^/?#]+(?:\?.*)?$/i,
+          );
+          const workflowTaskId = payload?.data?.task_id ?? payload?.task_id;
+          if (workflowMatch && workflowTaskId) {
+            await taskRecord?.onProviderTask?.({
+              provider,
+              taskId: String(workflowTaskId),
+              baseUrl: workflowMatch[1].replace(/\/$/, ""),
+              submittedAt: Date.now(),
+            });
+          }
         },
       });
       this.result = await fn(input);

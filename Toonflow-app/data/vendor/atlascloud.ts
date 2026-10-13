@@ -133,7 +133,7 @@ declare const exports: {
 
 const vendor: VendorConfig = {
   id: "atlascloud",
-  version: "1.0",
+  version: "1.1",
   author: "AtlasCloud",
   name: "AtlasCloud MASS",
   description: "AtlasCloud 全模态平台接入 Toonflow。默认按官方文档填写文本、图片、视频与任务轮询路径。",
@@ -421,9 +421,10 @@ const buildAtlasVideoPayload = (config: VideoConfig, model: VideoModel) => {
 // 适配器函数
 // ============================================================
 
-const textRequest = (model: TextModel, think: boolean, thinkLevel: 0 | 1 | 2 | 3) => {
+const textRequest = (model: TextModel, think: boolean = true, thinkLevel: 0 | 1 | 2 | 3 = 3) => {
   if (!vendor.inputValues.apiKey) throw new Error("缺少 API Key");
   const apiKey = vendor.inputValues.apiKey.replace(/^Bearer\s+/i, "");
+  // 未显式传参时默认开启思考并取最高档：1.1 起默认 think=true、thinkLevel=3（high）
   const effortMap: Record<number, string> = { 0: "minimal", 1: "low", 2: "medium", 3: "high" };
 
   return createOpenAICompatible({
@@ -432,11 +433,11 @@ const textRequest = (model: TextModel, think: boolean, thinkLevel: 0 | 1 | 2 | 3
     apiKey,
     fetch: async (url: string, options?: RequestInit) => {
       const rawBody = JSON.parse((options?.body as string) ?? "{}");
-      const body = think
+      const body = think !== false
         ? {
           ...rawBody,
           thinking: { type: "enabled" },
-          reasoning_effort: effortMap[thinkLevel],
+          reasoning_effort: effortMap[thinkLevel] ?? "high",
         }
         : rawBody;
       return await fetch(url, { ...options, body: JSON.stringify(body) });

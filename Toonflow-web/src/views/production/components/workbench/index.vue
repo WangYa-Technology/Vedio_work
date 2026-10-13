@@ -35,7 +35,7 @@
       </t-tooltip>
     </div>
     <div class="content">
-      <preview v-if="activeMenu === 'preview'" />
+      <preview v-if="activeMenu === 'preview'" ref="previewRef" />
       <generate v-if="activeMenu === 'generate'" @importVideo="handleBatchDownload" v-model="extractLines" />
       <KeepAlive>
         <editVideo
@@ -138,10 +138,23 @@ function getMediaType(src?: string): MediaType {
 }
 
 //切换菜单
+const previewRef = ref<{ refresh?: () => Promise<void> | void }>();
+
+function refreshPreview() {
+  if (activeMenu.value !== "preview") return;
+  void previewRef.value?.refresh?.();
+}
+
 function changeMenu(type: string) {
   activeMenu.value = type;
   if (type === "editVideo") void editFootage();
+  if (type === "preview") nextTick(refreshPreview);
 }
+
+// 弹窗每次打开都刷新快速预览，避免制作页删除片段后弹窗仍展示旧数据。
+watch(visible, (value) => {
+  if (value) nextTick(refreshPreview);
+});
 
 function resolveMaterialPayload(response: any): { assets: any[]; videos: any[] } {
   // Axios normally returns the API envelope, but tolerate an already-unwrapped

@@ -34,7 +34,7 @@ declare const exports: any;
 
 const vendor = {
   id: "hc-image",
-  version: "2.0",
+  version: "2.1",
   author: "HC",
   name: "HC 异步生图",
   description: "使用 gpt-image-2 异步任务接口。批量生成会按设置的并发数提交任务并轮询结果。",
@@ -175,12 +175,14 @@ const imageSubmitRequest = async (config: ImageConfig, model: ImageModel): Promi
   const headers = { Authorization: `Bearer ${apiKey}` };
   let submit: any;
 
+  // gpt-image 的 background 默认 auto 会随机输出透明背景，导致同批资产背景不一致；
+  // 显式请求不透明背景。若上游不认识该参数，则识别错误后自动降级为不带参数的请求。
+  const isBackgroundUnsupportedError = (error: any) => {
+    const message = String(error?.message || "");
+    return /background/i.test(message) && /(unknown|unsupported|invalid|unexpected|not\s+support|不支持|未知)/i.test(message);
+  };
+
   if (references.length > 0) {
-    // HC 的异步编辑接口是 multipart；多参考图时按 OpenAI 兼容格式重复提交 image 字段。
-    const form = new FormData();
-    form.append("model", model.modelName);
-    form.append("prompt", config.prompt);
-    form.append("size", size);
     // 参考图预处理彼此独立，使用 Promise.all 并行执行；重复图片由
     // prepareImageForUpload 内部按哈希复用转换结果，避免重复压缩。
     const uploadImages = await Promise.all(references.map(async (reference, index) => {
@@ -188,20 +190,51 @@ const imageSubmitRequest = async (config: ImageConfig, model: ImageModel): Promi
       const uploadData = await prepareImageForUpload(reference.base64, { maxBytes: 1_200_000, maxDimension: 2048 });
       return parseReferenceImage(uploadData, index);
     }));
-    for (const image of uploadImages) {
-      form.append("image", image.buffer, { filename: image.filename, contentType: image.mimeType });
+    // HC 的异步编辑接口是 multipart；多参考图时按 OpenAI 兼容格式重复提交 image 字段。
+    const buildForm = (opaque: boolean) => {
+      const form = new FormData();
+      form.append("model", model.modelName);
+      form.append("prompt", config.prompt);
+      form.append("size", size);
+      if (opaque) form.append("background", "opaque");
+      for (const image of uploadImages) {
+        form.append("image", image.buffer, { filename: image.filename, contentType: image.mimeType });
+      }
+      return form;
+    };
+    try {
+      const form = buildForm(true);
+      submit = await submitWithRetry(() => axios.post(`${baseUrl}/images/edits/async`, form, {
+        headers: { ...headers, ...form.getHeaders() },
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+      }));
+    } catch (error) {
+      if (!isBackgroundUnsupportedError(error)) throw error;
+      logger("[HC 异步生图] 上游不支持 background 参数，降级为默认背景重试");
+      const form = buildForm(false);
+      submit = await submitWithRetry(() => axios.post(`${baseUrl}/images/edits/async`, form, {
+        headers: { ...headers, ...form.getHeaders() },
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+      }));
     }
-    submit = await submitWithRetry(() => axios.post(`${baseUrl}/images/edits/async`, form, {
-      headers: { ...headers, ...form.getHeaders() },
-      maxBodyLength: Infinity,
-      maxContentLength: Infinity,
-    }));
   } else {
-    submit = await submitWithRetry(() => axios.post(
-      `${baseUrl}/images/generations/async`,
-      { model: model.modelName, prompt: config.prompt, size },
-      { headers: { ...headers, "Content-Type": "application/json" } },
-    ));
+    try {
+      submit = await submitWithRetry(() => axios.post(
+        `${baseUrl}/images/generations/async`,
+        { model: model.modelName, prompt: config.prompt, size, background: "opaque" },
+        { headers: { ...headers, "Content-Type": "application/json" } },
+      ));
+    } catch (error) {
+      if (!isBackgroundUnsupportedError(error)) throw error;
+      logger("[HC 异步生图] 上游不支持 background 参数，降级为默认背景重试");
+      submit = await submitWithRetry(() => axios.post(
+        `${baseUrl}/images/generations/async`,
+        { model: model.modelName, prompt: config.prompt, size },
+        { headers: { ...headers, "Content-Type": "application/json" } },
+      ));
+    }
   }
   const taskId = submit.data?.task_id || submit.data?.data?.task_id;
   if (!taskId) throw new Error(formatHcTaskError(submit.data, "异步生图任务提交失败：未返回 task_id"));

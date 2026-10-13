@@ -1,33 +1,23 @@
 import express from "express";
-import u from "@/utils";
 import { z } from "zod";
-import { success } from "@/lib/responseFormat";
 import { validateFields } from "@/middleware/middleware";
+import { error, success } from "@/lib/responseFormat";
+import { removeAssetsCascade } from "@/utils/assetCleanup";
+
 const router = express.Router();
 
+// 删除资产：级联清理衍生资产、图片与文件、分镜引用绑定、剧本关联、角色声音关联
 export default router.post(
   "/",
   validateFields({
     id: z.number(),
   }),
   async (req, res) => {
-    const { id } = req.body;
-    const assetsData = await u.db("o_image").where("assetsId", id);
-    await Promise.all(
-      assetsData.map((i) =>
-        i.filePath
-          ? u.oss.deleteFile(i.filePath).catch((e) => {
-              if (e?.code !== "ENOENT") throw e;
-            })
-          : Promise.resolve(),
-      ),
-    );
-    const imageIds = assetsData.map((i) => i.id).filter(Boolean);
-    if (imageIds.length > 0) {
-      await u.db("o_assets").whereIn("imageId", imageIds).update({ imageId: null });
+    try {
+      const result = await removeAssetsCascade([req.body.id]);
+      res.status(200).send(success({ message: "删除资产成功", ...result }));
+    } catch (deleteError) {
+      res.status(400).send(error((deleteError as Error).message || "删除资产失败"));
     }
-    await u.db("o_image").where({ assetsId: id }).delete();
-    await u.db("o_assets").where({ id }).delete();
-    res.status(200).send(success({ message: "删除资产成功" }));
   },
 );

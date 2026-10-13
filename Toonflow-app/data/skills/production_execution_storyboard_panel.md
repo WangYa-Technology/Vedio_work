@@ -62,6 +62,13 @@ description: >-
 
 **禁止把 UI 编号（如 S02）直接当作数据库 ID，也禁止用 `add_flowData_storyboard` 修复已有分镜。**
 
+**视频工作台一键修复（说话角色参考补齐）补充规则：**
+
+- 请求携带 `trackId` 与分镜真实 ID 列表时，直接以给定真实 ID 定位分镜并用 `get_storyboard_asset_binding` 回读核验；不得再按 UI 序号机械换算 `storyboardIndex`。
+- 允许把“图片生成中/尚未生成图片”的新角色资产追加进绑定（参考图就绪后视频侧会自动补齐参考，无需在此等待）；不得因目标资产暂无图片而拒绝绑定。
+- 只在原有绑定列表上追加缺失角色，保留原有绑定与顺序；禁止新增、删除、复制分镜，禁止改动 prompt、时长、轨道与图片。
+- 回报必须写清：trackId、分镜真实 ID、追加的资产 ID 与名称、创建/复用/近似匹配情况、当前图片状态。
+
 ### 已有分镜的空 prompt 定点修复
 
 当已有分镜的 `prompt` 为空且用户要求补全时：
@@ -101,7 +108,7 @@ description: >-
 **特征**：仅写入视频描述与资产绑定，不生成提示词、不生成分镜图。**以分镜表已有的「组」为写入单位**——不自行分组，每个组写入一条分镜（一次 `add_flowData_storyboard` 调用）。严格线性，自洽，零条件分支。
 
 **第 1 步 · 读取数据**
-同轮调用 `get_flowData("script")`、`get_flowData("storyboardTable")`。**本模式不加载任何提示词技法**（无需 `storyboard_prompt_techniques` / `director_storyboard`）。分镜表已按「场（`## 场N`）→ 组（`### 第N组`）」预先分组，本模式**直接沿用表内分组，不再自行做 ≤15s 分组**。
+同轮调用 `get_flowData("script")`、`get_flowData("storyboardTable")`。**本模式不加载任何提示词技法**（无需 `storyboard_prompt_techniques` / `director_storyboard`）。分镜表已按「场（`## 场N`）→ 组（`### 第N组`）」预先分组，本模式**直接沿用表内分组，不再自行按档位（11~13s / 16~18s）重新分组**。
 
 **第 2 步 · 逐组写入视频描述（videoDesc）**
 以分镜表的每个「组」为单位，按以下**固定顺序**拼接写入 `videoDesc`：

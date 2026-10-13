@@ -1,20 +1,23 @@
 import express from "express";
-import u from "@/utils";
 import { z } from "zod";
-import { success } from "@/lib/responseFormat";
 import { validateFields } from "@/middleware/middleware";
-import { id } from "zod/locales";
+import { error, success } from "@/lib/responseFormat";
+import { removeAssetsCascade } from "@/utils/assetCleanup";
+
 const router = express.Router();
 
-// 批量删除资产
+// 批量删除资产：与单条删除共用同一套级联清理逻辑
 export default router.post(
   "/",
   validateFields({
-    id: z.array(z.number()),
+    id: z.array(z.number()).min(1),
   }),
   async (req, res) => {
-    const { id } = req.body;
-    await u.db("o_assets").whereIn("id", id).delete();
-    res.status(200).send(success({ message: "删除资产成功" }));
+    try {
+      const result = await removeAssetsCascade(req.body.id);
+      res.status(200).send(success({ message: "删除资产成功", ...result }));
+    } catch (deleteError) {
+      res.status(400).send(error((deleteError as Error).message || "删除资产失败"));
+    }
   },
 );

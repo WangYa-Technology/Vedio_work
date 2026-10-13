@@ -90,5 +90,29 @@ export default defineConfig({
   },
   server: {
     port: 50188,
+    proxy: {
+      "/api": {
+        target: "http://127.0.0.1:10588",
+        changeOrigin: true,
+        ws: true,
+      },
+      "/skills": {
+        target: "http://127.0.0.1:10588",
+        changeOrigin: true,
+      },
+      "/assets": {
+        target: "http://127.0.0.1:10588",
+        changeOrigin: true,
+      },
+      "/oss": {
+        target: "http://127.0.0.1:10588",
+        changeOrigin: true,
+      },
+      "/socket.io": {
+        target: "http://127.0.0.1:10588",
+        changeOrigin: true,
+        ws: true,
+      },
+    },
   },
 });

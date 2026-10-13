@@ -1,10 +1,13 @@
 /**
  * AutoDL.Art ComfyUI API provider.
  *
- * AutoDL exposes a workflow as an asynchronous task API rather than a
- * regular ComfyUI /prompt endpoint. The modelName is therefore the workflow
- * id shown by AutoDL and the request body contains the workflow's public
- * parameters.
+ * AutoDL 把平台上的 ComfyUI 工作流包装成异步任务 API：modelName 即工作流 ID，
+ * 请求体只接受该工作流声明过的公开参数，且参数名随工作流而异：
+ * - 多图/多音频：ref_image_0..ref_image_8、ref_audio_0..ref_audio_2、prompt、duration、resolution、seed
+ * - 首尾帧：first_frame、last_frame、prompt、duration、resolution、seed
+ * - 对口型：ref_image_0、ref_audio_0、audio_duration、resolution
+ * 提交未声明的参数会被平台以“存在未定义的参数”拒绝；工作流 ID 在平台不存在或被下线
+ * 时返回“工作流不可用”。因此模型列表的 modelName 必须与 AutoDL.Art 工作流页面中的 ID 完全一致。
  */
 
 interface VideoModel {
@@ -41,15 +44,53 @@ declare const logger: (message: string) => void;
 declare const exports: any;
 
 const DEFAULT_BASE_URL = "https://autodl.art";
+const MAX_REFERENCE_IMAGES = 9;
+const MAX_REFERENCE_AUDIOS = 3;
+
+// 时长档位与分辨率档位都来自各工作流的公开参数定义，超出范围的取值会被平台拒绝。
+const DURATION_UP_TO_10 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+const DURATION_UP_TO_15 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+const RESOLUTION_HV_480_768_1080 = ["480p竖", "768p竖", "1080p竖", "480p横", "768p横", "1080p横"];
+const RESOLUTION_HV_480_768 = ["480p竖", "768p竖", "480p横", "768p横"];
+const RESOLUTION_HV_SQUARE_480_768 = ["480p竖", "768p竖", "480p横", "768p横", "480p(1:1)", "768p(1:1)"];
+const RESOLUTION_HV_SQUARE_480_768_1080 = [
+  "480p竖",
+  "768p竖",
+  "1080p竖",
+  "480p横",
+  "768p横",
+  "1080p横",
+  "480p(1:1)",
+  "768p(1:1)",
+  "1080p(1:1)",
+];
+
+// 工作流家族决定提交哪些参数：平台只接受工作流自己声明过的入参。
+type WorkflowKind = "multimodal" | "multiImage" | "startEnd" | "text" | "lipsync";
+
+const WORKFLOW_KINDS: Record<string, WorkflowKind> = {
+  minimax_h3_image_audio_to_video_v2: "multimodal",
+  minimax_h3_image_audio_to_video_v2_15s: "multimodal",
+  minimax_h3_zm_u24: "multimodal",
+  minimax_h3_zm_u08: "multimodal",
+  minimax_h3_lightx2v_v5: "multiImage",
+  minimax_h3_lightx2v_v5_15s: "multiImage",
+  minimax_h3_lightx2v: "startEnd",
+  minimax_h3_lightx2v_no_pic: "text",
+  minimax_h3_image_audio_to_video: "lipsync",
+};
+
+const DEFAULT_WORKFLOW_KIND: WorkflowKind = "multimodal";
 
 const vendor = {
   id: "autodl-comfyui",
-  version: "1.0.0",
+  version: "1.1.0",
   author: "Toonflow",
   name: "AutoDL.Art · ComfyUI 云端 API",
   description: [
     "通过 AutoDL.Art ComfyUI API 调用云端工作流。",
-    "请在 AutoDL.Art 令牌管理中创建 ComfyUI 分组 Token，并填入工作流 ID。",
+    "请在 AutoDL.Art 令牌管理中创建 ComfyUI 分组 Token（分组必须选 ComfyUI）。",
+    "模型列表中的工作流 ID 必须与 AutoDL.Art「ComfyUI 工作流」页面右侧抽屉里显示的 ID 完全一致；工作流被作者下线或改名后，提交会返回“工作流不可用”。",
     "[查看 ComfyUI API 文档](https://autodl.art/docs/comfyui_api/)",
   ].join("\n\n"),
   inputs: [
@@ -75,35 +116,35 @@ const vendor = {
   models: [
     {
       name: "H3多图多音频生视频",
-      modelName: "minimax_h3_image_audio_to_video",
+      modelName: "minimax_h3_image_audio_to_video_v2",
       type: "video",
       mode: [["imageReference:9", "audioReference:3", "textReference"]],
       audio: "optional",
-      durationResolutionMap: [{ duration: [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], resolution: ["480p横", "480p竖", "720p横", "720p竖"] }],
+      durationResolutionMap: [{ duration: DURATION_UP_TO_10, resolution: RESOLUTION_HV_480_768_1080 }],
     },
     {
-      name: "H3多图生视频 15 秒",
-      modelName: "minimax_h3_lightx2v_v5_15s",
-      type: "video",
-      mode: [["imageReference:9"]],
-      audio: false,
-      durationResolutionMap: [{ duration: [15], resolution: ["480p横", "480p竖", "720p横", "720p竖"] }],
-    },
-    {
-      name: "H3多图多音频生视频",
-      modelName: "minimax_h3_image_audio_to_video_v5",
+      name: "H3多图多音频生视频 15 秒",
+      modelName: "minimax_h3_image_audio_to_video_v2_15s",
       type: "video",
       mode: [["imageReference:9", "audioReference:3", "textReference"]],
       audio: "optional",
-      durationResolutionMap: [{ duration: [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], resolution: ["480p横", "480p竖", "720p横", "720p竖"] }],
+      durationResolutionMap: [{ duration: DURATION_UP_TO_15, resolution: RESOLUTION_HV_480_768 }],
     },
     {
-      name: "H3图生视频·音频同步",
-      modelName: "minimax_h3_image_audio_to_video_sync",
+      name: "H3多图多音频生视频 · 升级画质",
+      modelName: "minimax_h3_zm_u24",
       type: "video",
-      mode: ["singleImage", "startEndRequired"],
+      mode: [["imageReference:9", "audioReference:3", "textReference"]],
       audio: "optional",
-      durationResolutionMap: [{ duration: [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], resolution: ["480p横", "480p竖", "720p横", "720p竖"] }],
+      durationResolutionMap: [{ duration: DURATION_UP_TO_15, resolution: RESOLUTION_HV_SQUARE_480_768 }],
+    },
+    {
+      name: "H3多图多音频生视频 · 高速版",
+      modelName: "minimax_h3_zm_u08",
+      type: "video",
+      mode: [["imageReference:9", "audioReference:3", "textReference"]],
+      audio: "optional",
+      durationResolutionMap: [{ duration: DURATION_UP_TO_15, resolution: RESOLUTION_HV_SQUARE_480_768 }],
     },
     {
       name: "H3多图参考生视频",
@@ -111,7 +152,23 @@ const vendor = {
       type: "video",
       mode: [["imageReference:9"]],
       audio: false,
-      durationResolutionMap: [{ duration: [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], resolution: ["480p横", "480p竖", "720p横", "720p竖"] }],
+      durationResolutionMap: [{ duration: DURATION_UP_TO_10, resolution: RESOLUTION_HV_SQUARE_480_768_1080 }],
+    },
+    {
+      name: "H3多图生视频 15 秒",
+      modelName: "minimax_h3_lightx2v_v5_15s",
+      type: "video",
+      mode: [["imageReference:9"]],
+      audio: false,
+      durationResolutionMap: [{ duration: DURATION_UP_TO_15, resolution: RESOLUTION_HV_SQUARE_480_768 }],
+    },
+    {
+      name: "H3首尾帧生视频",
+      modelName: "minimax_h3_lightx2v",
+      type: "video",
+      mode: ["startEndRequired"],
+      audio: false,
+      durationResolutionMap: [{ duration: DURATION_UP_TO_15, resolution: RESOLUTION_HV_SQUARE_480_768 }],
     },
     {
       name: "H3文生视频",
@@ -119,23 +176,15 @@ const vendor = {
       type: "video",
       mode: ["text"],
       audio: false,
-      durationResolutionMap: [{ duration: [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], resolution: ["480p横", "480p竖", "720p横", "720p竖"] }],
+      durationResolutionMap: [{ duration: DURATION_UP_TO_15, resolution: RESOLUTION_HV_SQUARE_480_768 }],
     },
     {
-      name: "H3首尾帧生视频",
-      modelName: "minimax_h3_lightx2v",
+      name: "H3图生视频 · 音频同步（自动对口型）",
+      modelName: "minimax_h3_image_audio_to_video",
       type: "video",
-      mode: ["startEndRequired", "endFrameOptional", "startFrameOptional"],
-      audio: false,
-      durationResolutionMap: [{ duration: [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], resolution: ["480p横", "480p竖", "720p横", "720p竖"] }],
-    },
-    {
-      name: "indexxts2",
-      modelName: "indexxts2-v1",
-      type: "video",
-      mode: ["text"],
-      audio: false,
-      durationResolutionMap: [{ duration: [1, 2, 3, 4, 5], resolution: ["480p横", "480p竖"] }],
+      mode: ["singleImage", "audioReference:1"],
+      audio: "optional",
+      durationResolutionMap: [{ duration: DURATION_UP_TO_15, resolution: RESOLUTION_HV_480_768_1080 }],
     },
   ] as VideoModel[],
 };
@@ -153,8 +202,13 @@ const getHeaders = () => ({
   "Content-Type": "application/json",
 });
 
-const readResponseError = (data: any) =>
-  data?.msg || data?.message || data?.data?.message || data?.data?.error || "AutoDL ComfyUI 请求失败";
+// 平台错误体形如 { code: "InternalError", msg: "工作流不可用" }；
+// 带上 code 便于区分“参数不合法”和“工作流不可用”这两类失败。
+const readResponseError = (data: any) => {
+  const message = data?.msg || data?.message || data?.data?.message || data?.data?.error || "AutoDL ComfyUI 请求失败";
+  const code = String(data?.code || "").trim();
+  return code && code !== "Success" ? `${message}（${code}）` : message;
+};
 
 const normalizeResultUrl = (value: any): string | undefined => {
   if (typeof value === "string") return value;
@@ -199,26 +253,60 @@ const queryTask = async (taskId: string): Promise<PollResult> => {
   return { completed: true, data: result };
 };
 
-const buildBody = (config: VideoConfig) => {
-  const parameters = { ...(config.parameters || {}) };
-  const body: Record<string, any> = {
-    prompt: String(config.prompt || "").trim(),
-    duration: Math.max(1, Math.round(Number(config.duration) || 5)),
-    resolution: config.resolution || (config.aspectRatio === "9:16" ? "480p竖" : "480p横"),
-  };
-  if (typeof config.audio === "boolean") body.generate_audio = config.audio;
-  // AutoDL 工作流参数会随工作流变化；只在有素材时传递常见字段，
-  // 其余字段由模型设置中的 parameters 透传，方便用户按在线调用示例补充。
-  const typedReferences = (config.referenceList || []).filter((item) => item.base64);
-  const referenceImages = typedReferences.filter((item) => item.type === "image").map((item) => item.base64);
-  const referenceAudio = typedReferences.filter((item) => item.type === "audio").map((item) => item.base64);
-  const referenceVideo = typedReferences.filter((item) => item.type === "video").map((item) => item.base64);
-  const images = (config.imageBase64 || []).filter(Boolean);
-  const allImages = referenceImages.length ? referenceImages : images;
-  if (allImages.length) body.images = allImages;
-  if (referenceAudio.length) body.audios = referenceAudio;
-  if (referenceVideo.length) body.videos = referenceVideo;
-  Object.assign(body, parameters);
+const resolveWorkflowKind = (model: VideoModel): WorkflowKind =>
+  WORKFLOW_KINDS[model?.modelName] || DEFAULT_WORKFLOW_KIND;
+
+// 参考素材统一在这里取值：优先使用带类型的 referenceList，退回旧的 imageBase64。
+const collectReferences = (config: VideoConfig) => {
+  const typedReferences = (config.referenceList || []).filter((item) => item?.base64);
+  const typedImages = typedReferences.filter((item) => item.type === "image").map((item) => item.base64);
+  const audios = typedReferences.filter((item) => item.type === "audio").map((item) => item.base64);
+  const images = typedImages.length ? typedImages : (config.imageBase64 || []).filter(Boolean);
+  return { images, audios };
+};
+
+const buildBody = (config: VideoConfig, model: VideoModel) => {
+  const kind = resolveWorkflowKind(model);
+  const { images, audios } = collectReferences(config);
+  const duration = Math.max(1, Math.round(Number(config.duration) || 5));
+  const resolution = config.resolution || (config.aspectRatio === "9:16" ? "480p竖" : "480p横");
+  const body: Record<string, any> = {};
+
+  if (kind === "lipsync") {
+    // 对口型工作流没有 prompt/duration 参数：音频时长即生成时长。
+    if (!images.length) throw new Error("“H3图生视频 · 音频同步”需要 1 张参考图片，请先在参考素材中选择图片");
+    if (!audios.length) throw new Error("“H3图生视频 · 音频同步”需要 1 段参考音频，请先在参考素材中选择音频");
+    body.ref_image_0 = images[0];
+    body.ref_audio_0 = audios[0];
+    body.audio_duration = duration;
+    body.resolution = resolution;
+  } else {
+    body.prompt = String(config.prompt || "").trim();
+    body.duration = duration;
+    body.resolution = resolution;
+
+    if (kind === "startEnd") {
+      if (images.length < 2) throw new Error("“H3首尾帧生视频”需要首帧与尾帧两张参考图片，请先在参考素材中选择两张图片");
+      body.first_frame = images[0];
+      body.last_frame = images[1];
+    } else if (kind !== "text") {
+      images
+        .slice(0, MAX_REFERENCE_IMAGES)
+        .forEach((value, index) => {
+          body[`ref_image_${index}`] = value;
+        });
+      if (kind === "multimodal") {
+        audios
+          .slice(0, MAX_REFERENCE_AUDIOS)
+          .forEach((value, index) => {
+            body[`ref_audio_${index}`] = value;
+          });
+      }
+    }
+  }
+
+  // 模型设置中的 parameters 作为安全可调项透传（例如 seed），放在最后以允许覆盖默认值。
+  Object.assign(body, config.parameters || {});
   return body;
 };
 
@@ -239,8 +327,9 @@ const imageRequest = async (config: any, model: any) => {
 };
 
 const videoRequest = async (config: VideoConfig, model: VideoModel) => {
-  if (!String(config.prompt || "").trim()) throw new Error("请先填写视频提示词");
-  const taskId = await submitTask(model.modelName, buildBody(config));
+  const kind = resolveWorkflowKind(model);
+  if (kind !== "lipsync" && !String(config.prompt || "").trim()) throw new Error("请先填写视频提示词");
+  const taskId = await submitTask(model.modelName, buildBody(config, model));
   const result = await pollTask(() => queryTask(taskId), 2000, 90 * 60 * 1000);
   if (result.error) throw new Error(result.error);
   if (!result.data) throw new Error("AutoDL 视频工作流未返回结果");

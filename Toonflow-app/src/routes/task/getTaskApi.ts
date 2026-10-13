@@ -31,7 +31,9 @@ export default router.post(
           qb.andWhere("o_tasks.projectId", projectId);
         }
       })
-      .select("o_tasks.*", "o_project.* ")
+      // 只取项目名：`o_project.*` 里的 id 会覆盖 o_tasks.id，
+      // 导致前端拿不到任务自身 id（行选择、修复定位都会失效）。
+      .select("o_tasks.*", "o_project.name as projectName")
       .offset(offset)
       .limit(limit)
       .orderBy("o_tasks.id", "desc");

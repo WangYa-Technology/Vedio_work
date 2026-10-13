@@ -36,11 +36,22 @@ function hasMediumOrMediumLongCharacterShot(
   ) || /(?:景别[：:]?\s*)?(?:中景|中远景)|medium(?:[- ]long)? shot/i.test(prompt);
 }
 
-/** Bring saved prompts created by older templates up to the current output rules. */
+/**
+ * Bring saved prompts created by older templates up to the current output rules.
+ *
+ * 【多模型接缝（待接入）】`options.profile` 是 H3 专属替换的门控位：接入非 H3 视频模型时，
+ * 在此按 `profile.modelFamily` 决定是否执行「non_diegetic_music 整段替换为 N/A」；
+ * 通用追加项（画面文字/标题/对话气泡 N/A、面部锐利对焦）对所有模型保留。
+ * 当前实现对所有调用一律执行既有规则（不传 profile 与传 profile 输出一致），
+ * 以保证存量项目零漂移。见《H3分镜生成通用规范》第八节《多模型适配（待接入）》。
+ */
 export function enforceVideoPromptOutputConstraints(
   value: string,
   task?: VideoPromptContractTask,
+  options: { profile?: VideoModelPromptProfile | null } = {},
 ) {
+  // 接缝参数当前不参与判定：仅登记未来门控位，避免改变现有输出。
+  void options;
   let prompt = removeNarrationLipSyncInstructions(value);
 
   // This is the final official H3 field, so replacing through EOF cannot remove

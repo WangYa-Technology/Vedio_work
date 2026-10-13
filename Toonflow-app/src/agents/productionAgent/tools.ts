@@ -2,7 +2,11 @@ import { tool, type Tool } from "ai";
 import { z } from "zod";
 import u from "@/utils";
 import ResTool from "@/socket/resTool";
-import { buildProductionFlowData, parseStoryboardTableAssetBindings } from "@/utils/productionFlow";
+import {
+  appendProductionFlowWaiver,
+  buildProductionFlowData,
+  parseStoryboardTableAssetBindings,
+} from "@/utils/productionFlow";
 import {
   buildDerivedAssetPrompt,
   queueAssetImagesById,
@@ -15,13 +19,14 @@ interface ToolConfig {
   toolsNames?: string[];
 }
 
-const flowDataKeys = z.enum(["script", "scriptPlan", "assets", "storyboardTable", "storyboard"]);
+const flowDataKeys = z.enum(["script", "scriptPlan", "assets", "storyboardTable", "storyboard", "waivers"]);
 const flowDataLabels: Record<z.infer<typeof flowDataKeys>, string> = {
   script: "剧本",
   scriptPlan: "导演规划",
   assets: "资产",
   storyboardTable: "分镜表",
   storyboard: "分镜面板",
+  waivers: "容量豁免登记",
 };
 
 function normalizeIds(ids: number[] | null | undefined) {
@@ -108,6 +113,40 @@ export default ({ resTool, msg, toolsNames }: ToolConfig) => {
         thinking.updateTitle(`获取${flowDataLabels[key]}完成`);
         thinking.complete();
         return flowData[key] ?? null;
+      },
+    }),
+
+    add_flowData_waiver: tool({
+      description:
+        "登记容量豁免：仅在用户明确选择「接受现状 / 授权删减台词」时调用，把本集超出的时长或授权删减的台词字数落库；此后机器校验按「预算 + 豁免」判定，报告会回显豁免来源。不得在用户未授权时调用",
+      inputSchema: z.object({
+        scope: z.enum(["duration", "dialogue"]).describe("duration=放宽单集时长预算；dialogue=授权删减台词"),
+        allowanceSeconds: z.number().positive().optional().describe("scope=duration 时的豁免秒数"),
+        allowanceChars: z.number().int().positive().optional().describe("scope=dialogue 时授权删减的台词字数"),
+        reason: z.string().max(120).optional().describe("授权原因（一句话，如“维持现状，不再拆集”）"),
+      }),
+      execute: async ({ scope, allowanceSeconds, allowanceChars, reason }) => {
+        ensureContext();
+        const thinking = msg.thinking("正在登记容量豁免...");
+        try {
+          const record = await appendProductionFlowWaiver(projectId, scriptId, {
+            scope,
+            allowanceSeconds,
+            allowanceChars,
+            reason,
+            grantedBy: "user",
+          });
+          const label = record.scope === "duration" ? `时长 +${record.allowanceSeconds}s` : `授权删减台词 ${record.allowanceChars} 字`;
+          thinking.appendText(`已登记并回读确认：${label}`);
+          thinking.updateTitle("容量豁免已登记");
+          thinking.complete();
+          return `容量豁免已登记并回读确认：${label}${record.reason ? `（${record.reason}）` : ""}；后续复检按「预算 + 豁免」判定`;
+        } catch (err) {
+          const message = u.error(err).message;
+          thinking.appendText(`登记失败：${message}`);
+          thinking.complete();
+          return `容量豁免登记失败：${message}`;
+        }
       },
     }),
 

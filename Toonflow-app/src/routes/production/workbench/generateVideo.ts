@@ -1,30 +1,24 @@
 import express from "express";
-import { createHash } from "node:crypto";
 import { z } from "zod";
 import u from "@/utils";
 import { validateFields } from "@/middleware/middleware";
 import { success } from "@/lib/responseFormat";
-import {
-  pendingVideoTaskData,
-  updateVideoTaskState,
-  VIDEO_WORKER_RUN_ID,
-} from "@/utils/videoTaskRecovery";
 import { resolveVideoModelPromptProfile } from "@/utils/videoModelPromptProfile";
-import { buildVideoTaskData } from "@/utils/videoTaskData";
-import { auditVideoOutput } from "@/utils/videoOutputAudit";
-import { probeVideoFile } from "@/utils/videoOutputProbe";
+import { buildVideoTaskData, resolveTierDuration } from "@/utils/videoTaskData";
 import {
   enforceVideoPromptOutputConstraints,
   migrateLegacyPromptForH3,
 } from "@/utils/videoPromptMigration";
+import {
+  hashPromptTemplate,
+  launchVideoGeneration,
+  normalizeVideoMode,
+  readReferenceBase64,
+  submitVideoGeneration,
+  type VideoSubmissionReference,
+} from "@/services/videoGenerationSubmit";
 
 const router = express.Router();
-
-async function nextId(table: "o_video") {
-  let id = Date.now();
-  while (await u.db(table).where({ id }).first()) id += 1;
-  return id;
-}
 
 async function resolveReferenceFile(item: {
   id: number;
@@ -52,27 +46,6 @@ function resolveReferenceType(item: {
 }) {
   if (item.sources === "storyboard") return "image" as const;
   return item.fileType || "image";
-}
-
-function normalizeVideoMode(mode: string | string[] | undefined) {
-  if (Array.isArray(mode)) return mode;
-  const value = String(mode || "").trim();
-  if (value.startsWith("[")) {
-    try {
-      const parsed = JSON.parse(value);
-      if (Array.isArray(parsed) && parsed.every((item) => typeof item === "string")) return parsed;
-    } catch {
-      // 保留原始模式，让供应商自行处理无法解析的自定义模式。
-    }
-  }
-  return value;
-}
-
-function hashPromptTemplate(value: unknown) {
-  return createHash("sha256")
-    .update(String(value || ""))
-    .digest("hex")
-    .slice(0, 16);
 }
 
 export default router.post(
@@ -150,148 +123,88 @@ export default router.post(
     const referencePaths = await Promise.all(
       uploadData.map(resolveReferenceFile),
     );
-    const imageBase64 = await Promise.all(
-      referencePaths.map((filePath) => u.oss.getImageBase64(filePath)),
+    const references: VideoSubmissionReference[] = uploadData.map(
+      (item: any, index: number) => ({
+        index,
+        id: Number(item.id),
+        sources: item.sources,
+        fileType: resolveReferenceType(item),
+        filePath: referencePaths[index],
+      }),
     );
-    const referenceList = imageBase64.map((base64, index) => ({
-      type: resolveReferenceType(uploadData[index]),
-      sourceType: "base64" as const,
-      base64,
-    }));
-    const id = await nextId("o_video");
-    const filePath = `${projectId}/video/${scriptId}/${u.uuid()}.mp4`;
+    const imageBase64 = await readReferenceBase64(references);
     const requestedDuration = Math.max(
       1,
       Math.round(Number(duration || track.duration || 5)),
     );
+    // 分镜档位映射：计划 11~13s 按 10s 生成、16~18s 按 15s 生成。
+    // 批量生成不带 duration 时会落到 track.duration（分镜计划值），这里补齐映射，
+    // 保证提交时长与提示词时间轴一致；已映射过的值不会二次生效。
+    const supportedDurations = (
+      (taskData.projectConfig.durationResolutionMap || []) as Array<{
+        duration?: number | number[];
+      }>
+    )
+      .flatMap((item) =>
+        Array.isArray(item?.duration) ? item.duration : [item?.duration],
+      )
+      .map(Number)
+      .filter((value) => Number.isFinite(value));
+    const tierDuration = resolveTierDuration(
+      requestedDuration,
+      supportedDurations,
+      Number(videoPromptProfile?.maxDuration) || 15,
+    );
+    const targetDuration = tierDuration ?? requestedDuration;
     const effectiveDuration = /minimax.*h3|h3.*minimax/i.test(model)
-      ? Math.min(15, requestedDuration)
-      : requestedDuration;
-    const startedAt = Date.now();
-    const generationConfig = {
-      schemaVersion: 1,
+      ? Math.min(15, targetDuration)
+      : targetDuration;
+    const effectiveRatio = project?.videoRatio || "16:9";
+    const effectiveResolution = String(resolution || "864x480");
+
+    const context = await submitVideoGeneration({
+      projectId,
+      scriptId,
+      trackId,
+      prompt: effectivePrompt,
       model,
-      mode: normalizeVideoMode(mode),
-      ratio: project?.videoRatio || "16:9",
-      resolution: resolution || "864x480",
+      mode,
+      resolution: effectiveResolution,
       duration: effectiveDuration,
       audio: Boolean(audio),
       parameters: parameters || {},
-      videoPromptProfile,
-    };
-    const referenceSnapshot = uploadData.map((item: any, index: number) => ({
-      index,
-      id: item.id,
-      sources: item.sources,
-      fileType: resolveReferenceType(item),
-      filePath: referencePaths[index],
-    }));
-
-    await u.db("o_video").insert({
-      id,
-      projectId,
-      scriptId,
-      videoTrackId: trackId,
-      filePath,
-      state: "生成中",
-      time: effectiveDuration,
-      errorReason: "",
-      model,
-      providerTaskData: JSON.stringify(pendingVideoTaskData(startedAt)),
-      promptSnapshot: effectivePrompt,
       promptTemplateId: promptTemplateId || null,
       promptTemplateVersion: promptTemplate
         ? hashPromptTemplate(promptTemplate.useData || promptTemplate.data)
         : null,
-      referenceSnapshot: JSON.stringify(referenceSnapshot),
-      generationConfig: JSON.stringify(generationConfig),
-      createTime: startedAt,
+      ratio: effectiveRatio,
+      references,
+      videoPromptProfile,
     });
-    await u
-      .db("o_videoTrack")
-      .where({ id: trackId })
-      .update({
-        prompt: effectivePrompt,
-        duration: effectiveDuration,
-        state: "生成中",
-        reason: "",
-      });
     res
       .status(200)
-      .send(success({ id, state: "生成中" }, "视频生成任务已提交"));
+      .send(
+        success(
+          { id: context.videoId, state: "生成中" },
+          "视频生成任务已提交",
+        ),
+      );
 
-    void (async () => {
-      try {
-        await (
-          await u.Ai.Video(model as `${string}:${string}`).run(
-            {
-              prompt: effectivePrompt,
-              imageBase64,
-              referenceList,
-              aspectRatio: (project?.videoRatio ||
-                "16:9") as `${number}:${number}`,
-              mode: normalizeVideoMode(mode),
-              duration: effectiveDuration,
-              resolution: resolution || "864x480",
-              audio: Boolean(audio),
-              parameters: parameters || {},
-            },
-            {
-              taskClass: "videoGeneration",
-              describe: `生成第 ${trackId} 个视频片段`,
-              relatedObjects: JSON.stringify({
-                trackId,
-                references: uploadData,
-              }),
-              projectId,
-              onProviderTask: async (task) => {
-                const existing = await u
-                  .db("o_video")
-                  .where({ id })
-                  .first("providerTaskData");
-                let previous: Record<string, any> = {};
-                try {
-                  previous = JSON.parse(existing?.providerTaskData || "{}");
-                } catch {
-                  previous = {};
-                }
-                await u
-                  .db("o_video")
-                  .where({ id })
-                  .update({
-                    providerTaskId: task.taskId,
-                    providerTaskData: JSON.stringify({
-                      ...previous,
-                      ...task,
-                      runId: VIDEO_WORKER_RUN_ID,
-                      startedAt,
-                    }),
-                  });
-              },
-            },
-          )
-        ).save(filePath);
-        const probedMetadata = await probeVideoFile(u.getPath(["oss", filePath]));
-        if (probedMetadata) {
-          const outputAudit = auditVideoOutput({
-            expectedRatio: project?.videoRatio || "16:9",
-            expectedDuration: effectiveDuration,
-            ...probedMetadata,
-          });
-          await u.db("o_video").where({ id }).update({
-            outputAudit: JSON.stringify({
-              schemaVersion: 1,
-              auditedAt: Date.now(),
-              ...probedMetadata,
-              ...outputAudit,
-            }),
-          });
-        }
-        await updateVideoTaskState({ id, videoTrackId: trackId }, "已完成");
-      } catch (error) {
-        const reason = u.error(error).message;
-        await updateVideoTaskState({ id, videoTrackId: trackId }, "生成失败", reason);
-      }
-    })();
+    launchVideoGeneration(context, {
+      projectId,
+      trackId,
+      describe: context.describe,
+      relatedObjects: context.relatedObjects,
+      model,
+      prompt: effectivePrompt,
+      imageBase64,
+      references,
+      mode: normalizeVideoMode(mode),
+      ratio: effectiveRatio,
+      duration: effectiveDuration,
+      resolution: effectiveResolution,
+      audio: Boolean(audio),
+      parameters: parameters || {},
+    });
   },
 );

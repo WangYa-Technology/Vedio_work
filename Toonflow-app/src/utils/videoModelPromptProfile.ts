@@ -22,17 +22,24 @@ export interface VideoModelPromptProfile {
   requiresStartEnd: boolean;
 }
 
-function modeTokens(value: unknown): string[] {
-  if (Array.isArray(value)) return value.flatMap(modeTokens);
+/**
+ * 归一化模型能力声明为令牌数组：支持数组、JSON 字符串与普通字符串，
+ * 例如 `["imageReference:9","audioReference:3","textReference"]`。
+ * 供提示词档案解析与「重试预检」按模式推断参考素材上限复用。
+ */
+export function parseVideoModeTokens(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(parseVideoModeTokens);
   const text = String(value ?? "").trim();
   if (!text) return [];
   try {
     const parsed = JSON.parse(text);
-    return Array.isArray(parsed) ? parsed.flatMap(modeTokens) : [String(parsed)];
+    return Array.isArray(parsed) ? parsed.flatMap(parseVideoModeTokens) : [String(parsed)];
   } catch {
     return [text];
   }
 }
+
+const modeTokens = parseVideoModeTokens;
 
 function referenceLimitFromModes(tokens: string[]) {
   const count = tokens

@@ -364,6 +364,7 @@
     "menu": {
       "myProject": "Dự án của tôi",
       "taskCenter": "Trung tâm tác vụ",
+      "videoLibrary": "Thư viện thành phẩm",
       "novel": "Bản gốc tiểu thuyết",
       "scriptAgent": "Agent Kịch bản",
       "scriptManage": "Quản lý kịch bản",
@@ -372,6 +373,28 @@
       "assetCenter": "Trung tâm tài nguyên",
       "settings": "Cài đặt",
       "jumpGithub": "Chuyển tới Github"
+    },
+    "videoLibrary": {
+      "title": "Thư viện thành phẩm",
+      "subtitle": "Xem video đã tạo theo từng tập",
+      "refresh": "Làm mới",
+      "total": "Tổng {count} video",
+      "episode": "Tập {episode}",
+      "otherEpisode": "Khác",
+      "videoCount": "{count} video",
+      "shot": "Phân cảnh {index}",
+      "empty": "Chưa có video nào được tạo",
+      "emptyTip": "Video tạo trong “Sản xuất video” sẽ tự động được tổng hợp tại đây",
+      "noProject": "Vui lòng chọn dự án trong “Dự án của tôi” trước",
+      "loadFailed": "Không lấy được danh sách video",
+      "generating": "Đang tạo",
+      "failed": "Tạo thất bại",
+      "playFailed": "Không tải được video, vui lòng kiểm tra tệp hoặc tạo lại",
+      "play": "Phát",
+      "pause": "Tạm dừng",
+      "mute": "Tắt tiếng",
+      "unmute": "Bật tiếng",
+      "fullscreen": "Toàn màn hình"
     },
     "project": {
       "title": "Dự án của tôi",

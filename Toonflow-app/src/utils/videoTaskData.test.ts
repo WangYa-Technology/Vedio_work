@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  extractSpeakerNames,
   groupStoryboardRowsBySegments,
+  mapSegmentRowsToDuration,
   parseStoryboardTable,
+  resolveTierDuration,
   selectNarrativeContext,
 } from "./videoTaskData";
 
@@ -143,4 +146,110 @@ test("binds legacy storyboard rows by persisted order when videoDesc markers are
 
   assert.deepEqual(groups.map((group) => group.storyboards.map((row) => row.id)), [[10], [11]]);
   assert.deepEqual(groups.map((group) => group.segment?.segmentTitle), ["片段一", "片段二"]);
+});
+
+const H3_DURATIONS = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+
+function round1(value: number) {
+  return Math.round(value * 10) / 10;
+}
+
+test("maps the 12s tier to a 10s target and scales shots proportionally", () => {
+  const rows = [{ duration: 3 }, { duration: 4 }, { duration: 5 }]; // 合计 12
+  const result = mapSegmentRowsToDuration(rows, 12, H3_DURATIONS, 15);
+
+  assert.equal(result.mapping, "tier");
+  assert.equal(result.duration, 10);
+  assert.equal(round1(Number(result.rows[0].duration)), 2.5);
+  assert.equal(
+    round1(result.rows.reduce((sum, row) => sum + Number(row.duration), 0)),
+    10,
+  );
+});
+
+test("maps the 17s tier to a 15s target", () => {
+  const rows = [{ duration: 5 }, { duration: 6 }, { duration: 6 }]; // 合计 17
+  const result = mapSegmentRowsToDuration(rows, 17, H3_DURATIONS, 15);
+
+  assert.equal(result.mapping, "tier");
+  assert.equal(result.duration, 15);
+  assert.equal(
+    round1(result.rows.reduce((sum, row) => sum + Number(row.duration), 0)),
+    15,
+  );
+});
+
+test("keeps out-of-tier segments untouched", () => {
+  const rows = [{ duration: 7 }, { duration: 7 }]; // 合计 14，不属于任何档位
+  const result = mapSegmentRowsToDuration(rows, 14, H3_DURATIONS, 15);
+
+  assert.equal(result.mapping, null);
+  assert.equal(result.duration, 14);
+  assert.deepEqual(result.rows.map((row) => row.duration), [7, 7]);
+});
+
+test("skips tier mapping when the model does not support the target duration", () => {
+  const rows = [{ duration: 6 }, { duration: 6 }]; // 12 秒档，但模型只有 15 秒档
+  const result = mapSegmentRowsToDuration(rows, 12, [15], 15);
+
+  assert.equal(result.mapping, null);
+  assert.equal(result.duration, 12);
+  assert.deepEqual(result.rows.map((row) => row.duration), [6, 6]);
+});
+
+test("falls back to overflow compression above the model limit", () => {
+  const rows = [{ duration: 10 }, { duration: 10 }]; // 合计 20，超过模型上限
+  const result = mapSegmentRowsToDuration(rows, 20, H3_DURATIONS, 15);
+
+  assert.equal(result.mapping, "overflow");
+  assert.equal(result.duration, 15);
+  assert.equal(
+    round1(result.rows.reduce((sum, row) => sum + Number(row.duration), 0)),
+    15,
+  );
+});
+
+test("keeps the scaled total exactly on target after rounding", () => {
+  const rows = Array.from({ length: 8 }, () => ({ duration: 1.5 })); // 合计 12
+  const result = mapSegmentRowsToDuration(rows, 12, H3_DURATIONS, 15);
+
+  assert.equal(result.mapping, "tier");
+  assert.equal(
+    round1(result.rows.reduce((sum, row) => sum + Number(row.duration), 0)),
+    10,
+  );
+});
+
+test("resolves tier targets only for supported durations", () => {
+  assert.equal(resolveTierDuration(11, H3_DURATIONS, 15), 10);
+  assert.equal(resolveTierDuration(13, [10], 15), 10);
+  assert.equal(resolveTierDuration(16, H3_DURATIONS, 15), 15);
+  assert.equal(resolveTierDuration(18, [15], 15), 15);
+  assert.equal(resolveTierDuration(14, H3_DURATIONS, 15), null);
+  assert.equal(resolveTierDuration(19, H3_DURATIONS, 15), null);
+  // 模型未声明档位时按上限保守判断
+  assert.equal(resolveTierDuration(12, [], 15), 10);
+  assert.equal(resolveTierDuration(12, [], 8), null);
+});
+
+test("strips narrative verbs from extracted speaker names", () => {
+  assert.deepEqual(extractSpeakerNames("老王问：『这酒多少钱？』"), ["老王"]);
+  assert.deepEqual(extractSpeakerNames("陈照野答：知道了"), ["陈照野"]);
+  assert.deepEqual(extractSpeakerNames("销售说：二位看的是婚房吧？"), ["销售"]);
+  assert.deepEqual(extractSpeakerNames("许曼青（OS）：我先进去"), ["许曼青"]);
+  assert.deepEqual(extractSpeakerNames("OS（陈照野，平静）：别出声"), ["陈照野"]);
+  // 单字名字不被误剥
+  assert.deepEqual(extractSpeakerNames("阿道：走"), ["阿道"]);
+  assert.deepEqual(extractSpeakerNames("无台词"), []);
+});
+
+test("skips in-frame text labels when collecting speaker names", () => {
+  // 画内文字不是说话人：否则自动补全会拿"摊车灯牌文字"这类来源标签去匹配角色资产。
+  assert.deepEqual(extractSpeakerNames("VO（摊车灯牌文字）：『照野炸串』"), []);
+  assert.deepEqual(extractSpeakerNames("VO（手机来电显示）：『许曼青』"), []);
+  assert.deepEqual(extractSpeakerNames("屏幕文字：营业中"), []);
+  assert.deepEqual(
+    extractSpeakerNames("陈照野说：『马上！』<br>VO（摊车灯牌文字）：『照野炸串』"),
+    ["陈照野"],
+  );
 });

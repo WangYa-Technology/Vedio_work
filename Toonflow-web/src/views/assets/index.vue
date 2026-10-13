@@ -721,10 +721,16 @@ function handleBatchDelete() {
     cancelBtn: $t("workbench.assets.cancelBtn"),
     theme: "warning",
     onConfirm: async () => {
-      await axios.post("/assets/batchDelete", { id: selectedAssets.map((asset) => asset.id) });
-      window.$message.success($t("workbench.assets.deleteSuccess"));
-      getFilteredData(assetOptions.value);
-      dialog.destroy();
+      try {
+        await axios.post("/assets/batchDelete", { id: selectedAssets.map((asset) => asset.id) });
+        window.$message.success($t("workbench.assets.deleteSuccess"));
+        getFilteredData(assetOptions.value);
+        dialog.destroy();
+      } catch (error) {
+        console.error("批量删除资产失败:", error);
+        window.$message.error((error as any)?.message || $t("workbench.assets.deleteFail"));
+        dialog.destroy();
+      }
     },
   });
 }

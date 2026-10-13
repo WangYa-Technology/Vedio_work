@@ -27,6 +27,10 @@ const router = createRouter({
           path: "/task",
           component: () => import("@/views/task/index.vue"),
         },
+        {
+          path: "/videoLibrary",
+          component: () => import("@/views/videoLibrary/index.vue"),
+        },
         // {
         //   path: "/detail",
         //   component: () => import("@/views/detail/index.vue"),

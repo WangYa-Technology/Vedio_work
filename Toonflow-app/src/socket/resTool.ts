@@ -1,5 +1,6 @@
 import u from "@/utils";
 import { Socket } from "socket.io";
+import { MergeCoalescer, TextCoalescer } from "@/utils/streamCoalescer";
 import type {
   ChatMessageStatus,
   AIMessageContent,
@@ -16,10 +17,17 @@ import type {
 
 type ContentType = AIMessageContent["type"];
 
+// 流式推送合并：文本按 100ms / 8KB 合并，thinking 全量合并报文按 150ms 合并。
+// 长产出生成期间推送频率与报文体积可降一个数量级，减轻服务端事件循环与前端渲染压力。
+const STREAM_FLUSH_INTERVAL_MS = 100;
+const STREAM_FLUSH_MAX_CHARS = 8 * 1024;
+const THINKING_FLUSH_INTERVAL_MS = 150;
+
 class ResTool {
   public socket: Socket;
   public data: Record<string, any>;
   private workflowFailure: { label: string; phase?: string } | null = null;
+  private lastLoggedWorkflowStatus = "";
 
   constructor(socket: Socket, data: Record<string, any> = {}) {
     this.socket = socket;
@@ -70,6 +78,12 @@ class ResTool {
   ) {
     if (state === "error" && !this.workflowFailure) {
       this.workflowFailure = { label, ...(phase ? { phase } : {}) };
+    }
+    // 同一步骤状态重复刷新时不再重复打日志，避免噪音
+    const statusKey = `${state}|${phase ?? ""}|${label}`;
+    if (statusKey !== this.lastLoggedWorkflowStatus) {
+      this.lastLoggedWorkflowStatus = statusKey;
+      console.log(`[workflow] 项目 ${this.data.projectId ?? "-"} 状态=${state}${phase ? ` 阶段=${phase}` : ""}：${label}`);
     }
     this.socket.emit("workflow:status", { state, label, phase });
   }
@@ -326,97 +340,109 @@ class ContentStream<T> {
   protected messageId: string;
   protected contentId: string;
   protected contentType: ContentType;
+  // 高频 append 合并：语义与逐条 append 完全一致，只是在时间窗/体积阈值内合并为一次推送
+  private readonly appendCoalescer: TextCoalescer;
 
   constructor(socket: Socket, messageId: string, contentId: string, contentType: ContentType) {
     this.socket = socket;
     this.messageId = messageId;
     this.contentId = contentId;
     this.contentType = contentType;
+    this.appendCoalescer = new TextCoalescer(
+      (text) => this.emitUpdate({ data: text, strategy: "append", status: "streaming" }),
+      { intervalMs: STREAM_FLUSH_INTERVAL_MS, maxChars: STREAM_FLUSH_MAX_CHARS },
+    );
   }
 
   get id() {
     return this.contentId;
   }
 
-  // 流式追加数据
-  append(chunk: string) {
+  protected emitUpdate(payload: { data?: unknown; strategy?: "append" | "merge"; status?: ChatMessageStatus }) {
     this.socket.emit("content:update", {
       messageId: this.messageId,
       contentId: this.contentId,
       type: this.contentType,
-      data: chunk,
-      strategy: "append",
-      status: "streaming",
+      ...payload,
     });
+  }
+
+  protected emitMerge(data: T) {
+    this.emitUpdate({ data, strategy: "merge", status: "streaming" });
+  }
+
+  // 流式追加数据
+  append(chunk: string) {
+    if (!chunk) return this;
+    this.appendCoalescer.push(chunk);
     return this;
   }
 
   // 合并/替换数据
   merge(data: T) {
-    this.socket.emit("content:update", {
-      messageId: this.messageId,
-      contentId: this.contentId,
-      type: this.contentType,
-      data,
-      strategy: "merge",
-      status: "streaming",
-    });
+    // 先冲刷待发送的增量，保证前端看到的内容顺序与不合并时一致
+    this.appendCoalescer.flushNow();
+    this.emitMerge(data);
     return this;
   }
 
   // 完成内容
   complete(finalData?: T) {
-    this.socket.emit("content:update", {
-      messageId: this.messageId,
-      contentId: this.contentId,
-      type: this.contentType,
-      data: finalData,
-      status: "complete",
-    });
+    this.appendCoalescer.flushNow();
+    this.emitUpdate({ data: finalData, status: "complete" });
     return this;
   }
 
   // 错误
   error() {
-    this.socket.emit("content:update", {
-      messageId: this.messageId,
-      contentId: this.contentId,
-      status: "error",
-    });
+    this.appendCoalescer.flushNow();
+    this.emitUpdate({ status: "error" });
     return this;
   }
 }
 
 // 思考内容流
 class ThinkingStream extends ContentStream<ThinkingContent["data"]> {
+  // thinking 的 merge 是"全量文本快照"，逐 chunk 推送会造成极大的报文，
+  // 这里按时间窗浅合并后再推送（字段级合并，title/text 都不会丢）
+  private readonly mergeCoalescer: MergeCoalescer<ThinkingContent["data"]>;
+
   constructor(socket: Socket, messageId: string, contentId: string) {
     super(socket, messageId, contentId, "thinking");
+    this.mergeCoalescer = new MergeCoalescer<ThinkingContent["data"]>(
+      (data) => this.emitMerge(data as ThinkingContent["data"]),
+      { intervalMs: THINKING_FLUSH_INTERVAL_MS },
+    );
+  }
+
+  // 合并/替换数据（全量快照）：合并后再推送
+  override merge(data: ThinkingContent["data"]) {
+    this.mergeCoalescer.push(data);
+    return this;
   }
 
   // 追加思考文本
   appendText(chunk: string) {
-    this.socket.emit("content:update", {
-      messageId: this.messageId,
-      contentId: this.contentId,
-      type: "thinking",
-      data: { text: chunk },
-      strategy: "append",
-      status: "streaming",
-    });
+    // 先冲刷待发送的合并报文，保证顺序
+    this.mergeCoalescer.flushNow();
+    this.emitUpdate({ data: { text: chunk }, strategy: "append", status: "streaming" });
     return this;
   }
 
   // 更新标题
   updateTitle(title: string) {
-    this.socket.emit("content:update", {
-      messageId: this.messageId,
-      contentId: this.contentId,
-      type: "thinking",
-      data: { title },
-      strategy: "merge",
-      status: "streaming",
-    });
+    this.mergeCoalescer.push({ title });
     return this;
+  }
+
+  override complete(finalData?: ThinkingContent["data"]) {
+    this.mergeCoalescer.flushNow();
+    return super.complete(finalData);
+  }
+
+  override error() {
+    this.mergeCoalescer.flushNow();
+    return super.error();
   }
 }
 

@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>叙事转译 × 剧本锻造 — 协作工作流</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { 
+  background: #0d1117; 
+  color: #e6edf3; 
+  font-family: -apple-system, "SF Pro Text", "Helvetica Neue", sans-serif;
+  padding: 16px;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+h1 { 
+  text-align: center; 
+  font-size: 22px; 
+  font-weight: 700;
+  margin-bottom: 4px;
+  color: #f0f6fc;
+}
+.subtitle {
+  text-align: center;
+  font-size: 13px;
+  color: #8b949e;
+  margin-bottom: 8px;
+  line-height: 1.6;
+}
+.subtitle em {
+  color: #58a6ff;
+  font-style: normal;
+}
+.legend {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #8b949e;
+}
+.legend-dot {
+  width: 14px; height: 14px;
+  border-radius: 4px;
+  border: 2px solid;
+}
+.zone-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  opacity: 0.5;
+}
+svg text {
+  font-family: -apple-system, "SF Pro Text", "Helvetica Neue", sans-serif;
+}
+</style>
+</head>
+<body>
+
+<h1>叙事转译 × 剧本锻造 · 协作工作流</h1>
+<p class="subtitle">两个 Skill 不是单向递进，而是<em>具有回路的相互辅助关系</em><br>叙事转译 → 影视化开发方向 · 剧本锻造 → 影视前期执行方向</p>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="border-color:#8b949e;background:#161b22"></div>起点</div>
+  <div class="legend-item"><div class="legend-dot" style="border-color:#58a6ff;background:#1a2432"></div>叙事转译 Skill</div>
+  <div class="legend-item"><div class="legend-dot" style="border-color:#f0883e;background:#2a1e14"></div>剧本锻造 Skill</div>
+  <div class="legend-item"><div class="legend-dot" style="border-color:#3fb950;background:#1a2e1a"></div>共享产物</div>
+  <div class="legend-item"><div class="legend-dot" style="border-color:#d29922;background:#2a2010;border-style:dashed"></div>决策节点</div>
+  <div class="legend-item"><div class="legend-dot" style="border-color:#bc8cff;background:#241a32"></div>回路 / 后置</div>
+</div>
+
+<svg viewBox="0 0 960 1060" width="100%" style="display:block;margin:0 auto;overflow:visible;max-width:1000px" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr-b" markerWidth="9" markerHeight="7" refX="9" refY="3.5" orient="auto"><path d="M0,0 L9,3.5 L0,7" fill="#58a6ff"/></marker>
+    <marker id="arr-o" markerWidth="9" markerHeight="7" refX="9" refY="3.5" orient="auto"><path d="M0,0 L9,3.5 L0,7" fill="#f0883e"/></marker>
+    <marker id="arr-g" markerWidth="9" markerHeight="7" refX="9" refY="3.5" orient="auto"><path d="M0,0 L9,3.5 L0,7" fill="#3fb950"/></marker>
+    <marker id="arr-y" markerWidth="9" markerHeight="7" refX="9" refY="3.5" orient="auto"><path d="M0,0 L9,3.5 L0,7" fill="#d29922"/></marker>
+    <marker id="arr-p" markerWidth="9" markerHeight="7" refX="9" refY="3.5" orient="auto"><path d="M0,0 L9,3.5 L0,7" fill="#bc8cff"/></marker>
+    <marker id="arr-gy" markerWidth="9" markerHeight="7" refX="9" refY="3.5" orient="auto"><path d="M0,0 L9,3.5 L0,7" fill="#8b949e"/></marker>
+
+    <pattern id="grid-b" patternUnits="userSpaceOnUse" width="32" height="32"><path d="M 32 0 L 0 0 0 32" fill="none" stroke="#1f6feb" stroke-width="0.3" opacity="0.08"/></pattern>
+    <pattern id="grid-o" patternUnits="userSpaceOnUse" width="32" height="32"><path d="M 32 0 L 0 0 0 32" fill="none" stroke="#f0883e" stroke-width="0.3" opacity="0.08"/></pattern>
+  </defs>
+
+  <rect x="0" y="0" width="960" height="1060" fill="none"/>
+
+  <!-- ========= ZONE BACKGROUNDS ========= -->
+  <rect x="30" y="240" width="430" height="490" rx="12" fill="url(#grid-b)" stroke="#1f6feb" stroke-width="1" stroke-dasharray="6,4" opacity="0.22"/>
+  <text x="42" y="262" fill="#58a6ff" class="zone-label">影视化开发方向 · 叙事转译 Skill</text>
+
+  <rect x="490" y="240" width="440" height="530" rx="12" fill="url(#grid-o)" stroke="#f0883e" stroke-width="1" stroke-dasharray="6,4" opacity="0.22"/>
+  <text x="502" y="262" fill="#f0883e" class="zone-label">影视前期执行方向 · 剧本锻造 Skill</text>
+
+  <!-- ========= ROW 0: STORY ========= -->
+  <g transform="translate(380, 16)">
+    <rect width="200" height="50" rx="10" fill="#161b22" stroke="#8b949e" stroke-width="2"/>
+    <text x="100" y="24" text-anchor="middle" fill="#f0f6fc" font-size="15" font-weight="600">📄 故事原文</text>
+    <text x="100" y="42" text-anchor="middle" fill="#8b949e" font-size="11">小说 / 角色扮演 / 大纲</text>
+  </g>
+
+  <!-- Story → Diagnosis -->
+  <line x1="480" y1="66" x2="480" y2="122" stroke="#8b949e" stroke-width="2" marker-end="url(#arr-gy)"/>
+
+  <!-- ========= SKIP DIAGNOSIS NOTE ========= -->
+  <g transform="translate(620, 72)">
+    <rect width="220" height="40" rx="6" fill="none" stroke="#8b949e" stroke-width="1" stroke-dasharray="4,3" opacity="0.4"/>
+    <text x="110" y="18" text-anchor="middle" fill="#8b949e" font-size="10" opacity="0.7">故事已成熟 → 可跳过诊断</text>
+    <text x="110" y="33" text-anchor="middle" fill="#8b949e" font-size="10" opacity="0.7">直接进入剧本锻造</text>
+  </g>
+  <line x1="580" y1="41" x2="620" y2="82" stroke="#8b949e" stroke-width="1" stroke-dasharray="4,3" opacity="0.3"/>
+
+  <!-- ========= ROW 1: DIAGNOSIS ========= -->
+  <g transform="translate(280, 128)">
+    <rect width="400" height="56" rx="10" fill="#1a2432" stroke="#58a6ff" stroke-width="2"/>
+    <text x="200" y="22" text-anchor="middle" fill="#58a6ff" font-size="14" font-weight="600">叙事转译 · 快速诊断</text>
+    <text x="200" y="44" text-anchor="middle" fill="#8b949e" font-size="11">A / B / C / D 评级 → 确定开发可行性</text>
+  </g>
+
+  <!-- Diagnosis → Is A? -->
+  <line x1="480" y1="184" x2="480" y2="222" stroke="#d29922" stroke-width="2" marker-end="url(#arr-y)"/>
+
+  <!-- ========= ROW 2: IS A? ========= -->
+  <g transform="translate(340, 228)">
+    <rect width="280" height="48" rx="10" fill="#2a2010" stroke="#d29922" stroke-width="2" stroke-dasharray="6,3"/>
+    <text x="140" y="20" text-anchor="middle" fill="#d29922" font-size="14" font-weight="600">评级是否为 A？</text>
+    <text x="140" y="38" text-anchor="middle" fill="#d29922" font-size="11">A 级 → 进入开发体系 · B/C/D → 先补强故事</text>
+  </g>
+
+  <!-- ========= PATH: NOT A ========= -->
+  <!-- Is A? left edge (340,276) → horizontally to 160 → down to Adaptation Reader (160,346) -->
+  <path d="M 340 276 L 340 311 L 160 311 L 160 346" stroke="#58a6ff" stroke-width="2" fill="none" marker-end="url(#arr-b)"/>
+  <rect x="200" y="299" width="100" height="20" rx="4" fill="#0d1117"/>
+  <text x="250" y="314" text-anchor="middle" fill="#58a6ff" font-size="11" font-weight="600">B / C / D 级</text>
+
+  <g transform="translate(30, 352)">
+    <rect width="260" height="70" rx="10" fill="#1a2432" stroke="#58a6ff" stroke-width="1.5"/>
+    <text x="130" y="22" text-anchor="middle" fill="#58a6ff" font-size="13" font-weight="600">叙事转译 · 编剧改编读本</text>
+    <text x="15" y="44" fill="#c9d1d9" font-size="11">完善故事结构 · 补强人物厚度</text>
+    <text x="15" y="60" fill="#8b949e" font-size="10">修复后重新评级 → 达到 A 级再进入后续</text>
+  </g>
+
+  <!-- ========= PATH: A ========= -->
+  <!-- Is A? right edge (620,276) → horizontal to 810 → down to Route Choice (810,356) -->
+  <path d="M 620 276 L 810 276 L 810 356" stroke="#3fb950" stroke-width="2.5" fill="none" marker-end="url(#arr-g)"/>
+  <rect x="685" y="266" width="60" height="20" rx="4" fill="#0d1117"/>
+  <text x="715" y="281" text-anchor="middle" fill="#3fb950" font-size="12" font-weight="600">A 级 ✅</text>
+
+  <!-- ========= ROW 3: ROUTE CHOICE ========= -->
+  <g transform="translate(675, 362)">
+    <rect width="270" height="50" rx="10" fill="#2a2010" stroke="#d29922" stroke-width="2" stroke-dasharray="6,3"/>
+    <text x="135" y="20" text-anchor="middle" fill="#d29922" font-size="13" font-weight="600">A 级故事 → 选开发路线</text>
+    <text x="135" y="38" text-anchor="middle" fill="#d29922" font-size="10">传统影视开发 / AI 执行工作流</text>
+  </g>
+
+  <!-- ========= PATHS FROM ROUTE CHOICE ========= -->
+
+  <!-- ROUTE: 传统影视开发 → 左边缘(675,387) → 向左到235 → 向下到完整开发读本(235,466) -->
+  <path d="M 675 387 L 235 387 L 235 466" stroke="#58a6ff" stroke-width="2.5" fill="none" marker-end="url(#arr-b)"/>
+  <rect x="400" y="377" width="110" height="20" rx="4" fill="#0d1117"/>
+  <text x="455" y="392" text-anchor="middle" fill="#58a6ff" font-size="11" font-weight="600">传统影视开发</text>
+
+  <!-- ROUTE: AI 执行工作流 → 下边缘(810,412) → 向下到 Step 1 (710,476) -->
+  <line x1="810" y1="412" x2="810" y2="476" stroke="#f0883e" stroke-width="2.5" marker-end="url(#arr-o)"/>
+  <rect x="745" y="436" width="130" height="20" rx="4" fill="#0d1117"/>
+  <text x="810" y="451" text-anchor="middle" fill="#f0883e" font-size="11" font-weight="600">AI 执行工作流</text>
+
+  <!-- ========= ZONE A: NARRATIVE OUTPUTS ========= -->
+
+  <!-- 完整开发读本 (center=235) -->
+  <g transform="translate(65, 472)">
+    <rect width="340" height="100" rx="8" fill="#1a2432" stroke="#58a6ff" stroke-width="1.5"/>
+    <text x="170" y="24" text-anchor="middle" fill="#58a6ff" font-size="14" font-weight="600">完整开发读本</text>
+    <text x="20" y="46" fill="#c9d1d9" font-size="11">角色档案 · 逐场解读 · 潜台词表</text>
+    <text x="20" y="64" fill="#c9d1d9" font-size="11">物件链 · 空间链 · 视听母题</text>
+    <text x="20" y="82" fill="#8b949e" font-size="10">作为母文档，优先产出</text>
+  </g>
+
+  <!-- 制片摘要 + AI 提示包 -->
+  <g transform="translate(65, 586)">
+    <rect width="160" height="70" rx="8" fill="#1a2432" stroke="#58a6ff" stroke-width="1.5"/>
+    <text x="80" y="22" text-anchor="middle" fill="#58a6ff" font-size="13" font-weight="600">制片摘要</text>
+    <text x="15" y="44" fill="#c9d1d9" font-size="11">项目定位 · 类型卖点</text>
+    <text x="15" y="60" fill="#c9d1d9" font-size="11">制作规模 · 风险</text>
+  </g>
+
+  <g transform="translate(245, 586)">
+    <rect width="160" height="70" rx="8" fill="#1a2e1a" stroke="#3fb950" stroke-width="1.5" stroke-dasharray="5,3"/>
+    <text x="80" y="22" text-anchor="middle" fill="#3fb950" font-size="13" font-weight="600">AI 剧本化提示包</text>
+    <text x="15" y="44" fill="#8b949e" font-size="10">可跨 Skill 借用</text>
+    <text x="15" y="60" fill="#8b949e" font-size="10">共享产物</text>
+  </g>
+
+  <!-- Actor/Director readers: 后置 -->
+  <g transform="translate(65, 670)">
+    <rect width="340" height="42" rx="8" fill="#1a2432" stroke="#58a6ff" stroke-width="1" stroke-dasharray="5,3" opacity="0.6"/>
+    <text x="170" y="18" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="600">演员读本 · 导演视听读本</text>
+    <text x="170" y="34" text-anchor="middle" fill="#d29922" font-size="10">⚠ 剧本定稿后再做 —— 此阶段不推荐</text>
+  </g>
+
+  <!-- visual hint: 完整开发读本 ↓ 制片摘要+AI提示包 -->
+  <line x1="235" y1="572" x2="235" y2="586" stroke="#58a6ff" stroke-width="1" opacity="0.35"/>
+  <!-- visual hint: 制片摘要+AI提示包 ↓ 演员/导演读本 -->
+  <line x1="235" y1="656" x2="235" y2="670" stroke="#58a6ff" stroke-width="1" opacity="0.35"/>
+
+  <!-- ========= ZONE B: FORGING STEPS ========= -->
+
+  <!-- Step 1 (center=710) -->
+  <g transform="translate(510, 476)">
+    <rect width="400" height="54" rx="8" fill="#2a1e14" stroke="#f0883e" stroke-width="1.5"/>
+    <text x="200" y="20" text-anchor="middle" fill="#f0883e" font-size="14" font-weight="600">Step 1 · 剧本化提示包</text>
+    <text x="15" y="42" fill="#c9d1d9" font-size="11">可用叙事转译的 AI 提示包替代，也可独立生成</text>
+  </g>
+
+  <line x1="710" y1="530" x2="710" y2="560" stroke="#f0883e" stroke-width="2" marker-end="url(#arr-o)"/>
+
+  <!-- Step 2 -->
+  <g transform="translate(510, 564)">
+    <rect width="400" height="46" rx="8" fill="#2a1e14" stroke="#f0883e" stroke-width="1.5"/>
+    <text x="200" y="20" text-anchor="middle" fill="#f0883e" font-size="14" font-weight="600">Step 2 · 分场大纲</text>
+    <text x="200" y="38" text-anchor="middle" fill="#d29922" font-size="10">🔴 CHECKPOINT</text>
+  </g>
+
+  <line x1="710" y1="610" x2="710" y2="632" stroke="#f0883e" stroke-width="2" marker-end="url(#arr-o)"/>
+
+  <!-- Step 3 -->
+  <g transform="translate(510, 636)">
+    <rect width="400" height="70" rx="8" fill="#2a1e14" stroke="#f0883e" stroke-width="1.5"/>
+    <text x="200" y="20" text-anchor="middle" fill="#f0883e" font-size="14" font-weight="600">Step 3 · 标准剧本 ↔ 逐稿自检</text>
+    <text x="15" y="42" fill="#c9d1d9" font-size="11">一稿 → 自检报告 → 二稿 → 自检报告 → …</text>
+    <text x="200" y="60" text-anchor="middle" fill="#d29922" font-size="10">致命问题 → 必须下一稿 · 高优 &gt;3 项 → 建议下一稿</text>
+  </g>
+
+  <line x1="710" y1="706" x2="710" y2="732" stroke="#d29922" stroke-width="2" marker-end="url(#arr-y)"/>
+
+  <!-- 剧本定稿 -->
+  <g transform="translate(600, 736)">
+    <rect width="220" height="38" rx="8" fill="#2a2010" stroke="#d29922" stroke-width="2" stroke-dasharray="5,3"/>
+    <text x="110" y="24" text-anchor="middle" fill="#d29922" font-size="13" font-weight="600">剧本定稿完成 ✅</text>
+  </g>
+
+  <!-- ========= THREE EXITS ========= -->
+
+  <!-- EXIT 1: Step 4 分镜表 (down from 定稿 bottom center) -->
+  <line x1="710" y1="774" x2="710" y2="810" stroke="#f0883e" stroke-width="2" marker-end="url(#arr-o)"/>
+
+  <g transform="translate(555, 814)">
+    <rect width="310" height="50" rx="8" fill="#2a1e14" stroke="#f0883e" stroke-width="1.5"/>
+    <text x="155" y="20" text-anchor="middle" fill="#f0883e" font-size="13" font-weight="600">Step 4 · 分镜表 / 资产清单</text>
+    <text x="15" y="40" fill="#c9d1d9" font-size="11">关键分镜 · 场级分镜 · 逐镜头 · 数字资产</text>
+  </g>
+
+  <!-- EXIT 2: 回路 → 叙事转译 (left from 定稿 left edge 600,755 → 回路框 235,814) -->
+  <path d="M 600 755 L 600 788 L 235 788 L 235 814" stroke="#bc8cff" stroke-width="2.5" fill="none" marker-end="url(#arr-p)"/>
+  <rect x="370" y="776" width="170" height="20" rx="4" fill="#0d1117"/>
+  <text x="455" y="791" text-anchor="middle" fill="#bc8cff" font-size="11" font-weight="600">回路：定稿剧本 → 读本</text>
+
+  <g transform="translate(60, 818)">
+    <rect width="350" height="50" rx="8" fill="#241a32" stroke="#bc8cff" stroke-width="2" stroke-dasharray="5,3"/>
+    <text x="175" y="20" text-anchor="middle" fill="#bc8cff" font-size="13" font-weight="600">回路 → 叙事转译 · 后置产物</text>
+    <text x="15" y="40" fill="#c9d1d9" font-size="11">演员读本 · 导演视听读本 · 制片摘要（补充）</text>
+  </g>
+
+  <!-- EXIT 3: down to final -->
+  <line x1="710" y1="864" x2="710" y2="896" stroke="#3fb950" stroke-width="2" marker-end="url(#arr-g)"/>
+
+  <!-- ========= FINAL OUTPUT ========= -->
+  <g transform="translate(200, 900)">
+    <rect width="560" height="78" rx="12" fill="#0d1117" stroke="#3fb950" stroke-width="2.5" stroke-dasharray="6,3"/>
+    <text x="280" y="28" text-anchor="middle" fill="#3fb950" font-size="16" font-weight="700">🎬 完整项目产出</text>
+    <text x="280" y="52" text-anchor="middle" fill="#c9d1d9" font-size="12">剧本 + 分镜 + 资产清单 + 演员读本 + 导演视听读本 + 制片摘要</text>
+    <text x="280" y="72" text-anchor="middle" fill="#8b949e" font-size="11">按需组合，不必全出 · 每个模块都有其最合适的产生时机</text>
+  </g>
+
+  <!-- ========= CROSS CONNECTION: AI提示包 → Forging Step 1 ========= -->
+  <!-- AI提示包 bottom edge (325,656) → down → right → into Step 1 left edge -->
+  <path d="M 325 656 L 325 690 L 510 690 L 510 503" stroke="#3fb950" stroke-width="2" fill="none" stroke-dasharray="7,4" marker-end="url(#arr-g)"/>
+  <rect x="380" y="585" width="135" height="20" rx="4" fill="#0d1117"/>
+  <text x="447" y="600" text-anchor="middle" fill="#3fb950" font-size="11" font-weight="600">提示包可跨 Skill 借用</text>
+
+  <!-- ========= ANNOTATIONS ========= -->
+
+  <!-- Two-Skill relationship -->
+  <g transform="translate(30, 730)">
+    <rect width="220" height="76" rx="6" fill="none" stroke="#3fb950" stroke-width="1" stroke-dasharray="3,3" opacity="0.4"/>
+    <text x="110" y="18" text-anchor="middle" fill="#3fb950" font-size="11" opacity="0.8">两个 Skill 的关系</text>
+    <text x="15" y="36" fill="#8b949e" font-size="10">不是递进，是回路</text>
+    <text x="15" y="52" fill="#8b949e" font-size="10">叙事转译 → 做对的事（方向）</text>
+    <text x="15" y="68" fill="#8b949e" font-size="10">剧本锻造 → 把事做对（执行）</text>
+  </g>
+
+  <!-- Forging note -->
+  <g transform="translate(760, 868)">
+    <rect width="170" height="42" rx="6" fill="none" stroke="#f0883e" stroke-width="1" stroke-dasharray="3,3" opacity="0.4"/>
+    <text x="85" y="18" text-anchor="middle" fill="#f0883e" font-size="11" opacity="0.8">剧本锻造 偏向</text>
+    <text x="85" y="35" text-anchor="middle" fill="#8b949e" font-size="10">影视前期执行方向</text>
+  </g>
+
+  <!-- Narrative note -->
+  <g transform="translate(30, 200)">
+    <rect width="175" height="30" rx="6" fill="none" stroke="#58a6ff" stroke-width="1" stroke-dasharray="3,3" opacity="0.4"/>
+    <text x="87" y="20" text-anchor="middle" fill="#58a6ff" font-size="11" opacity="0.8">叙事转译 偏向 影视化开发方向</text>
+  </g>
+
+</svg>
+
+</body>
+</html>

@@ -11,6 +11,15 @@
           <span class="selectedCount" v-if="selectedSceneCount">已选 {{ selectedSceneCount }} 场 · {{ selectedSegmentCount }} 段</span>
           <t-button size="small" variant="outline" :disabled="!selectedSegmentCount" @click="batchGenText">{{ $t("workbench.generate.batchGenerateText") }}</t-button>
           <t-button size="small" variant="outline" :disabled="!selectedSegmentCount" @click="batchGenVideo">{{ $t("workbench.generate.batchGenerateVideo") }}</t-button>
+          <t-button
+            v-if="failedTrackCount"
+            size="small"
+            variant="outline"
+            theme="danger"
+            :loading="repairSubmitting"
+            @click="batchRepairVideo">
+            {{ $t("workbench.generate.repairBatch") }}（{{ failedTrackCount }}）
+          </t-button>
           <t-button size="small" :disabled="!selectedSegmentCount || !selectedImportableCount" @click="importVideo">
             {{ $t("workbench.generate.importVideo") }}
           </t-button>
@@ -35,10 +44,10 @@
           <div class="sceneGroupHeader">
             <strong>场次 {{ sceneIndex + 1 }}</strong>
             <span :title="scene.title">{{ scene.title }}</span>
-            <small>{{ scene.entries.length }} 段 · {{ scene.duration }}s</small>
+            <small>{{ scene.entries.length }} 段 · {{ scene.duration }}s<template v-if="Math.abs(scene.plannedDuration - scene.duration) >= 0.1">（分镜计划 {{ scene.plannedDuration }}s）</template></small>
           </div>
           <div class="sceneGroupSegments">
-            <span v-for="entry in scene.entries" :key="entry.track.id">{{ entry.track.segmentTitle }} {{ entry.track.duration }}s</span>
+            <span v-for="entry in scene.entries" :key="entry.track.id">{{ entry.track.segmentTitle }} {{ segmentDisplayDuration(entry.track) }}s</span>
           </div>
         </div>
       </div>
@@ -50,7 +59,7 @@
           type="button"
           :class="{ active: entry.index === activeTrackIndex }"
           @click="activeTrackIndex = entry.index">
-          #{{ entry.index + 1 }} {{ entry.track.segmentTitle }} · {{ entry.track.duration }}s
+          #{{ entry.index + 1 }} {{ entry.track.segmentTitle }} · {{ segmentDisplayDuration(entry.track) }}s
         </button>
       </div>
     </section>
@@ -74,6 +83,7 @@
             <div>
               <span>片段时长</span>
               <strong>{{ activeTrack.duration }} 秒</strong>
+              <em v-if="durationMappingHint(activeTrack)" class="durationMappingHint">{{ durationMappingHint(activeTrack) }}</em>
             </div>
             <div>
               <span>参考图</span>
@@ -133,6 +143,24 @@
         <div v-if="activeScenePromptError" class="promptError" role="alert">
           <i-error-circle-filled size="16" />
           <span>{{ activeScenePromptError }}</span>
+          <t-button
+            v-if="activeSceneFixAvailable"
+            class="promptFixButton"
+            size="small"
+            theme="danger"
+            variant="outline"
+            :loading="activeSceneFixBusy"
+            :disabled="activeSceneFixBusy"
+            @click="oneClickFix">
+            {{ activeSceneFixButtonText }}
+          </t-button>
+        </div>
+        <div v-else-if="activeSceneFixNotice" class="promptFixNotice" role="status">
+          <CheckCircleFilledIcon size="16" />
+          <span>{{ activeSceneFixNotice }}</span>
+        </div>
+        <div v-else-if="activeScenePromptWarning" class="promptWarning" role="status">
+          <span>{{ activeScenePromptWarning }}</span>
         </div>
         <div class="promptStack">
           <div class="promptSection">
@@ -252,13 +280,13 @@
                 :options="resolutionOptions"
                 aria-label="生成清晰度" />
             </t-tooltip>
-            <t-tooltip content="片段时长" placement="top">
+            <t-tooltip :content="durationSelectTooltip" placement="top">
               <t-select
                 :value="effectiveDuration"
                 size="small"
                 class="durationSelect"
                 :options="durationOptions"
-                aria-label="片段时长"
+                :aria-label="durationSelectTooltip"
                 @change="handleDurationSelect" />
             </t-tooltip>
             <t-popup v-if="modelParameters.length" trigger="click" placement="bottom-left">
@@ -330,6 +358,19 @@
                   {{ $t("workbench.generate.generateFailed") }}
                 </t-tag>
               </t-tooltip>
+              <div
+                v-if="v.state === '生成失败'"
+                class="repairBtn"
+                @click.stop="openRepair(v)">
+                <i-refresh size="14" />
+                <span>{{ $t("workbench.generate.repair") }}</span>
+              </div>
+              <div
+                v-else-if="v.state === '生成中'"
+                class="markFailedBtn"
+                @click.stop="confirmMarkFailed(v)">
+                {{ $t("workbench.generate.repairMarkFailed") }}
+              </div>
               <div v-if="isVideoPlayable(v)" class="selectBtn" @click.stop="selectVideo(v)">
                 <i-check size="16" />
               </div>
@@ -422,17 +463,31 @@
         </div>
       </div>
     </t-dialog>
+    <videoRepairDialog
+      v-model:visible="repairVisible"
+      :title="repairState.title"
+      :message="repairState.message"
+      :fixed="repairState.fixed"
+      :blockers="repairState.blockers"
+      :submitted="repairState.submitted"
+      :refreshable="repairState.refreshable"
+      :regenerating="repairSubmitting"
+      @regenerate="handleRepairRegeneratePrompt"
+      @mark-failed="handleRepairMarkFailed"
+      @refresh="handleRepairRefresh" />
   </div>
 </template>
 
 <script setup lang="ts">
 import type { Ref } from "vue";
 import promptEditor from "@/components/promptEditor.vue";
+import videoRepairDialog from "./videoRepairDialog.vue";
 import assetsCheck, { type AssetType, type ClipMediaType } from "@/utils/assetsCheck";
 import { DialogPlugin } from "tdesign-vue-next";
-import { FullscreenIcon, PauseIcon, PlayIcon, SettingIcon, SoundIcon, SoundMuteIcon } from "tdesign-icons-vue-next";
+import { CheckCircleFilledIcon, FullscreenIcon, PauseIcon, PlayIcon, SettingIcon, SoundIcon, SoundMuteIcon } from "tdesign-icons-vue-next";
 import axios from "@/utils/axios";
 import projectStore from "@/stores/project";
+import productionAgentStore from "@/stores/productionAgent";
 import settingStore from "@/stores/setting";
 import { resolveBackendAssetUrl } from "@/utils/backendUrl";
 
@@ -494,6 +549,31 @@ const generating = computed(() => {
 });
 const genTextLoadingMap = ref<Record<number, boolean>>({});
 const scenePromptErrorMap = ref<Record<string, string>>({});
+// 校验降级警告：不阻断生成，但保留到界面上供人工核对
+const scenePromptWarningMap = ref<Record<string, string>>({});
+
+// 一键修复：说话角色缺少独立角色参考的结构化条目（与后端 400 响应载荷同构）
+interface MissingSpeakerEntry {
+  trackId: number;
+  storyboardIds: number[];
+  sceneTitle: string;
+  segmentTitle: string;
+  speakerName: string;
+}
+
+type SceneFixStatus = "ready" | "sending" | "fixing" | "done" | "failed" | "timeout";
+
+interface SceneFixState {
+  entries: MissingSpeakerEntry[];
+  trackIds: number[];
+  status: SceneFixStatus;
+}
+
+const scenePromptFixMap = ref<Record<string, SceneFixState>>({});
+// 修复进度轮询：修复包含异步图片生成，需等参考就绪后才能重新推理
+const sceneFixTimers = new Map<string, number>();
+const SCENE_FIX_POLL_INTERVAL = 5000;
+const SCENE_FIX_MAX_WAIT_MS = 10 * 60 * 1000;
 
 interface VideoPromptTemplate {
   id: number;
@@ -514,12 +594,68 @@ function displaySegmentField(value: string | undefined, label: string) {
     .trim() || "无";
 }
 
+// 时长按 0.1 秒精度显示；无效值返回 0
+function normalizedSeconds(value: unknown) {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return 0;
+  return Math.round(num * 10) / 10;
+}
+
+// 档位映射/超限压缩说明；无映射时返回空串
+function durationMappingHint(track?: TrackItem | null) {
+  if (!track?.durationMapping) return "";
+  const planned = normalizedSeconds(track.originalDuration);
+  const generated = normalizedSeconds(track.duration);
+  if (!planned || !generated || planned === generated) return "";
+  return track.durationMapping === "tier"
+    ? `分镜计划 ${planned} 秒 → 按 ${generated} 秒生成`
+    : `分镜原时长 ${planned} 秒超模型上限，已按 ${generated} 秒压缩`;
+}
+
+// 导航条与场次合计展示"分镜计划时长"，与任务卡的"实际生成时长"形成对照
+function segmentDisplayDuration(track?: TrackItem | null) {
+  const planned = normalizedSeconds(track?.originalDuration);
+  return track?.durationMapping && planned ? planned : normalizedSeconds(track?.duration);
+}
+
+const durationSelectTooltip = computed(() => {
+  const hint = durationMappingHint(trackList.value[activeTrackIndex.value]);
+  return hint ? `片段时长（${hint}）` : "片段时长";
+});
+
 function getRequestErrorMessage(caught: any) {
   const payload = caught?.response?.data ?? caught?.data ?? caught;
   const message = payload?.message ?? payload?.error?.message ?? caught?.message;
   if (typeof message === "string" && message.trim()) return message.trim();
   if (typeof payload === "string" && payload.trim()) return payload.trim();
   return "请求失败，请稍后重试";
+}
+
+// 结构化缺失条目归一化（400 载荷与检查接口返回同构）
+function normalizeMissingSpeakerEntries(raw: unknown): MissingSpeakerEntry[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((entry: any) => ({
+      trackId: Number(entry?.trackId),
+      storyboardIds: (Array.isArray(entry?.storyboardIds) ? entry.storyboardIds : [])
+        .map((id: unknown) => Number(id))
+        .filter(Number.isFinite),
+      sceneTitle: String(entry?.sceneTitle || ""),
+      segmentTitle: String(entry?.segmentTitle || ""),
+      speakerName: String(entry?.speakerName || "").trim(),
+    }))
+    .filter((entry) => Number.isFinite(entry.trackId) && Boolean(entry.speakerName));
+}
+
+// 从推理失败的响应中提取"缺少说话角色参考"的结构化载荷。
+// axios 拦截器已把失败 reject 为 error.response.data（ApiResponse { code, data, message }），
+// 结构化载荷位于 payload.data；兼容原始 axios error 形态。
+function getMissingSpeakerPayload(caught: any): MissingSpeakerEntry[] {
+  const payload = caught?.response?.data ?? caught;
+  const structured =
+    payload?.code === "MISSING_SPEAKER_REFERENCES" ? payload : payload?.data;
+  if (structured?.code !== "MISSING_SPEAKER_REFERENCES") return [];
+  return normalizeMissingSpeakerEntries(structured?.missingSpeakers);
 }
 
 async function loadVideoPromptTemplates() {
@@ -545,6 +681,7 @@ async function generateScenePrompts(scene: SceneGroup, requestedIds?: number[]) 
   const trackIds = (requestedIds?.length ? requestedIds : scene.entries.map((entry) => entry.track.id)).filter(Boolean);
   if (!trackIds.length || trackIds.some((id) => genTextLoadingMap.value[id])) return;
   scenePromptErrorMap.value[scene.key] = "";
+  scenePromptWarningMap.value[scene.key] = "";
   trackIds.forEach((id) => (genTextLoadingMap.value[id] = true));
   try {
     const { data } = await axios.post("/production/workbench/generateVideoPrompt", {
@@ -563,10 +700,32 @@ async function generateScenePrompts(scene: SceneGroup, requestedIds?: number[]) 
         targetTrack.promptSource = "videoTrack";
       }
     }
+    const warnings: string[] = Array.isArray(data?.warnings) ? data.warnings : [];
+    scenePromptWarningMap.value[scene.key] = warnings.join("；");
+    // 推理成功说明缺失参考已补齐（或校验已不再拦截），清理该场景的一键修复状态
+    if (scenePromptFixMap.value[scene.key]) clearSceneFix(scene.key);
     window.$message.success(`${scene.title} 的 ${trackIds.length} 段视频提示词已生成`);
+    if (warnings.length) {
+      window.$message.warning(`有 ${warnings.length} 处动作细节未显式写出，已放行生成，建议核对提示词`);
+    }
   } catch (caught: any) {
     const message = getRequestErrorMessage(caught);
     scenePromptErrorMap.value[scene.key] = message;
+    scenePromptWarningMap.value[scene.key] = "";
+    const missingEntries = getMissingSpeakerPayload(caught);
+    const existingFix = scenePromptFixMap.value[scene.key];
+    if (missingEntries.length) {
+      // 修复进行中（已派发或轮询中）时保留原状态，避免覆盖最新进度
+      if (!existingFix || !["sending", "fixing"].includes(existingFix.status)) {
+        scenePromptFixMap.value[scene.key] = {
+          entries: missingEntries,
+          trackIds: [...new Set(missingEntries.map((entry) => entry.trackId))],
+          status: "ready",
+        };
+      }
+    } else if (!existingFix || !["sending", "fixing"].includes(existingFix.status)) {
+      clearSceneFix(scene.key);
+    }
     // Do not leave an older English result looking like the failed request
     // succeeded. The saved server version remains recoverable on refresh.
     for (const id of trackIds) {
@@ -579,6 +738,142 @@ async function generateScenePrompts(scene: SceneGroup, requestedIds?: number[]) 
     window.$message.error(message);
   } finally {
     trackIds.forEach((id) => (genTextLoadingMap.value[id] = false));
+  }
+}
+
+// 等待生产 Agent socket 连接就绪（工作台可能在连接建立前就点击了修复）
+function waitForAgentConnection(store: ReturnType<typeof productionAgentStore>): Promise<boolean> {
+  if (store.connected) return Promise.resolve(true);
+  const socket = store.socket;
+  if (!socket) return Promise.resolve(false);
+  return new Promise<boolean>((resolve) => {
+    const onConnect = () => {
+      window.clearTimeout(timer);
+      socket.off("connect", onConnect);
+      resolve(true);
+    };
+    const timer = window.setTimeout(() => {
+      socket.off("connect", onConnect);
+      resolve(store.connected);
+    }, 6000);
+    socket.once("connect", onConnect);
+    if (store.connected) {
+      window.clearTimeout(timer);
+      socket.off("connect", onConnect);
+      resolve(true);
+    }
+  });
+}
+
+// 构造发给生产 Agent 的结构化修复指令（与决策/执行层技能文档的"视频工作台一键修复"场景匹配）
+function buildOneClickFixPrompt(entries: MissingSpeakerEntry[]) {
+  const lines = entries.map(
+    (entry) =>
+      `- 场次「${entry.sceneTitle || "未标注"}」片段「${entry.segmentTitle || entry.trackId}」(trackId=${entry.trackId}，分镜真实ID=[${entry.storyboardIds.join(",")}]）：角色「${entry.speakerName}」`,
+  );
+  return [
+    "【一键修复·视频参考角色补齐】视频工作台推理前校验发现以下片段缺少\"说话角色的独立角色参考\"，用户已确认补齐，请直接执行、无需再次询问：",
+    ...lines,
+    "执行要求：",
+    "1) 对每个角色，先检索资产库 role 资产（含父资产/衍生资产，排除场景/道具）：存在精确同名或语义近似别名（如\"销售\"≈\"销售员\"\"店员\"）且参考图可用→直接进入绑定并回报匹配依据；已有但无图→先提交该资产图片生成；确实不存在→补建 role 基础资产并提交图片生成；",
+    "2) 补建资产的 desc 与 prompt 必须基于剧本中该角色出场的原文描写（年龄/外貌/着装/气质）提炼并注明出处；剧本确无描写时，才允许按项目画风手册与角色身份自由生成，并回报\"无原文描写\"；",
+    "3) 用真实资产 ID 将角色资产绑定到对应分镜（按 trackId/分镜真实 ID 定位；回读核对当前绑定后追加，保留原有绑定与顺序）；不得新增、删除、复制分镜，不得改动分镜 prompt/图片与其他资产；",
+    "4) 绑定不等待图片生成完成（异步）；完成后回报：每个角色的资产 ID、创建/复用/近似匹配判断依据、图片状态、已绑定分镜 ID 列表。",
+    "不要生成视频。",
+  ].join("\n");
+}
+
+function stopSceneFixPolling(sceneKey: string) {
+  const timer = sceneFixTimers.get(sceneKey);
+  if (timer != null) {
+    window.clearInterval(timer);
+    sceneFixTimers.delete(sceneKey);
+  }
+}
+
+function clearSceneFix(sceneKey: string) {
+  stopSceneFixPolling(sceneKey);
+  if (scenePromptFixMap.value[sceneKey]) delete scenePromptFixMap.value[sceneKey];
+}
+
+async function pollSceneFix(sceneKey: string, deadline: number) {
+  const state = scenePromptFixMap.value[sceneKey];
+  if (!state || state.status === "done" || !state.trackIds.length) return;
+  if (Date.now() > deadline) {
+    stopSceneFixPolling(sceneKey);
+    state.status = "timeout";
+    window.$message.warning("一键修复仍在进行中（可能还在生成参考图），稍后可点击「继续修复」重新检查");
+    return;
+  }
+  try {
+    const { data } = await axios.post("/production/workbench/checkSpeakerReferences", {
+      projectId: project.value?.id,
+      scriptId: episodesId.value,
+      trackIds: state.trackIds,
+    });
+    const latest = scenePromptFixMap.value[sceneKey];
+    if (!latest || latest.status === "done") return;
+    const missing = normalizeMissingSpeakerEntries(data?.missingSpeakers);
+    if (!data?.applicable || !missing.length) {
+      stopSceneFixPolling(sceneKey);
+      latest.entries = [];
+      latest.status = "done";
+      scenePromptErrorMap.value[sceneKey] = "";
+      scenePromptWarningMap.value[sceneKey] = "";
+      window.$message.success("角色参考已补齐，可重新推理");
+      getGenerateData();
+      return;
+    }
+    latest.entries = missing;
+    latest.trackIds = [...new Set(missing.map((entry) => entry.trackId))];
+  } catch {
+    // 轮询失败不终止：网络抖动时下一周期重试，超时兜底
+  }
+}
+
+async function oneClickFix() {
+  const sceneKey = activeSceneGroup.value?.key;
+  if (!sceneKey) return;
+  const state = scenePromptFixMap.value[sceneKey];
+  if (!state || state.status === "sending" || state.status === "fixing") return;
+  if (!state.entries.length || !state.trackIds.length) return;
+  if (!project.value?.id || !episodesId.value) return;
+  const store = productionAgentStore();
+  if (store.workflowStatus?.state === "working" || store.workflowStatus?.state === "retrying") {
+    window.$message.warning("生产 Agent 正在执行其他任务，请等待当前任务结束后再点击「一键修复」");
+    return;
+  }
+  const deadline = Date.now() + SCENE_FIX_MAX_WAIT_MS;
+  if (state.status === "timeout") {
+    // 超时后继续跟踪：不重复派发修复指令，仅恢复进度检查
+    state.status = "fixing";
+    void pollSceneFix(sceneKey, deadline);
+    sceneFixTimers.set(sceneKey, window.setInterval(() => void pollSceneFix(sceneKey, deadline), SCENE_FIX_POLL_INTERVAL));
+    return;
+  }
+  state.status = "sending";
+  try {
+    store.updateContext(Number(project.value.id), Number(episodesId.value));
+    const ready = await waitForAgentConnection(store);
+    if (!ready) {
+      state.status = "failed";
+      window.$message.error("未能连接生产 Agent，请检查网络后重试");
+      return;
+    }
+    const sent = store.chat(buildOneClickFixPrompt(state.entries));
+    if (sent === false) {
+      state.status = "failed";
+      window.$message.error("修复指令发送失败，请稍后重试");
+      return;
+    }
+    state.status = "fixing";
+    window.$message.success("已向生产 Agent 发送修复指令，正在跟踪角色参考补齐进度…");
+    stopSceneFixPolling(sceneKey);
+    void pollSceneFix(sceneKey, deadline);
+    sceneFixTimers.set(sceneKey, window.setInterval(() => void pollSceneFix(sceneKey, deadline), SCENE_FIX_POLL_INTERVAL));
+  } catch {
+    state.status = "failed";
+    window.$message.error("修复指令发送失败，请稍后重试");
   }
 }
 
@@ -606,6 +901,7 @@ interface HistoryVideoItem {
   state?: string | null;
   time?: number | null;
   videoTrackId?: number | null;
+  createTime?: number | null;
   playable?: boolean;
 }
 
@@ -1066,6 +1362,10 @@ interface TrackItem {
   medias: TrackMedia[];
   videoList: VideoItem[];
   duration: number;
+  /** 分镜计划时长（秒），档位映射前的原始片段时长 */
+  originalDuration?: number;
+  /** 时长来源：tier=档位映射（计划 12 秒→按 10 秒生成）；overflow=超模型上限的安全压缩 */
+  durationMapping?: "tier" | "overflow" | null;
   title?: string;
   segmentTitle?: string;
   sceneTitle?: string;
@@ -1100,7 +1400,10 @@ interface TrackItem {
 interface SceneGroup {
   key: string;
   title: string;
+  /** 实际生成时长合计（秒） */
   duration: number;
+  /** 分镜计划时长合计（秒），与 duration 不同时在界面上并列展示 */
+  plannedDuration: number;
   entries: Array<{ track: TrackItem; index: number }>;
 }
 function inferenceAssetTypeLabel(media: TrackMedia) {
@@ -1161,9 +1464,12 @@ const sceneGroups = computed<SceneGroup[]>(() => {
       key,
       title: displaySceneTitle(rawTitle),
       duration: 0,
+      plannedDuration: 0,
       entries: [],
     };
-    group.duration += Number(track.duration) || 0;
+    // duration = 实际生成时长合计；plannedDuration = 分镜计划时长合计（档位映射前）
+    group.duration = Math.round((group.duration + (Number(track.duration) || 0)) * 10) / 10;
+    group.plannedDuration = Math.round((group.plannedDuration + segmentDisplayDuration(track)) * 10) / 10;
     group.entries.push({ track, index });
     groups.set(key, group);
   });
@@ -1183,6 +1489,36 @@ const activeTrackGenTextLoading = computed(() => {
 const activeScenePromptError = computed(() => {
   const key = activeSceneGroup.value?.key;
   return key ? scenePromptErrorMap.value[key] || "" : "";
+});
+const activeScenePromptWarning = computed(() => {
+  const key = activeSceneGroup.value?.key;
+  return key ? scenePromptWarningMap.value[key] || "" : "";
+});
+const activeSceneFix = computed(() => {
+  const key = activeSceneGroup.value?.key;
+  return key ? scenePromptFixMap.value[key] || null : null;
+});
+const activeSceneFixBusy = computed(() => {
+  const status = activeSceneFix.value?.status;
+  return status === "sending" || status === "fixing";
+});
+const activeSceneFixAvailable = computed(() => {
+  const fix = activeSceneFix.value;
+  if (!fix || !fix.entries.length) return false;
+  // 修复进行中保留按钮以展示 loading 状态；done 后错误条已清空，无需再显示
+  return fix.status !== "done";
+});
+const activeSceneFixButtonText = computed(() => {
+  const status = activeSceneFix.value?.status;
+  if (status === "sending") return "发送中…";
+  if (status === "fixing") return "修复中…";
+  if (status === "timeout") return "继续修复";
+  if (status === "failed") return "重新修复";
+  return "一键修复";
+});
+const activeSceneFixNotice = computed(() => {
+  const fix = activeSceneFix.value;
+  return fix?.status === "done" ? "角色参考已补齐，可重新推理" : "";
 });
 const shouldShowStoryboardPreview = computed(() => !isMixedMode.value && !activeTrack.value?.excludesStoryboard);
 
@@ -1762,6 +2098,7 @@ watch(
 
 onUnmounted(() => {
   stopPoll();
+  for (const key of [...sceneFixTimers.keys()]) stopSceneFixPolling(key);
   modalVideoRef.value?.pause();
 });
 
@@ -1827,6 +2164,282 @@ function handleDeleteVideo(value: HistoryVideoItem) {
     },
   });
 }
+// ---------------- 生成失败修复（一键重试 / 批量修复 / 标记失败） ----------------
+interface RepairBlockerItem {
+  code?: string;
+  message: string;
+  action?: string;
+}
+
+interface RepairDialogState {
+  title: string;
+  message: string;
+  fixed: string[];
+  blockers: RepairBlockerItem[];
+  submitted: boolean;
+  refreshable: boolean;
+  trackId?: number | null;
+}
+
+const repairVisible = ref(false);
+const repairSubmitting = ref(false);
+const repairState = ref<RepairDialogState>({
+  title: "",
+  message: "",
+  fixed: [],
+  blockers: [],
+  submitted: false,
+  refreshable: false,
+  trackId: null,
+});
+
+// 每个片段只看最新一条记录：最新一条失败才算「这个片段当前需要修复」。
+const latestVideoByTrack = computed(() => {
+  const map = new Map<number, HistoryVideoItem>();
+  for (const video of historyVideo.value) {
+    const trackId = Number(video.videoTrackId);
+    if (!Number.isFinite(trackId)) continue;
+    const stamp = Number(video.createTime) || Number(video.id) || 0;
+    const current = map.get(trackId);
+    const currentStamp = current ? Number(current.createTime) || Number(current.id) || 0 : -1;
+    if (!current || stamp >= currentStamp) map.set(trackId, video);
+  }
+  return map;
+});
+
+const failedTrackCount = computed(
+  () => trackList.value.filter((track) => latestVideoByTrack.value.get(track.id)?.state === "生成失败").length,
+);
+
+function readRepairFailure(caught: any) {
+  const envelope = caught?.response?.data ?? caught;
+  const payload = envelope?.data ?? {};
+  return {
+    message: envelope?.message || caught?.message || "修复失败，请稍后重试",
+    fixed: Array.isArray(payload.fixed) ? payload.fixed : [],
+    blockers: Array.isArray(payload.blockers) ? payload.blockers : [],
+  };
+}
+
+function trackLabel(trackId?: number | null) {
+  const track = trackList.value.find((item) => item.id === trackId);
+  return track?.title || "该片段";
+}
+
+function videoTrackLabel(videoId?: number | null) {
+  const video = historyVideo.value.find((item) => item.id === videoId);
+  return trackLabel(video?.videoTrackId ?? null);
+}
+
+function openRepairDialog(state: Partial<RepairDialogState>) {
+  repairState.value = {
+    title: state.title || $t("workbench.generate.repairDialogTitle"),
+    message: state.message || "",
+    fixed: state.fixed || [],
+    blockers: state.blockers || [],
+    submitted: Boolean(state.submitted),
+    refreshable: Boolean(state.refreshable),
+    trackId: state.trackId ?? null,
+  };
+  repairVisible.value = true;
+}
+
+async function repairVideoRecord(video: HistoryVideoItem, useTrackPrompt = false) {
+  if (repairSubmitting.value) return;
+  repairSubmitting.value = true;
+  try {
+    const { data, message } = await axios.post("/production/workbench/retryVideo", {
+      videoId: video.id,
+      ...(useTrackPrompt ? { useTrackPrompt: true } : {}),
+    });
+    openRepairDialog({
+      message: message || $t("workbench.generate.repairSubmitted"),
+      fixed: Array.isArray(data?.fixed) ? data.fixed : [],
+      submitted: true,
+      trackId: data?.trackId ?? video.videoTrackId ?? null,
+    });
+    window.$message.success($t("workbench.generate.repairSubmitted"));
+    await getVideoList();
+  } catch (caught: any) {
+    const failure = readRepairFailure(caught);
+    openRepairDialog({
+      message: failure.message,
+      fixed: failure.fixed,
+      blockers: failure.blockers,
+      trackId: video.videoTrackId ?? null,
+      refreshable: true,
+    });
+  } finally {
+    repairSubmitting.value = false;
+  }
+}
+
+function openRepair(video: HistoryVideoItem) {
+  void repairVideoRecord(video);
+}
+
+function batchRepairVideo() {
+  if (repairSubmitting.value) return;
+  const trackIds = trackList.value
+    .filter((track) => latestVideoByTrack.value.get(track.id)?.state === "生成失败")
+    .map((track) => track.id);
+  if (!trackIds.length) {
+    window.$message.warning($t("workbench.generate.repairNone"));
+    return;
+  }
+  const dlg = DialogPlugin.confirm({
+    header: $t("workbench.generate.repairBatch"),
+    body: $t("workbench.generate.repairBatchConfirm", { count: trackIds.length }),
+    onConfirm: async () => {
+      dlg.destroy();
+      repairSubmitting.value = true;
+      try {
+        const { data, message } = await axios.post("/production/workbench/retryVideos", {
+          projectId: project.value?.id,
+          scriptId: episodesId.value,
+          trackIds,
+        });
+        const failedItems = (Array.isArray(data?.results) ? data.results : []).filter(
+          (item: any) => !item.ok,
+        );
+        openRepairDialog({
+          title: $t("workbench.generate.repairBatch"),
+          message:
+            message ||
+            $t("workbench.generate.repairBatchSummary", {
+              submitted: data?.submitted ?? 0,
+              failed: data?.failed ?? 0,
+            }),
+          blockers: failedItems.map((item: any) => ({
+            message: `${videoTrackLabel(item.videoId)}：${item.message || "修复失败"}`,
+            action: item.action,
+          })),
+          submitted: Number(data?.submitted || 0) > 0,
+          refreshable: failedItems.length > 0,
+        });
+        if (failedItems.length) {
+          window.$message.warning(message || "部分失败片段需要手动处理");
+        } else {
+          window.$message.success(message || $t("workbench.generate.repairBatchDone"));
+        }
+        await getVideoList();
+      } catch (caught: any) {
+        const failure = readRepairFailure(caught);
+        openRepairDialog({
+          title: $t("workbench.generate.repairBatch"),
+          message: failure.message,
+          fixed: failure.fixed,
+          blockers: failure.blockers,
+          refreshable: true,
+        });
+      } finally {
+        repairSubmitting.value = false;
+      }
+    },
+    onCancel: () => dlg.destroy(),
+  });
+}
+
+// 卡住的「生成中」：标记失败并按原参数重试（云端结果将不再改写状态）
+function confirmMarkFailed(video: HistoryVideoItem) {
+  const dlg = DialogPlugin.confirm({
+    header: $t("workbench.generate.repairMarkFailed"),
+    body: $t("workbench.generate.repairMarkFailedConfirm"),
+    theme: "warning",
+    onConfirm: async () => {
+      dlg.destroy();
+      repairSubmitting.value = true;
+      try {
+        const { data, message } = await axios.post("/production/workbench/markVideoFailed", {
+          videoId: video.id,
+          retry: true,
+        });
+        openRepairDialog({
+          message: message || $t("workbench.generate.repairSubmitted"),
+          fixed: Array.isArray(data?.fixed) ? data.fixed : [],
+          submitted: true,
+          trackId: data?.trackId ?? video.videoTrackId ?? null,
+        });
+        window.$message.success($t("workbench.generate.repairSubmitted"));
+        await getVideoList();
+      } catch (caught: any) {
+        const failure = readRepairFailure(caught);
+        openRepairDialog({
+          message: failure.message,
+          fixed: failure.fixed,
+          blockers: failure.blockers,
+          trackId: video.videoTrackId ?? null,
+          refreshable: true,
+        });
+      } finally {
+        repairSubmitting.value = false;
+      }
+    },
+    onCancel: () => dlg.destroy(),
+  });
+}
+
+// 提示词引用了本次未提交的参考素材时：先重推该镜提示词，再按新提示词重试
+async function handleRepairRegeneratePrompt() {
+  const trackId = repairState.value.trackId ?? trackList.value[activeTrackIndex.value]?.id;
+  if (trackId == null || repairSubmitting.value) return;
+  if (!selectedVideoPromptTemplateId.value) {
+    await loadVideoPromptTemplates();
+  }
+  if (!selectedVideoPromptTemplateId.value) {
+    window.$message.warning("请先选择视频推理模版");
+    return;
+  }
+  repairSubmitting.value = true;
+  try {
+    const { data } = await axios.post("/production/workbench/generateVideoPrompt", {
+      projectId: project.value?.id,
+      scriptId: episodesId.value,
+      trackId,
+      templateId: selectedVideoPromptTemplateId.value,
+      model: selectModel.value,
+      mode: selectMode.value,
+    });
+    for (const result of data?.prompts || []) {
+      const targetTrack = trackList.value.find((item) => item.id === Number(result.trackId));
+      if (targetTrack) {
+        targetTrack.prompt = result.prompt;
+        targetTrack.promptSource = "videoTrack";
+      }
+    }
+    const targetVideo = latestVideoByTrack.value.get(trackId);
+    window.$message.success("已重新生成该镜提示词，正在按新提示词重试");
+    if (targetVideo?.state === "生成失败" && targetVideo.id != null) {
+      await repairVideoRecord(targetVideo, true);
+    }
+  } catch (caught: any) {
+    const failure = readRepairFailure(caught);
+    openRepairDialog({
+      title: $t("workbench.generate.repairRegeneratePrompt"),
+      message: failure.message || "重新推理提示词失败，请稍后在提示词面板重试",
+      blockers: failure.blockers,
+      refreshable: true,
+    });
+  } finally {
+    repairSubmitting.value = false;
+  }
+}
+
+function handleRepairMarkFailed() {
+  const trackId = repairState.value.trackId;
+  const video = trackId == null ? null : latestVideoByTrack.value.get(trackId);
+  if (video?.state === "生成中" && video.id != null) {
+    confirmMarkFailed(video);
+    return;
+  }
+  window.$message.warning("该片段当前不是「生成中」状态");
+}
+
+async function handleRepairRefresh() {
+  await getVideoList();
+  window.$message.success("已刷新生成状态");
+}
+
 //下载视频
 async function downloadVideo(value: HistoryVideoItem) {
   const url = value.src;
@@ -2076,6 +2689,14 @@ async function downloadVideo(value: HistoryVideoItem) {
           text-overflow: ellipsis;
           white-space: nowrap;
         }
+        em.durationMappingHint {
+          display: block;
+          margin-top: 2px;
+          color: var(--td-text-color-placeholder);
+          font-size: 11px;
+          font-style: normal;
+          line-height: 1.3;
+        }
       }
       .segmentTable {
         overflow: hidden;
@@ -2163,6 +2784,39 @@ async function downloadVideo(value: HistoryVideoItem) {
         border-radius: 6px;
         color: var(--td-error-color);
         background: var(--td-error-color-1);
+        font-size: 12px;
+        line-height: 1.5;
+        word-break: break-word;
+      }
+      .promptWarning {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        margin-bottom: 8px;
+        padding: 8px 10px;
+        border: 1px solid var(--td-warning-color-3);
+        border-radius: 6px;
+        color: var(--td-warning-color);
+        background: var(--td-warning-color-1);
+        font-size: 12px;
+        line-height: 1.5;
+        word-break: break-word;
+      }
+      .promptFixButton {
+        flex: 0 0 auto;
+        margin-left: auto;
+        align-self: center;
+      }
+      .promptFixNotice {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        margin-bottom: 8px;
+        padding: 8px 10px;
+        border: 1px solid var(--td-success-color-3);
+        border-radius: 6px;
+        color: var(--td-success-color);
+        background: var(--td-success-color-1);
         font-size: 12px;
         line-height: 1.5;
         word-break: break-word;
@@ -2424,6 +3078,55 @@ async function downloadVideo(value: HistoryVideoItem) {
               position: absolute;
               bottom: 4px;
               left: 4px;
+            }
+            // 生成失败：悬浮出现「修复」，按失败快照自动预检并重新提交
+            .repairBtn {
+              position: absolute;
+              bottom: 4px;
+              right: 4px;
+              display: none;
+              align-items: center;
+              gap: 3px;
+              padding: 0 8px;
+              height: 22px;
+              border-radius: 11px;
+              background: var(--td-brand-color);
+              color: #fff;
+              font-size: 11px;
+              line-height: 1;
+              cursor: pointer;
+              transition: background 0.2s;
+
+              &:hover {
+                background: var(--td-brand-color-hover);
+              }
+            }
+            &:hover .repairBtn {
+              display: flex;
+            }
+            // 生成中卡住：悬浮出现「标记失败并重试」
+            .markFailedBtn {
+              position: absolute;
+              bottom: 4px;
+              right: 4px;
+              display: none;
+              align-items: center;
+              padding: 0 8px;
+              height: 22px;
+              border-radius: 11px;
+              background: rgba(0, 0, 0, 0.55);
+              color: #fff;
+              font-size: 11px;
+              line-height: 1;
+              cursor: pointer;
+              transition: background 0.2s;
+
+              &:hover {
+                background: var(--td-warning-color);
+              }
+            }
+            &:hover .markFailedBtn {
+              display: flex;
             }
             .download {
               position: absolute;

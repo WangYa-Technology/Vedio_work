@@ -4,9 +4,22 @@ import * as agent from "@/agents/scriptAgent/index";
 import ResTool from "@/socket/resTool";
 import { decodeSocketUser, userOwnsProject } from "@/middleware/auth";
 import { getAgentIsolationKey, ScriptAgentRuntimeRecorder } from "@/utils/agentPersistence";
+import { loadScriptAgentProgress } from "@/agents/scriptAgent/progress";
 
 const DECISION_MAX_ATTEMPTS = 3;
-const SCRIPT_AGENT_REQUEST_TIMEOUT_MS = 120_000;
+// 故事骨架/剧本生成为多步骤长任务（读取章节、格式校验重试、超长产出截断续写），放宽到 30 分钟
+const SCRIPT_AGENT_REQUEST_TIMEOUT_MS = 1_800_000;
+// 半异步：任务与连接解耦——断连不再中止任务，任务在后台持续运行，
+// 直到任务完成 / 30 分钟超时 / 用户主动停止 / 同一会话发送新指令。
+const runningTasks = new Map<string, AbortController>();
+
+function abortRunningTask(isolationKey: string) {
+  const controller = runningTasks.get(isolationKey);
+  if (!controller) return false;
+  runningTasks.delete(isolationKey);
+  controller.abort();
+  return true;
+}
 
 function createAbortError() {
   const error = new Error("生成已停止");
@@ -41,6 +54,11 @@ export default (nsp: Namespace) => {
     }
     const isolationKey = getAgentIsolationKey(user.id, projectId, "scriptAgent");
 
+    // 后台任务仍在运行时重连：任务不打断，前端通过运行记录同步进度
+    if (runningTasks.has(isolationKey)) {
+      console.log("[scriptAgent] 重连成功，后台任务仍在运行，进度将通过运行记录同步:", socket.id);
+    }
+
     console.log("[scriptAgent] 已连接:", socket.id);
 
     const resTool = new ResTool(socket, {
@@ -48,6 +66,20 @@ export default (nsp: Namespace) => {
     });
     const runtimeRecorder = new ScriptAgentRuntimeRecorder(projectId);
     await runtimeRecorder.load();
+    // 进程重启或上次异常退出会留下 running 状态；当前没有活跃任务时标记为已中断，
+    // 避免前端重连后误以为后台任务仍在运行（否则会一直轮询一个不存在的任务）。
+    if (!runningTasks.has(isolationKey) && runtimeRecorder.isRunning()) {
+      // 把"已完成什么、下一步做什么"的确定性结论写进中断状态，
+      // 避免前端只看到"上次生成已中断，可继续"而无法判断进度；计算失败则回退通用文案
+      let interruptedLabel: string | undefined;
+      try {
+        interruptedLabel = (await loadScriptAgentProgress(projectId)).conclusive;
+      } catch (err) {
+        console.warn("[scriptAgent] 中断结论计算失败，回退通用文案:", u.error(err).message);
+      }
+      runtimeRecorder.markInterrupted(interruptedLabel);
+      await runtimeRecorder.flush();
+    }
     socket.onAnyOutgoing((event, data) => runtimeRecorder.recordOutgoing(event, data));
     let abortController: AbortController | null = null;
 
@@ -55,9 +87,12 @@ export default (nsp: Namespace) => {
       const { content } = data;
       resTool.beginWorkflowRequest();
       runtimeRecorder.addUserMessage(content);
+      // 新指令发起时，终止本会话所有在跑任务（含断连后在后台继续的旧任务）
       abortController?.abort();
+      abortRunningTask(isolationKey);
       abortController = new AbortController();
       const currentController = abortController;
+      runningTasks.set(isolationKey, currentController);
       let timedOut = false;
       const timeout = setTimeout(() => {
         timedOut = true;
@@ -140,7 +175,14 @@ export default (nsp: Namespace) => {
       } catch (err: any) {
         if (err.name === "AbortError" || currentController.signal.aborted) {
           ctx.msg.stop();
-          resTool.workflowStatus("idle", "已停止当前生成");
+          if (timedOut) {
+            const tip = `本次生成超过 ${SCRIPT_AGENT_REQUEST_TIMEOUT_MS / 60000} 分钟被自动停止，请重试；若内容较长可分步骤生成`;
+            ctx.msg.text(tip).complete();
+            ctx.msg.error(tip);
+            resTool.workflowStatus("error", tip);
+          } else {
+            resTool.workflowStatus("idle", "已停止当前生成");
+          }
         } else {
           const errorMsg = u.error(err).message;
           console.error("[scriptAgent] chat error:", errorMsg);
@@ -153,19 +195,28 @@ export default (nsp: Namespace) => {
         if (abortController === currentController) {
           abortController = null;
         }
+        // 任务已结束，从运行表移除
+        if (runningTasks.get(isolationKey) === currentController) {
+          runningTasks.delete(isolationKey);
+        }
       }
     });
 
     socket.on("stop", () => {
       abortController?.abort();
       abortController = null;
+      // 重连后的页面点停止，也要能停掉断连期间在后台运行的任务
+      abortRunningTask(isolationKey);
     });
-    socket.on("disconnect", () => {
-      abortController?.abort();
-      abortController = null;
-      runtimeRecorder.markInterrupted();
+    socket.on("disconnect", (reason) => {
+      // 半异步：断连不中止任务。任务继续在后台运行，运行记录持续落库；
+      // 前端重连后通过 /agents/getRuntime 同步进度，或发送新指令终止旧任务。
       void runtimeRecorder.flush();
-      console.log("[scriptAgent] 已断开连接:", socket.id);
+      // 记录断连原因（ping timeout / transport close / io server disconnect 等），便于定位断连根因
+      console.log(
+        `[scriptAgent] 已断开连接（原因: ${reason}，任务${runningTasks.has(isolationKey) ? "继续在后台运行" : "未在运行"}）:`,
+        socket.id,
+      );
     });
   });
 };

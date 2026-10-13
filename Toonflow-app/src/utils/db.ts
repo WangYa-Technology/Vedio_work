@@ -9,6 +9,7 @@ import type { DB } from "@/types/database";
 import crypto from "crypto";
 import fixDB from "@/lib/fixDB";
 import { syncVideoPromptDefaults } from "@/lib/syncVideoPromptDefaults";
+import { syncPromptTemplates } from "@/lib/syncPromptTemplates";
 
 type TableName = keyof DB & string;
 type RowType<TName extends TableName> = DB[TName];
@@ -40,6 +41,7 @@ const shouldInitDB = process.env.FORCE_DB_INIT === "1" || fs.statSync(dbPath).si
 (async () => {
   await initDB(db, shouldInitDB);
   await syncVideoPromptDefaults(db);
+  await syncPromptTemplates(db);
   if (shouldInitDB) {
     await fixDB(db);
   }

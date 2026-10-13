@@ -213,7 +213,7 @@ export default router.post(
             inputSchema: z.object({
               newAssets: z
                 .array(NewAssetSchema)
-                .describe("新发现的资产列表（不在已有资产列表中的），需要完整的 prompt、name、desc、type 和使用该资产的 scriptIds"),
+                .describe("新发现的资产列表（不在已有资产列表中的），每项包含 name、desc、type 和使用该资产的 scriptIds"),
               existingAssetRefs: z
                 .array(ExistingAssetRefSchema)
                 .describe("已有资产的引用列表（在已有资产列表中已存在的），只需给出资产名称和使用该资产的 scriptIds"),
